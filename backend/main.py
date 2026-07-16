@@ -1,8 +1,9 @@
 """
-Sapphire Alpha Dashboard — unified, privacy-preserving trading & business control plane.
+Sapphire Alpha Dashboard — Mission Control.
 
 Public endpoints:
   GET /healthz
+  GET /api/health
 
 Authenticated endpoints (HTTP Basic Auth):
   GET /api/v1/status
@@ -20,6 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -37,7 +39,7 @@ def _env(name: str, default: str = "") -> str:
 
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="Sapphire Alpha Dashboard", version="0.1.0")
+app = FastAPI(title="Sapphire Alpha Dashboard", version="0.2.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 security = HTTPBasic()
@@ -77,6 +79,12 @@ async def _security_headers(request: Request, call_next: Any) -> Response:
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
+# Canonical local state paths (Mac). Cloud Run uses env overrides.
+_HOME = Path.home()
+_RH_CHAIN_DIR = _HOME / "ops-state" / "rh-chain"
+_TELEGRAM_DIR = _HOME / "ops-state" / "telegram-bot"
+_KNOWLEDGE_CLIPS_DIR = _HOME / "Knowledge" / "3-Resources" / "Clippings"
+
 
 def _mask_address(addr: str | None) -> str | None:
     """Render a blockchain address as pseudonymous 0xabcd...1234."""
@@ -91,6 +99,13 @@ def _safe_bool(raw: Any) -> bool:
     if isinstance(raw, str):
         return raw.lower() in {"1", "true", "yes", "on"}
     return bool(raw)
+
+
+def _safe_float(raw: Any, default: float = 0.0) -> float:
+    try:
+        return float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
 
 
 @lru_cache(maxsize=1)
@@ -136,7 +151,7 @@ async def healthz(request: Request) -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "sapphire-alpha-dashboard",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
@@ -157,12 +172,112 @@ def _read_json(path: Path) -> Any:
     return None
 
 
+def _read_jsonl(path: Path, limit: int = 20) -> list[dict[str, Any]]:
+    """Read the last `limit` JSON lines from a file."""
+    rows: list[dict[str, Any]] = []
+    try:
+        if not path.exists():
+            return rows
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for line in text.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    rows.append(obj)
+            except json.JSONDecodeError:
+                continue
+    except Exception as exc:
+        log.warning("failed to read jsonl %s: %s", path, exc)
+    return rows[-limit:] if limit else rows
+
+
+def _sanitize_proposal(raw: dict[str, Any], idx: int) -> dict[str, Any]:
+    """Strip PII from a Telegram proposal/decision and return display-safe fields."""
+    # Drop any key that looks like PII.
+    pii_keys = {"chat_id", "user_id", "username", "first_name", "last_name", "phone", "email"}
+    safe: dict[str, Any] = {}
+    for key, value in raw.items():
+        low = key.lower()
+        if low in pii_keys or "secret" in low or "password" in low or "token" in low:
+            continue
+        if low in {"wallet_address", "address"} and isinstance(value, str):
+            safe[key] = _mask_address(value)
+        else:
+            safe[key] = value
+
+    out: dict[str, Any] = {
+        "id": f"prop-{idx:03d}",
+        "action": safe.get("action", safe.get("type", "proposal")),
+        "instrument": safe.get("instrument", safe.get("symbol", "—")),
+        "side": safe.get("side", "—"),
+        "confidence": safe.get("confidence", "medium"),
+        "status": safe.get("status", "pending"),
+        "timestamp": safe.get("timestamp", safe.get("created_at", datetime.now(UTC).isoformat())),
+    }
+    if "wallet_address" in safe:
+        out["wallet_address"] = safe["wallet_address"]
+    return out
+
+
+def _executor_heartbeat() -> dict[str, Any]:
+    """Executor liveness from local heartbeat or env override."""
+    env = _env("DASHBOARD_EXECUTOR_HEARTBEAT", "").strip()
+    data: dict[str, Any] = {}
+    if env:
+        try:
+            data = json.loads(env)
+        except json.JSONDecodeError:
+            data = {"status": env}
+    else:
+        data = _read_json(_RH_CHAIN_DIR / "executor-heartbeat.json") or {}
+
+    status_str = str(data.get("status", "unknown")).lower()
+    alive = status_str in {"alive", "ok", "running", "healthy"} or _safe_bool(data.get("alive"))
+    return {
+        "status": status_str if status_str not in {"", "none"} else "unknown",
+        "alive": alive,
+        "last_seen": data.get("last_seen") or data.get("timestamp") or data.get("epoch"),
+        "pid": data.get("pid"),
+    }
+
+
+def _skin_book() -> dict[str, Any]:
+    """Read skin book from canonical file or env override."""
+    env = _env("DASHBOARD_SKIN_BOOK", "").strip()
+    data: dict[str, Any] = {}
+    if env:
+        try:
+            data = json.loads(env)
+        except json.JSONDecodeError:
+            data = {}
+    else:
+        data = _read_json(_RH_CHAIN_DIR / "skin-book.json") or {}
+
+    positions = data.get("positions", [])
+    fills = data.get("fills", [])
+    return {
+        "updated_at": datetime.fromtimestamp(data.get("updated", 0), UTC).isoformat()
+        if data.get("updated")
+        else datetime.now(UTC).isoformat(),
+        "mode": data.get("mode", "telegram"),
+        "banner": data.get("banner", "Skin book"),
+        "deployed_usd": _safe_float(data.get("deployed_usd")),
+        "n_open": int(data.get("n_open", len(positions))),
+        "positions_count": len(positions),
+        "fills_count": len(fills),
+        "skin_in_game": _safe_bool(data.get("skin_in_game", False)),
+        "limits": data.get("limits", {}),
+    }
+
+
 def _gate_status() -> dict[str, Any]:
     """Aggregate trading gate state from canonical state files or env."""
-    home = Path.home()
-    gate = _read_json(home / "ops-state" / "rh-chain" / "gate.json") or {}
-    skin = _read_json(home / "ops-state" / "rh-chain" / "skin-book.json") or {}
-    pause = home / ".sapphire" / "autonomous_trading_pause"
+    gate = _read_json(_RH_CHAIN_DIR / "gate.json") or {}
+    skin = _read_json(_RH_CHAIN_DIR / "skin-book.json") or {}
+    pause = _HOME / ".sapphire" / "autonomous_trading_pause"
     box_pause = Path("C:/Users/aribs/.sapphire/autonomous_trading_pause")
 
     # Env overrides allow the dashboard to reflect state when running on Cloud Run
@@ -194,27 +309,65 @@ def _gate_status() -> dict[str, Any]:
         "mode": mode,
         "wallet_address": _mask_address(wallet_addr),
         "cap_usd": int(_env("MAX_ORDER_USD", "25")),
+        "executor_alive": _executor_heartbeat()["alive"],
         "updated_at": datetime.now(UTC).isoformat(),
     }
 
 
+def _wallet_status() -> dict[str, Any]:
+    """Privacy-preserving wallet / PnL tile."""
+    skin = _skin_book()
+    wallet_addr = _env("WALLET_ADDRESS") or (_read_json(_RH_CHAIN_DIR / "skin-book.json") or {}).get("wallet_address")
+    return {
+        "address": _mask_address(wallet_addr),
+        "deployed_usd": skin["deployed_usd"],
+        "n_open": skin["n_open"],
+        "positions_count": skin["positions_count"],
+        "fills_count": skin["fills_count"],
+        "skin_in_game": skin["skin_in_game"],
+        "limits": skin["limits"],
+        "updated_at": skin["updated_at"],
+    }
+
+
 def _telegram_queue() -> dict[str, Any]:
-    """Surface Telegram approval queue length without exposing chat IDs."""
-    queue_path = Path.home() / "ops-state" / "telegram-bot" / "pending_queue.json"
-    data = _read_json(queue_path) or []
+    """Surface Telegram approval queue length and recent proposals without exposing chat IDs."""
+    queue_path = _TELEGRAM_DIR / "pending_queue.json"
+    decisions_path = _TELEGRAM_DIR / "decisions.jsonl"
+
+    data = _read_json(queue_path)
     pending = len(data) if isinstance(data, list) else 0
+
+    decisions = _read_jsonl(decisions_path, limit=10)
+    proposals = [_sanitize_proposal(d, i + 1) for i, d in enumerate(decisions)]
+
+    # If a pending_queue.json entry is a dict, treat it as a proposal too.
+    if isinstance(data, list):
+        for i, item in enumerate(data[:10]):
+            if isinstance(item, dict):
+                proposals.insert(0, _sanitize_proposal(item, len(proposals) + 1))
+
     return {
         "pending": pending,
         "gate": "telegram",
         "status": "polling" if _safe_bool(_env("TELEGRAM_BOT_POLLING", "true")) else "paused",
         "recent_count": min(pending, 5),
+        "proposals": proposals[:8],
     }
 
 
 def _recent_signals() -> list[dict[str, Any]]:
     """Recent trading signals with synthetic identifiers only."""
-    signals_path = Path.home() / "ops-state" / "rh-chain" / "signals.json"
-    data = _read_json(signals_path)
+    env = _env("DASHBOARD_SIGNALS_JSON", "").strip()
+    data: Any = None
+    if env:
+        try:
+            data = json.loads(env)
+        except json.JSONDecodeError:
+            data = None
+    if data is None:
+        data = _read_json(_RH_CHAIN_DIR / "signals.json")
+
     if isinstance(data, list):
         return [
             {
@@ -225,7 +378,7 @@ def _recent_signals() -> list[dict[str, Any]]:
                 "confidence": s.get("confidence", "medium"),
                 "timestamp": s.get("timestamp", datetime.now(UTC).isoformat()),
             }
-            for i, s in enumerate(data[:8])
+            for i, s in enumerate(data[:12])
         ]
     # Graceful mock when no signal file is available (Cloud Run default).
     return [
@@ -242,29 +395,74 @@ def _recent_signals() -> list[dict[str, Any]]:
 
 def _defi_report_feed() -> dict[str, Any]:
     """DeFi Report clip feed — aggregate only, no subscriber PII."""
-    clips_dir = Path.home() / "Knowledge" / "3-Resources" / "Clippings"
+    clips_dir = _KNOWLEDGE_CLIPS_DIR
     clips: list[dict[str, Any]] = []
     if clips_dir.exists():
-        for p in sorted(clips_dir.glob("*.md"), reverse=True)[:6]:
+        for p in sorted(clips_dir.glob("*.md"), reverse=True)[:8]:
             lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
             title = next(
                 (l.lstrip("# ").strip() for l in lines if l.strip().startswith("# ")), p.stem
             )
-            clips.append({"id": p.stem, "title": title, "source": "tdr_pro"})
+            clips.append({"id": p.stem, "title": title, "source": "tdr_pro", "path": str(p)})
     if not clips:
         clips = [
-            {"id": "tdr-001", "title": "DeFi Report — weekly rollup", "source": "tdr_pro"},
+            {"id": "tdr-001", "title": "DeFi Report — weekly rollup", "source": "tdr_pro", "path": ""},
         ]
     return {"clips": clips, "source": "tdr_pro", "live": _safe_bool(_env("TDR_PRO_LIVE", "0"))}
 
 
 def _tradingview_status() -> dict[str, Any]:
     """TradingView webhook pipeline status."""
+    log_path_env = _env("DASHBOARD_TV_LOG", "").strip()
+    recent_log_lines: list[str] = []
+    if log_path_env:
+        try:
+            path = Path(log_path_env)
+            if path.exists():
+                recent_log_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()[-10:]
+        except Exception as exc:
+            log.warning("failed to read TV log %s: %s", log_path_env, exc)
+
     return {
         "status": _env("TV_WEBHOOK_STATUS", "standby"),
         "endpoint": _env("TV_WEBHOOK_URL", "not configured"),
         "last_ping": _env("TV_LAST_PING", datetime.now(UTC).isoformat()),
         "pending_alerts": int(_env("TV_PENDING_ALERTS", "0")),
+        "recent_log": recent_log_lines,
+    }
+
+
+async def _probe_health(name: str, url: str | None, timeout: float = 2.0) -> dict[str, Any]:
+    """Probe a business health endpoint without leaking PII."""
+    if not url:
+        return {"name": name, "status": "not_configured", "detail": "no URL configured"}
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            r = await client.get(url)
+        if r.status_code == 200:
+            return {"name": name, "status": "ok", "http_status": r.status_code}
+        if r.status_code in {401, 403}:
+            return {"name": name, "status": "protected", "http_status": r.status_code}
+        return {"name": name, "status": "degraded", "http_status": r.status_code}
+    except httpx.TimeoutException:
+        return {"name": name, "status": "timeout", "detail": "probe timed out"}
+    except Exception as exc:
+        return {"name": name, "status": "unreachable", "detail": str(exc)}
+
+
+async def _business_health() -> dict[str, Any]:
+    """Health grid for satellite services reachable without auth."""
+    probes = [
+        ("gpu_gateway", _env("GPU_GATEWAY_HEALTH_URL", "http://127.0.0.1:8800/health")),
+        ("remote_gpu_gateway", _env("REMOTE_GPU_GATEWAY_HEALTH_URL", "")),
+        ("ops_server", _env("OPS_SERVER_HEALTH_URL", "")),
+    ]
+    results = []
+    for name, url in probes:
+        results.append(await _probe_health(name, url or None))
+    return {
+        "services": results,
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -284,8 +482,10 @@ def _system_health() -> dict[str, Any]:
 async def api_status(request: Request, user: str = Depends(require_auth)) -> dict[str, Any]:
     return {
         "service": "sapphire-alpha-dashboard",
+        "version": "0.2.0",
         "authenticated_user": user,
         "gate": _gate_status(),
+        "wallet": _wallet_status(),
         "system_health": _system_health(),
     }
 
@@ -295,10 +495,12 @@ async def api_status(request: Request, user: str = Depends(require_auth)) -> dic
 async def api_widgets(request: Request, user: str = Depends(require_auth)) -> dict[str, Any]:
     return {
         "gate": _gate_status(),
+        "wallet": _wallet_status(),
         "telegram_queue": _telegram_queue(),
         "recent_signals": _recent_signals(),
         "defi_report": _defi_report_feed(),
         "tradingview": _tradingview_status(),
+        "business_health": await _business_health(),
         "system_health": _system_health(),
         "rendered_at": datetime.now(UTC).isoformat(),
     }
