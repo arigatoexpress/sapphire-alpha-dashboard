@@ -394,16 +394,61 @@ def _recent_signals() -> list[dict[str, Any]]:
 
 
 def _defi_report_feed() -> dict[str, Any]:
-    """DeFi Report clip feed — aggregate only, no subscriber PII."""
-    clips_dir = _KNOWLEDGE_CLIPS_DIR
+    """DeFi Report clip feed — aggregate only, no subscriber PII.
+
+    Local clippings take precedence. When running on Cloud Run without access to
+    the Mac filesystem, pass ``DASHBOARD_TDR_CLIPS_JSON`` as a JSON array of
+    clip objects, or ``DASHBOARD_TDR_JSON`` pointing to a local JSON summary file.
+    The env value may be base64-encoded to survive shell/gcloud substitution parsing.
+    """
     clips: list[dict[str, Any]] = []
-    if clips_dir.exists():
-        for p in sorted(clips_dir.glob("*.md"), reverse=True)[:8]:
-            lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
-            title = next(
-                (l.lstrip("# ").strip() for l in lines if l.strip().startswith("# ")), p.stem
-            )
-            clips.append({"id": p.stem, "title": title, "source": "tdr_pro", "path": str(p)})
+
+    env_clips = _env("DASHBOARD_TDR_CLIPS_JSON", "").strip()
+    if env_clips:
+        raw = env_clips
+        # Try base64 first; fall back to plain JSON.
+        try:
+            import base64
+
+            raw = base64.b64decode(raw).decode("utf-8")
+        except Exception:
+            pass
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                clips = parsed[:8]
+        except json.JSONDecodeError:
+            log.warning("DASHBOARD_TDR_CLIPS_JSON is not valid JSON")
+
+    if not clips:
+        env_summary = _env("DASHBOARD_TDR_JSON", "").strip()
+        if env_summary:
+            try:
+                path = Path(env_summary)
+                if path.exists():
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    for ep in data.get("episodes", [])[:8]:
+                        clips.append(
+                            {
+                                "id": ep.get("slug", "tdr-000"),
+                                "title": ep.get("title", "TDR Pro episode"),
+                                "source": "tdr_pro",
+                                "path": "",
+                            }
+                        )
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("failed to read DASHBOARD_TDR_JSON: %s", exc)
+
+    if not clips:
+        clips_dir = _KNOWLEDGE_CLIPS_DIR
+        if clips_dir.exists():
+            for p in sorted(clips_dir.glob("*.md"), reverse=True)[:8]:
+                lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+                title = next(
+                    (l.lstrip("# ").strip() for l in lines if l.strip().startswith("# ")), p.stem
+                )
+                clips.append({"id": p.stem, "title": title, "source": "tdr_pro", "path": str(p)})
+
     if not clips:
         clips = [
             {"id": "tdr-001", "title": "DeFi Report — weekly rollup", "source": "tdr_pro", "path": ""},
