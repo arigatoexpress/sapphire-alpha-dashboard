@@ -5,8 +5,9 @@ Public, privacy-preserving Mission Control for the Sapphire Alpha trading & busi
 
 ## Tech stack
 - Backend: FastAPI + uvicorn (Python 3.11)
-- Frontend: React 19 + Vite + TypeScript
-- Hosting: Cloud Run (Docker source deploy)
+- Frontend: React 19 + Vite + TypeScript + Framer Motion
+- Hosting: Cloud Run (Docker / Cloud Build deploy)
+- Visual effects: WebGL starfield, animated grain, glassmorphism cards, reduced-motion support
 
 ## Local dev
 ```bash
@@ -21,10 +22,26 @@ npm install && npm run build
 ```
 
 ## Deploy
+Preferred: Cloud Build with explicit env substitution.
+```bash
+export AUTH_PASSWORD=$(security find-generic-password -s sapphire-alpha-dashboard -w)
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=_AUTH_PASSWORD="$AUTH_PASSWORD" \
+  --project=sapphire-479610 \
+  --region=us-central1 \
+  .
+```
+
+Alternative (local source deploy):
 ```bash
 export AUTH_PASSWORD=$(security find-generic-password -s sapphire-alpha-dashboard -w)
 ./deploy.sh
 ```
+
+The Dockerfile uses `npm install` rather than `npm ci` so the container build tolerates platform-specific optional dependencies in the lockfile.
+
+Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` Cloud Run service in `us-central1`.
 
 ## Endpoints
 - Public: `GET /healthz`, `GET /api/health`
