@@ -293,9 +293,9 @@ async def api_widgets(request: Request, user: str = Depends(require_auth)) -> di
     }
 
 
-@app.get("/assets/{filename}")
+@app.get("/assets/{filename}", response_class=FileResponse)
 @limiter.limit("120/minute")
-async def frontend_assets(filename: str, request: Request, user: str = Depends(require_auth)) -> FileResponse:
+async def frontend_assets(filename: str, request: Request, user: str = Depends(require_auth)) -> Response:
     base = _FRONTEND_DIST_DIR / "assets"
     try:
         path = (base / filename).resolve(strict=False)
@@ -309,9 +309,9 @@ async def frontend_assets(filename: str, request: Request, user: str = Depends(r
     return FileResponse(path)
 
 
-@app.get("/{catchall:path}")
+@app.get("/{catchall:path}", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def frontend_root(catchall: str, request: Request, user: str = Depends(require_auth)) -> FileResponse:
+async def frontend_root(catchall: str, request: Request, user: str = Depends(require_auth)) -> Response:
     # SPA catch-all: return index.html for any non-API route.
     index = _FRONTEND_DIST_DIR / "index.html"
     if not index.exists():
