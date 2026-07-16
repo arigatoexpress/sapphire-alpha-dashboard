@@ -49,6 +49,12 @@ def test_healthz_public():
     assert r.json()["status"] == "ok"
 
 
+def test_api_health_public():
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+
+
 def test_widgets_requires_auth():
     r = client.get("/api/v1/widgets")
     assert r.status_code == 401

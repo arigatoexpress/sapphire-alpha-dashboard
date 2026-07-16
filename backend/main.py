@@ -141,6 +141,13 @@ async def healthz(request: Request) -> dict[str, Any]:
     }
 
 
+@app.get("/api/health")
+@limiter.limit("30/minute")
+async def api_health(request: Request) -> dict[str, Any]:
+    """Public health endpoint that avoids Cloud Run /healthz interception."""
+    return await healthz(request)
+
+
 def _read_json(path: Path) -> Any:
     try:
         if path.exists():
