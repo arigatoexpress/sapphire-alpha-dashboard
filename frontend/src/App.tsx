@@ -1,136 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
-
-type GateState = 'killswitch' | 'armed' | 'disarmed'
-
-interface Gate {
-  state: GateState
-  label: string
-  armed: boolean
-  killswitch: boolean
-  mode: string
-  wallet_address: string | null
-  cap_usd: number
-  executor_alive: boolean
-  updated_at: string
-}
-
-interface Wallet {
-  address: string | null
-  deployed_usd: number
-  n_open: number
-  positions_count: number
-  fills_count: number
-  skin_in_game: boolean
-  limits: Record<string, number>
-  updated_at: string
-}
-
-interface TelegramQueue {
-  pending: number
-  gate: string
-  status: string
-  recent_count: number
-  proposals: Proposal[]
-}
-
-interface Proposal {
-  id: string
-  action: string
-  instrument: string
-  side: string
-  confidence: string
-  status: string
-  timestamp: string
-  wallet_address?: string | null
-}
-
-interface Signal {
-  id: string
-  instrument: string
-  side: string
-  venue: string
-  confidence: string
-  timestamp: string
-}
-
-interface Clip {
-  id: string
-  title: string
-  source: string
-  path: string
-}
-
-interface TradingView {
-  status: string
-  endpoint: string
-  last_ping: string
-  pending_alerts: number
-  recent_log: string[]
-}
-
-interface HealthService {
-  name: string
-  status: string
-  http_status?: number
-  detail?: string
-}
-
-interface BusinessHealth {
-  services: HealthService[]
-  timestamp: string
-}
-
-interface SystemHealth {
-  dashboard: string
-  gate: GateState
-  telegram: string
-  tradingview: string
-  timestamp: string
-}
-
-interface TradingViewAlert {
-  received_at: string
-  alert: {
-    symbol: string
-    action: string
-    price: number
-    confidence: number | null
-  }
-  published: boolean
-  channel: string
-  signal_id: string
-}
-
-interface WidgetData {
-  gate: Gate
-  wallet: Wallet
-  telegram_queue: TelegramQueue
-  recent_signals: Signal[]
-  defi_report: { clips: Clip[]; source: string; live: boolean }
-  tradingview: TradingView
-  tradingview_alerts: TradingViewAlert[]
-  business_health: BusinessHealth
-  system_health: SystemHealth
-  rendered_at: string
-}
+import { motion, AnimatePresence } from 'framer-motion'
+import type { Variants } from 'framer-motion'
+import type {
+  WidgetData,
+  Gate,
+  Wallet,
+  TelegramQueue,
+  Signal,
+  TradingView,
+  BusinessHealth,
+  SystemHealth,
+  HealthService,
+} from './types'
+import { Starfield } from './components/Starfield'
+import { StatusTile } from './components/StatusTile'
+import { AlertStream } from './components/AlertStream'
+import { useTradingViewAlerts } from './hooks/useTradingViewAlerts'
+import { useReducedMotion } from './hooks/useReducedMotion'
+import { ShieldIcon, WalletIcon, ChartIcon, TelegramIcon, ClipIcon } from './components/icons'
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString()
+    return new Date(iso).toLocaleTimeString(undefined, { hour12: false })
   } catch {
     return iso
   }
 }
 
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString()
-  } catch {
-    return iso
-  }
-}
-
-function statusClass(status: string): string {
+function statusClass(status: string): 'ok' | 'warn' | 'danger' {
   const s = status.toLowerCase()
   if (['ok', 'alive', 'armed', 'polling', 'running', 'healthy', 'active'].includes(s)) return 'ok'
   if (['killswitch', 'error', 'down', 'danger', 'unreachable', 'timeout'].includes(s)) return 'danger'
@@ -142,6 +39,7 @@ export default function App() {
   const [data, setData] = useState<WidgetData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const reducedMotion = useReducedMotion()
 
   const authHeader = useMemo(() => {
     if (!creds) return ''
@@ -177,42 +75,90 @@ export default function App() {
     return () => clearInterval(id)
   }, [creds])
 
-  if (!creds) {
-    return <Login onLogin={setCreds} error={error} />
+  const { alerts: tvAlerts, error: alertsError } = useTradingViewAlerts(authHeader)
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: reducedMotion ? 0 : 0.06 },
+    },
+  }
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 24, scale: 0.97 },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: reducedMotion ? 0 : 0.5, ease: 'easeOut' },
+    },
   }
 
   return (
     <div className="app">
-      <div className="grid-overlay" />
-      <header>
-        <div>
-          <div className="logo">SAPPHIRE ALPHA</div>
-          <div className="sub">Mission Control — autonomous trading & business control plane</div>
-        </div>
-        <div className="header-right">
-          <span className={`status-dot ${data ? 'ok' : 'warn'} ${loading ? 'pulse' : ''}`} />
-          <span className="muted">{data ? 'live' : loading ? 'loading' : 'waiting'}</span>
-          <span className="muted timestamp">{data ? formatTime(data.rendered_at) : '—'}</span>
-        </div>
-      </header>
-      <main>
-        {error && <div className="error" style={{ marginBottom: '1rem' }}>{error}</div>}
-        {data ? (
-          <div className="mission-grid">
-            <GateCard gate={data.gate} />
-            <WalletCard wallet={data.wallet} />
-            <TelegramCard queue={data.telegram_queue} />
-            <SignalsTape signals={data.recent_signals} />
-            <TradingViewCard tv={data.tradingview} />
-            <TradingViewAlertsCard alerts={data.tradingview_alerts} />
-            <ClipsCard feed={data.defi_report} />
-            <BusinessHealthCard health={data.business_health} />
-            <SystemHealthCard health={data.system_health} />
-          </div>
+      <div className="aurora-bg" aria-hidden="true" />
+      <div className="mesh-gradient" aria-hidden="true" />
+      <Starfield />
+      <div className="grid-overlay" aria-hidden="true" />
+      <AnimatePresence mode="wait">
+        {!creds ? (
+          <Login key="login" onLogin={setCreds} error={error} />
         ) : (
-          <div className="muted">loading dashboard…</div>
+          <motion.div
+            key="dashboard"
+            className="dashboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.4 }}
+          >
+            <header>
+              <div>
+                <div className="logo">
+                  <ShieldIcon className="logo-icon" />
+                  SAPPHIRE ALPHA
+                </div>
+                <div className="sub">Mission Control — autonomous trading & business control plane</div>
+              </div>
+              <div className="header-right">
+                <span className={`status-dot ${data ? 'ok' : 'warn'} ${loading ? 'pulse' : ''}`} />
+                <span className="muted">{data ? 'live' : loading ? 'loading' : 'waiting'}</span>
+                <span className="muted timestamp">{data ? formatTime(data.rendered_at) : '—'}</span>
+              </div>
+            </header>
+            <main>
+              {error && <div className="error banner">{error}</div>}
+              {alertsError && <div className="error banner">{alertsError}</div>}
+              {data ? (
+                <motion.div
+                  className="mission-grid"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="show"
+                >
+                  <GateCard gate={data.gate} variants={cardVariants} />
+
+                  <motion.div className="status-deck" variants={cardVariants}>
+                    <WalletTile wallet={data.wallet} />
+                    <TradingViewTile tv={data.tradingview} />
+                    <TelegramTile queue={data.telegram_queue} />
+                    <TdrTile feed={data.defi_report} />
+                  </motion.div>
+
+                  <TelegramQueueCard queue={data.telegram_queue} variants={cardVariants} />
+                  <SignalsTape signals={data.recent_signals} variants={cardVariants} />
+                  <AlertStreamCard alerts={tvAlerts} variants={cardVariants} />
+                  <BusinessHealthCard health={data.business_health} variants={cardVariants} />
+                  <SystemHealthCard health={data.system_health} variants={cardVariants} />
+                </motion.div>
+              ) : (
+                <div className="muted">loading dashboard…</div>
+              )}
+            </main>
+          </motion.div>
         )}
-      </main>
+      </AnimatePresence>
     </div>
   )
 }
@@ -220,6 +166,7 @@ export default function App() {
 function Login({ onLogin, error }: { onLogin: (c: { user: string; pass: string }) => void; error: string }) {
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
+  const reducedMotion = useReducedMotion()
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -227,25 +174,58 @@ function Login({ onLogin, error }: { onLogin: (c: { user: string; pass: string }
   }
 
   return (
-    <div className="login">
-      <div className="logo">SAPPHIRE ALPHA</div>
+    <motion.div
+      className="login"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: reducedMotion ? 0 : 0.5 }}
+    >
+      <div className="logo">
+        <ShieldIcon className="logo-icon" />
+        SAPPHIRE ALPHA
+      </div>
+      <div className="sub">Mission Control</div>
       <form onSubmit={submit}>
-        <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="username" autoComplete="username" />
-        <input value={pass} onChange={(e) => setPass(e.target.value)} placeholder="password" type="password" autoComplete="current-password" />
+        <input
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          placeholder="username"
+          autoComplete="username"
+        />
+        <input
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          placeholder="password"
+          type="password"
+          autoComplete="current-password"
+        />
         <button type="submit">Enter Mission Control</button>
       </form>
       {error && <div className="error">{error}</div>}
-    </div>
+    </motion.div>
   )
 }
 
-function GateCard({ gate }: { gate: Gate }) {
+function GateCard({ gate, variants }: { gate: Gate; variants?: Variants }) {
+  const stateClass = gate.state
+  const accent =
+    gate.state === 'killswitch' ? '#ff3860' : gate.state === 'armed' ? '#00d084' : '#8a94a8'
+
   return (
-    <div className="card card-gate">
+    <motion.div
+      className={`card gate-hero ${stateClass}`}
+      style={{ '--card-accent': accent } as React.CSSProperties}
+      variants={variants}
+      whileHover={{ y: -3 }}
+    >
       <div className="card-glow" />
-      <h2>Trading Gate</h2>
-      <div className={`gate-status ${gate.state}`}>
-        <span className={`status-dot ${statusClass(gate.state)}`} />
+      <div className="gate-header">
+        <ShieldIcon className="gate-icon" />
+        <h2>Trading Gate</h2>
+      </div>
+      <div className="gate-status">
+        <span className={`status-dot ${statusClass(gate.state)} pulse`} />
         <span className="gate-label">{gate.label}</span>
       </div>
       <div className="tag-row">
@@ -255,74 +235,103 @@ function GateCard({ gate }: { gate: Gate }) {
           executor {gate.executor_alive ? 'alive' : 'unknown'}
         </span>
       </div>
-      <div className="metric-row">
-        <span className="muted">Wallet</span>
-        <span>{gate.wallet_address || '—'}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Per-order cap</span>
-        <span>${gate.cap_usd}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Updated</span>
-        <span className="muted">{formatTime(gate.updated_at)}</span>
-      </div>
-    </div>
-  )
-}
-
-function WalletCard({ wallet }: { wallet: Wallet }) {
-  return (
-    <div className="card">
-      <h2>Wallet & PnL</h2>
-      <div className="big">${wallet.deployed_usd.toFixed(2)}</div>
-      <div className="muted">deployed</div>
-      <div className="metric-row" style={{ marginTop: '1rem' }}>
-        <span className="muted">Address</span>
-        <span>{wallet.address || '—'}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Open positions</span>
-        <span>{wallet.n_open}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Total positions / fills</span>
-        <span>{wallet.positions_count} / {wallet.fills_count}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Skin in game</span>
-        <span className={`status-dot ${wallet.skin_in_game ? 'ok' : 'warn'}`} />
-        <span>{wallet.skin_in_game ? 'yes' : 'no'}</span>
-      </div>
-      {wallet.limits && Object.keys(wallet.limits).length > 0 && (
+      <div className="gate-metrics">
         <div className="metric-row">
-          <span className="muted">Limits</span>
-          <span className="muted limit-list">
-            {Object.entries(wallet.limits)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join(', ')}
-          </span>
+          <span className="muted">Wallet</span>
+          <span>{gate.wallet_address || '—'}</span>
         </div>
-      )}
-      <div className="metric-row">
-        <span className="muted">Updated</span>
-        <span className="muted">{formatDate(wallet.updated_at)} {formatTime(wallet.updated_at)}</span>
+        <div className="metric-row">
+          <span className="muted">Per-order cap</span>
+          <span>${gate.cap_usd}</span>
+        </div>
+        <div className="metric-row">
+          <span className="muted">Updated</span>
+          <span className="muted">{formatTime(gate.updated_at)}</span>
+        </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
-function TelegramCard({ queue }: { queue: TelegramQueue }) {
+function WalletTile({ wallet }: { wallet: Wallet }) {
   return (
-    <div className="card card-tall">
-      <h2>Telegram Approval Queue</h2>
+    <StatusTile
+      title="Wallet"
+      status={wallet.skin_in_game ? 'ok' : 'neutral'}
+      value="●●●●"
+      subtitle={
+        <>
+          {wallet.address || '—'} · {wallet.n_open} open
+        </>
+      }
+      icon={<WalletIcon className="tile-svg" />}
+      accent="#a855f7"
+      pulse={wallet.skin_in_game}
+      delay={0.1}
+    />
+  )
+}
+
+function TradingViewTile({ tv }: { tv: TradingView }) {
+  const s = statusClass(tv.status)
+  return (
+    <StatusTile
+      title="TradingView"
+      status={s}
+      value={tv.status}
+      subtitle={`${tv.pending_alerts} pending · ${formatTime(tv.last_ping)}`}
+      icon={<ChartIcon className="tile-svg" />}
+      accent="#ffb020"
+      pulse={s === 'ok'}
+      delay={0.2}
+    />
+  )
+}
+
+function TelegramTile({ queue }: { queue: TelegramQueue }) {
+  const s = statusClass(queue.status)
+  return (
+    <StatusTile
+      title="Telegram"
+      status={s}
+      value={queue.pending}
+      subtitle={queue.status}
+      icon={<TelegramIcon className="tile-svg" />}
+      accent="#22d3ee"
+      pulse={queue.pending > 0}
+      delay={0.3}
+    />
+  )
+}
+
+function TdrTile({ feed }: { feed: { clips: { id: string; title: string }[]; source: string; live: boolean } }) {
+  const first = feed.clips[0]
+  return (
+    <StatusTile
+      title="TDR Pro"
+      status={feed.live ? 'ok' : 'neutral'}
+      value={feed.live ? 'live' : 'offline'}
+      subtitle={first ? `${feed.clips.length} clips · ${first.title}` : 'no clips'}
+      icon={<ClipIcon className="tile-svg" />}
+      accent="#f472b6"
+      pulse={feed.live}
+      delay={0.4}
+    />
+  )
+}
+
+function TelegramQueueCard({ queue, variants }: { queue: TelegramQueue; variants?: Variants }) {
+  return (
+    <motion.div className="card card-tall telegram-queue" variants={variants} whileHover={{ y: -2 }}>
+      <div className="card-glow" />
       <div className="queue-header">
         <div>
+          <h2>Telegram Queue</h2>
           <div className="big">{queue.pending}</div>
           <div className="muted">pending approvals</div>
         </div>
         <div className="queue-status">
-          <span className={`status-dot ${queue.status === 'polling' ? 'ok' : 'warn'}`} />
+          <span className={`status-dot ${statusClass(queue.status)} ${queue.pending > 0 ? 'pulse' : ''}`} />
           <span>{queue.status}</span>
         </div>
       </div>
@@ -341,18 +350,19 @@ function TelegramCard({ queue }: { queue: TelegramQueue }) {
           </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
-function SignalsTape({ signals }: { signals: Signal[] }) {
+function SignalsTape({ signals, variants }: { signals: Signal[]; variants?: Variants }) {
   return (
-    <div className="card card-tall">
+    <motion.div className="card card-tall signals-tape" variants={variants} whileHover={{ y: -2 }}>
+      <div className="card-glow" />
       <h2>Signals Tape</h2>
       {signals.length === 0 && <div className="muted">no recent signals</div>}
       <div className="signal-list">
         {signals.map((s) => (
-          <div key={s.id} className="signal-row">
+          <div key={s.id} className={`signal-row ${s.side.toLowerCase()}`}>
             <span className="signal-id">{s.id}</span>
             <span className="signal-instr">{s.instrument}</span>
             <span className={`signal-side ${s.side.toLowerCase()}`}>{s.side}</span>
@@ -362,86 +372,25 @@ function SignalsTape({ signals }: { signals: Signal[] }) {
           </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
-function TradingViewCard({ tv }: { tv: TradingView }) {
+function AlertStreamCard({ alerts, variants }: { alerts: import('./types').TradingViewAlert[]; variants?: Variants }) {
   return (
-    <div className="card">
-      <h2>TradingView Webhook</h2>
-      <div className="big">{tv.status}</div>
-      <div className="metric-row">
-        <span className="muted">Endpoint</span>
-        <span className="muted endpoint" title={tv.endpoint}>{tv.endpoint}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Pending alerts</span>
-        <span>{tv.pending_alerts}</span>
-      </div>
-      <div className="metric-row">
-        <span className="muted">Last ping</span>
-        <span className="muted">{formatTime(tv.last_ping)}</span>
-      </div>
-      {tv.recent_log.length > 0 && (
-        <div className="log-box">
-          {tv.recent_log.map((line, i) => (
-            <div key={i} className="log-line">{line}</div>
-          ))}
-        </div>
-      )}
-    </div>
+    <motion.div className="card card-tall alert-stream-wrapper" variants={variants} whileHover={{ y: -2 }}>
+      <AlertStream alerts={alerts} />
+    </motion.div>
   )
 }
 
-function TradingViewAlertsCard({ alerts }: { alerts: TradingViewAlert[] }) {
+function BusinessHealthCard({ health, variants }: { health: BusinessHealth; variants?: Variants }) {
   return (
-    <div className="card card-tall">
-      <h2>TradingView Alert Log</h2>
-      {alerts.length === 0 && <div className="muted">no alerts yet</div>}
-      <div className="alert-list">
-        {alerts.map((a) => (
-          <div key={a.signal_id} className="alert-row">
-            <span className="tag">{a.alert.action}</span>
-            <span>{a.alert.symbol}</span>
-            <span className="muted">${a.alert.price}</span>
-            <span className={`status-dot ${a.published ? 'ok' : 'warn'}`} />
-            <span className="muted">{formatTime(a.received_at)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ClipsCard({ feed }: { feed: { clips: Clip[]; source: string; live: boolean } }) {
-  return (
-    <div className="card card-tall">
-      <h2>DeFi Report Clips</h2>
-      <div className="metric-row">
-        <span className="muted">source</span>
-        <span className="tag">{feed.source}</span>
-        <span className={`status-dot ${feed.live ? 'ok' : 'warn'}`} />
-        <span className="muted">{feed.live ? 'live' : 'offline'}</span>
-      </div>
-      <div className="clip-list">
-        {feed.clips.map((c) => (
-          <div key={c.id} className="clip-row">
-            <span className="clip-title">{c.title}</span>
-            {c.path && <a className="clip-link" href={`file://${c.path}`} target="_blank" rel="noreferrer">open</a>}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function BusinessHealthCard({ health }: { health: BusinessHealth }) {
-  return (
-    <div className="card card-wide">
+    <motion.div className="card card-wide business-health" variants={variants} whileHover={{ y: -2 }}>
+      <div className="card-glow" />
       <h2>Business Health</h2>
       <div className="health-grid">
-        {health.services.map((svc) => (
+        {health.services.map((svc: HealthService) => (
           <div key={svc.name} className={`health-tile ${statusClass(svc.status)}`}>
             <div className="health-name">{svc.name}</div>
             <div className="health-status">
@@ -453,22 +402,36 @@ function BusinessHealthCard({ health }: { health: BusinessHealth }) {
           </div>
         ))}
       </div>
-      <div className="muted" style={{ marginTop: '0.75rem' }}>probed {formatTime(health.timestamp)}</div>
-    </div>
+      <div className="muted" style={{ marginTop: '0.75rem' }}>
+        probed {formatTime(health.timestamp)}
+      </div>
+    </motion.div>
   )
 }
 
-function SystemHealthCard({ health }: { health: SystemHealth }) {
+function SystemHealthCard({ health, variants }: { health: SystemHealth; variants?: Variants }) {
+  const entries: [string, string][] = [
+    ['dashboard', health.dashboard],
+    ['gate', health.gate],
+    ['telegram', health.telegram],
+    ['tradingview', health.tradingview],
+  ]
   return (
-    <div className="card">
+    <motion.div className="card system-health" variants={variants} whileHover={{ y: -2 }}>
+      <div className="card-glow" />
       <h2>System Health</h2>
-      {Object.entries(health).map(([k, v]) => (
-        <div key={k} className="metric-row">
-          <span className="muted">{k}</span>
-          <span className={`status-dot ${statusClass(String(v))}`} />
-          <span>{String(v)}</span>
-        </div>
-      ))}
-    </div>
+      <div className="system-grid">
+        {entries.map(([k, v]) => (
+          <div key={k} className="system-tile">
+            <span className={`status-dot ${statusClass(v)}`} />
+            <div className="system-label">{k}</div>
+            <div className="system-value">{v}</div>
+          </div>
+        ))}
+      </div>
+      <div className="muted" style={{ marginTop: '0.75rem' }}>
+        {formatTime(health.timestamp)}
+      </div>
+    </motion.div>
   )
 }
