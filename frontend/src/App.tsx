@@ -88,6 +88,19 @@ interface SystemHealth {
   timestamp: string
 }
 
+interface TradingViewAlert {
+  received_at: string
+  alert: {
+    symbol: string
+    action: string
+    price: number
+    confidence: number | null
+  }
+  published: boolean
+  channel: string
+  signal_id: string
+}
+
 interface WidgetData {
   gate: Gate
   wallet: Wallet
@@ -95,6 +108,7 @@ interface WidgetData {
   recent_signals: Signal[]
   defi_report: { clips: Clip[]; source: string; live: boolean }
   tradingview: TradingView
+  tradingview_alerts: TradingViewAlert[]
   business_health: BusinessHealth
   system_health: SystemHealth
   rendered_at: string
@@ -190,6 +204,7 @@ export default function App() {
             <TelegramCard queue={data.telegram_queue} />
             <SignalsTape signals={data.recent_signals} />
             <TradingViewCard tv={data.tradingview} />
+            <TradingViewAlertsCard alerts={data.tradingview_alerts} />
             <ClipsCard feed={data.defi_report} />
             <BusinessHealthCard health={data.business_health} />
             <SystemHealthCard health={data.system_health} />
@@ -375,6 +390,26 @@ function TradingViewCard({ tv }: { tv: TradingView }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function TradingViewAlertsCard({ alerts }: { alerts: TradingViewAlert[] }) {
+  return (
+    <div className="card card-tall">
+      <h2>TradingView Alert Log</h2>
+      {alerts.length === 0 && <div className="muted">no alerts yet</div>}
+      <div className="alert-list">
+        {alerts.map((a) => (
+          <div key={a.signal_id} className="alert-row">
+            <span className="tag">{a.alert.action}</span>
+            <span>{a.alert.symbol}</span>
+            <span className="muted">${a.alert.price}</span>
+            <span className={`status-dot ${a.published ? 'ok' : 'warn'}`} />
+            <span className="muted">{formatTime(a.received_at)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
