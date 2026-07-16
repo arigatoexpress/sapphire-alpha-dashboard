@@ -120,12 +120,13 @@ def test_recent_signals_env(monkeypatch):
 
 
 def test_defi_report_feed(tmp_path, monkeypatch):
+    import asyncio
     import main
 
     clip = tmp_path / "2026-07-15-clip.md"
     clip.write_text("# Bitcoin green light\nSome content", encoding="utf-8")
     monkeypatch.setattr(main, "_KNOWLEDGE_CLIPS_DIR", tmp_path)
-    feed = _defi_report_feed()
+    feed = asyncio.run(_defi_report_feed())
     assert feed["source"] == "tdr_pro"
     assert len(feed["clips"]) == 1
     assert feed["clips"][0]["title"] == "Bitcoin green light"
