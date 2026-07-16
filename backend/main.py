@@ -693,6 +693,16 @@ async def api_tradingview_alerts(
         return {"alerts": [], "total": 0, "source": "webhook", "error": str(exc)}
 
 
+@app.get("/vault/rag-map", response_class=FileResponse)
+@limiter.limit("30/minute")
+async def vault_rag_map(request: Request, user: str = Depends(require_auth)) -> Response:
+    """Privacy-safe Knowledge-vault RAG map (titles only, no chunk text)."""
+    path = _FRONTEND_DIST_DIR / "rag-map.html"
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="rag map not built")
+    return FileResponse(path, media_type="text/html")
+
+
 @app.get("/assets/{filename}", response_class=FileResponse)
 @limiter.limit("120/minute")
 async def frontend_assets(filename: str, request: Request, user: str = Depends(require_auth)) -> Response:

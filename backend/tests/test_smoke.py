@@ -94,3 +94,18 @@ def test_assets_path_traversal_blocked():
 def test_assets_nonexistent_returns_404():
     r = client.get("/assets/does-not-exist.js", auth=("testuser", "testpass-strong-99"))
     assert r.status_code == 404
+
+
+def test_vault_rag_map_requires_auth():
+    r = client.get("/vault/rag-map")
+    assert r.status_code == 401
+
+
+def test_vault_rag_map_with_auth(tmp_path, monkeypatch):
+    import main as main_mod
+
+    (tmp_path / "rag-map.html").write_text("<canvas id='map'></canvas>")
+    monkeypatch.setattr(main_mod, "_FRONTEND_DIST_DIR", tmp_path)
+    r = client.get("/vault/rag-map", auth=("testuser", "testpass-strong-99"))
+    assert r.status_code == 200
+    assert "canvas" in r.text

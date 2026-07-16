@@ -124,6 +124,9 @@ export default function App() {
                 <div className="sub">Mission Control — autonomous trading & business control plane</div>
               </div>
               <div className="header-right">
+                <a className="muted" href="/vault/rag-map" target="_blank" rel="noreferrer">
+                  vault map
+                </a>
                 <LiveClock />
                 <span className={`status-dot ${data ? 'ok' : 'warn'} ${loading ? 'pulse' : ''}`} />
                 <span className="muted">{data ? 'live' : loading ? 'loading' : 'waiting'}</span>
