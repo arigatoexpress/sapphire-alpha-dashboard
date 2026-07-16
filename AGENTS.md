@@ -28,7 +28,7 @@ export AUTH_PASSWORD=$(security find-generic-password -s sapphire-alpha-dashboar
 
 ## Endpoints
 - Public: `GET /healthz`, `GET /api/health`
-- Authenticated (`/api/v1/*`): `GET /status`, `GET /widgets`
+- Authenticated (`/api/v1/*`): `GET /status`, `GET /widgets`, `GET /tradingview/alerts`
 
 ## Widget data sources
 The `/api/v1/widgets` endpoint aggregates:
@@ -38,8 +38,10 @@ The `/api/v1/widgets` endpoint aggregates:
 - Telegram approval queue (`~/ops-state/telegram-bot/pending_queue.json`, `decisions.jsonl`).
 - Recent signals (`~/ops-state/rh-chain/signals.json` or `DASHBOARD_SIGNALS_JSON`).
 - DeFi Report clips (`~/Knowledge/3-Resources/Clippings/*.md`).
-- TradingView webhook status/log (`DASHBOARD_TV_LOG`).
+- TradingView webhook status/log (`TV_WEBHOOK_URL`, `DASHBOARD_TV_LOG`).
 - Business health probes (`GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`).
+
+The `/api/v1/tradingview/alerts` endpoint proxies recent alerts from the configured `TV_WEBHOOK_URL` receiver (`/alerts`).
 
 ## Env overrides for Cloud Run
 - `AUTH_USERNAME`, `AUTH_PASSWORD` (required, min 12 chars)

@@ -135,9 +135,13 @@ def test_tradingview_status_log(tmp_path, monkeypatch):
     log = tmp_path / "tv.log"
     log.write_text("alert 1\nalert 2\n", encoding="utf-8")
     monkeypatch.setenv("DASHBOARD_TV_LOG", str(log))
-    monkeypatch.setenv("TV_WEBHOOK_STATUS", "active")
-    tv = _tradingview_status()
-    assert tv["status"] == "active"
+
+    async def _run():
+        return await _tradingview_status()
+
+    tv = asyncio.run(_run())
+    # When TV_WEBHOOK_URL is not configured, the probe reports standby.
+    assert tv["status"] == "standby"
     assert tv["recent_log"] == ["alert 1", "alert 2"]
 
 
