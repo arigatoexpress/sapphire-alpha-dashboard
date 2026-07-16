@@ -19,19 +19,19 @@ gcloud run deploy "${SERVICE_NAME}" \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
   --allow-unauthenticated \
-  --set-env-vars "AUTH_USERNAME=${AUTH_USERNAME:-sapphire}" \
-  --set-env-vars "AUTH_PASSWORD=${AUTH_PASSWORD}" \
-  --set-env-vars "WALLET_ADDRESS=${WALLET_ADDRESS:-}" \
-  --set-env-vars "MAX_ORDER_USD=${MAX_ORDER_USD:-25}" \
-  --set-env-vars "TELEGRAM_BOT_POLLING=${TELEGRAM_BOT_POLLING:-true}" \
-  --set-env-vars "TV_WEBHOOK_STATUS=${TV_WEBHOOK_STATUS:-standby}" \
-  --set-env-vars "TV_WEBHOOK_URL=${TV_WEBHOOK_URL:-not configured}" \
-  --set-env-vars "TDR_PRO_LIVE=${TDR_PRO_LIVE:-0}" \
-  --set-env-vars "DASHBOARD_ARMED=${DASHBOARD_ARMED:-false}" \
-  --set-env-vars "DASHBOARD_MODE=${DASHBOARD_MODE:-telegram}" \
-  --set-env-vars "DASHBOARD_FORCE_KILLSWITCH=${DASHBOARD_FORCE_KILLSWITCH:-false}" \
-  --set-env-vars "DASHBOARD_EXECUTOR_HEARTBEAT=${DASHBOARD_EXECUTOR_HEARTBEAT:-}" \
-  --set-env-vars "DASHBOARD_SIGNALS_JSON=${DASHBOARD_SIGNALS_JSON:-}"
+  --update-env-vars "AUTH_USERNAME=${AUTH_USERNAME:-sapphire}" \
+  --update-env-vars "AUTH_PASSWORD=${AUTH_PASSWORD}" \
+  --update-env-vars "WALLET_ADDRESS=${WALLET_ADDRESS:-}" \
+  --update-env-vars "MAX_ORDER_USD=${MAX_ORDER_USD:-25}" \
+  --update-env-vars "TELEGRAM_BOT_POLLING=${TELEGRAM_BOT_POLLING:-true}" \
+  --update-env-vars "TV_WEBHOOK_STATUS=${TV_WEBHOOK_STATUS:-standby}" \
+  --update-env-vars "TV_WEBHOOK_URL=${TV_WEBHOOK_URL:-not configured}" \
+  --update-env-vars "TDR_PRO_LIVE=${TDR_PRO_LIVE:-0}" \
+  --update-env-vars "DASHBOARD_ARMED=${DASHBOARD_ARMED:-false}" \
+  --update-env-vars "DASHBOARD_MODE=${DASHBOARD_MODE:-telegram}" \
+  --update-env-vars "DASHBOARD_FORCE_KILLSWITCH=${DASHBOARD_FORCE_KILLSWITCH:-false}" \
+  --update-env-vars "DASHBOARD_EXECUTOR_HEARTBEAT=${DASHBOARD_EXECUTOR_HEARTBEAT:-}" \
+  --update-env-vars "DASHBOARD_SIGNALS_JSON=${DASHBOARD_SIGNALS_JSON:-}"
 
 echo
 echo "Service URL:"
