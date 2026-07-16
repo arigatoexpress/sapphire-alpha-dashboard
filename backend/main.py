@@ -8,6 +8,13 @@ Public endpoints:
 Authenticated endpoints (HTTP Basic Auth):
   GET /api/v1/status
   GET /api/v1/widgets
+
+Public read-only mode (PUBLIC_READ_ONLY=1):
+  Anonymous GETs to the frontend, /assets/*, /api/v1/status, /api/v1/widgets and
+  /api/v1/tradingview/alerts are allowed but served a whitelist-sanitized payload
+  (no internal URLs/hostnames, no proposal bodies, no exact capital figures, no
+  limits/caps, no file paths). Authenticated users always get the full payload.
+  /vault/rag-map ALWAYS requires auth regardless of PUBLIC_READ_ONLY.
 """
 
 from __future__ import annotations
@@ -47,6 +54,19 @@ app = FastAPI(title="Sapphire Alpha Dashboard", version="0.2.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 security = HTTPBasic()
+security_optional = HTTPBasic(auto_error=False)
+
+PUBLIC_USER = "public"
+
+
+def _public_read_only() -> bool:
+    """Whether anonymous read-only access is enabled (checked per request)."""
+    return _safe_bool(_env("PUBLIC_READ_ONLY", ""))
+
+
+def _api_rate_limit() -> str:
+    """Tighter limiter on API routes while the dashboard is publicly readable."""
+    return "20/minute" if _public_read_only() else "60/minute"
 
 
 @app.middleware("http")
@@ -147,6 +167,26 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> str:
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
+
+
+def auth_or_public(
+    request: Request,
+    credentials: HTTPBasicCredentials | None = Depends(security_optional),
+) -> str:
+    """Allow anonymous GETs when PUBLIC_READ_ONLY is enabled; otherwise require auth.
+
+    Presented credentials are always validated (bad creds never fall back to the
+    anonymous path). Non-GET methods always require auth.
+    """
+    if credentials is not None:
+        return require_auth(credentials)
+    if _public_read_only() and request.method == "GET":
+        return PUBLIC_USER
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Basic"},
+    )
 
 
 @app.get("/healthz")
@@ -631,23 +671,132 @@ async def _system_health() -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Public (anonymous) view — strict whitelist. Everything not explicitly listed
+# here is dropped for anonymous requests: internal URLs/hostnames, endpoint
+# probes' details, proposal bodies, exact capital figures, limits/caps, file
+# paths, log tails, and the authenticated username.
+# ---------------------------------------------------------------------------
+
+
+def _round_usd(value: Any) -> int:
+    """Generalize a USD amount to the nearest $10 for the public view."""
+    return int(round(_safe_float(value) / 10.0) * 10)
+
+
+def _public_gate(gate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "state": gate["state"],
+        "label": gate["label"],
+        "armed": gate["armed"],
+        "killswitch": gate["killswitch"],
+        "mode": gate["mode"],
+        "executor_alive": gate["executor_alive"],
+        "updated_at": gate["updated_at"],
+    }
+
+
+def _public_wallet(wallet: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "address": wallet["address"],  # already masked 0xabcd...1234
+        "funded": bool(wallet["skin_in_game"]),
+        "skin_in_game": bool(wallet["skin_in_game"]),
+        "deployed_usd_approx": _round_usd(wallet["deployed_usd"]),
+        "n_open": wallet["n_open"],
+        "updated_at": wallet["updated_at"],
+    }
+
+
+def _public_telegram(queue: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "pending": queue["pending"],
+        "gate": queue["gate"],
+        "status": queue["status"],
+        "recent_count": queue["recent_count"],
+        "proposals": [],  # proposal bodies are operator-only
+    }
+
+
+def _public_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": s["id"],
+            "instrument": s["instrument"],
+            "side": s["side"],
+            "timestamp": s["timestamp"],
+        }
+        for s in signals
+    ]
+
+
+def _public_defi_report(feed: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "clips": [
+            {"id": c.get("id", ""), "title": c.get("title", ""), "source": c.get("source", ""), "path": ""}
+            for c in feed.get("clips", [])
+        ],
+        "source": feed.get("source", ""),
+        "live": bool(feed.get("live", False)),
+    }
+
+
+def _public_tradingview(tv: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": tv["status"],
+        "last_ping": tv["last_ping"],
+        "pending_alerts": tv["pending_alerts"],
+    }
+
+
+def _public_business_health(health: dict[str, Any]) -> dict[str, Any]:
+    services = health.get("services", [])
+    return {
+        "services": [{"name": s.get("name", ""), "status": s.get("status", "")} for s in services],
+        "ok_count": sum(1 for s in services if s.get("status") == "ok"),
+        "total": len(services),
+        "timestamp": health.get("timestamp", ""),
+    }
+
+
+def _public_system_health(health: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "dashboard": health["dashboard"],
+        "gate": health["gate"],
+        "telegram": health["telegram"],
+        "tradingview": health["tradingview"],
+        "timestamp": health["timestamp"],
+    }
+
+
 @app.get("/api/v1/status")
-@limiter.limit("60/minute")
-async def api_status(request: Request, user: str = Depends(require_auth)) -> dict[str, Any]:
+@limiter.limit(_api_rate_limit)
+async def api_status(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+    gate = _gate_status()
+    wallet = _wallet_status()
+    system_health = await _system_health()
+    if user == PUBLIC_USER:
+        return {
+            "service": "sapphire-alpha-dashboard",
+            "version": "0.2.0",
+            "public_view": True,
+            "gate": _public_gate(gate),
+            "wallet": _public_wallet(wallet),
+            "system_health": _public_system_health(system_health),
+        }
     return {
         "service": "sapphire-alpha-dashboard",
         "version": "0.2.0",
         "authenticated_user": user,
-        "gate": _gate_status(),
-        "wallet": _wallet_status(),
-        "system_health": await _system_health(),
+        "gate": gate,
+        "wallet": wallet,
+        "system_health": system_health,
     }
 
 
 @app.get("/api/v1/widgets")
-@limiter.limit("60/minute")
-async def api_widgets(request: Request, user: str = Depends(require_auth)) -> dict[str, Any]:
-    return {
+@limiter.limit(_api_rate_limit)
+async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+    full = {
         "gate": _gate_status(),
         "wallet": _wallet_status(),
         "telegram_queue": _telegram_queue(),
@@ -658,20 +807,39 @@ async def api_widgets(request: Request, user: str = Depends(require_auth)) -> di
         "system_health": await _system_health(),
         "rendered_at": datetime.now(UTC).isoformat(),
     }
+    if user == PUBLIC_USER:
+        return {
+            "public_view": True,
+            "gate": _public_gate(full["gate"]),
+            "wallet": _public_wallet(full["wallet"]),
+            "telegram_queue": _public_telegram(full["telegram_queue"]),
+            "recent_signals": _public_signals(full["recent_signals"]),
+            "defi_report": _public_defi_report(full["defi_report"]),
+            "tradingview": _public_tradingview(full["tradingview"]),
+            "business_health": _public_business_health(full["business_health"]),
+            "system_health": _public_system_health(full["system_health"]),
+            "rendered_at": full["rendered_at"],
+        }
+    return full
 
 
 @app.get("/api/v1/tradingview/alerts")
-@limiter.limit("60/minute")
+@limiter.limit(_api_rate_limit)
 async def api_tradingview_alerts(
     request: Request,
-    user: str = Depends(require_auth),
+    user: str = Depends(auth_or_public),
     limit: int = 10,
     persisted: bool = True,
 ) -> dict[str, Any]:
     """Proxy recent TradingView webhook alerts from the Windows receiver.
 
     Set persisted=false to request only the receiver's in-memory window.
+    Anonymous (public read-only) requests get counts only — alert payloads can
+    carry strategy internals, so they are operator-only.
     """
+    if user == PUBLIC_USER:
+        return {"alerts": [], "total": 0, "source": "public", "public_view": True}
+
     url = _env("TV_WEBHOOK_URL", "").strip()
     if not url or url == "not configured":
         return {"alerts": [], "total": 0, "source": "not_configured"}
@@ -705,7 +873,7 @@ async def vault_rag_map(request: Request, user: str = Depends(require_auth)) -> 
 
 @app.get("/assets/{filename}", response_class=FileResponse)
 @limiter.limit("120/minute")
-async def frontend_assets(filename: str, request: Request, user: str = Depends(require_auth)) -> Response:
+async def frontend_assets(filename: str, request: Request, user: str = Depends(auth_or_public)) -> Response:
     base = _FRONTEND_DIST_DIR / "assets"
     try:
         path = (base / filename).resolve(strict=False)
@@ -721,7 +889,7 @@ async def frontend_assets(filename: str, request: Request, user: str = Depends(r
 
 @app.get("/{catchall:path}", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def frontend_root(catchall: str, request: Request, user: str = Depends(require_auth)) -> Response:
+async def frontend_root(catchall: str, request: Request, user: str = Depends(auth_or_public)) -> Response:
     # SPA catch-all: return index.html for any non-API route.
     index = _FRONTEND_DIST_DIR / "index.html"
     if not index.exists():
