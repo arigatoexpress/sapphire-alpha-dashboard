@@ -411,25 +411,74 @@ def _defi_report_feed() -> dict[str, Any]:
     return {"clips": clips, "source": "tdr_pro", "live": _safe_bool(_env("TDR_PRO_LIVE", "0"))}
 
 
-def _tradingview_status() -> dict[str, Any]:
-    """TradingView webhook pipeline status."""
+# Lightweight cache so a 30s dashboard poll does not hammer the Windows webhook.
+_tv_probe_cache: dict[str, Any] = {"ts": 0.0, "result": None}
+_TV_PROBE_TTL_SECONDS = 15.0
+
+
+async def _probe_tradingview_webhook() -> dict[str, Any]:
+    """Probe the TradingView webhook receiver health endpoint.
+
+    Uses TV_WEBHOOK_URL env (e.g. https://webhook.sapphirealpha.xyz/webhook/health
+    or http://desktop-hfck6u9-2.tailfbdf93.ts.net:9090/webhook/health). Falls back
+    to env stub when no URL is configured.
+    """
+    now = datetime.now(UTC).timestamp()
+    cached = _tv_probe_cache["result"]
+    if cached and (now - _tv_probe_cache["ts"]) < _TV_PROBE_TTL_SECONDS:
+        return cached
+
+    url = _env("TV_WEBHOOK_URL", "").strip()
+    if not url or url == "not configured":
+        result = {
+            "status": "standby",
+            "endpoint": "not configured",
+            "last_ping": datetime.now(UTC).isoformat(),
+            "pending_alerts": 0,
+            "recent_log": [],
+            "probe": {"name": "tradingview_webhook", "status": "not_configured"},
+        }
+        _tv_probe_cache.update({"ts": now, "result": result})
+        return result
+
+    health_url = url.rstrip("/") + "/webhook/health"
+    probe = await _probe_health("tradingview_webhook", health_url, timeout=3.0)
+    status_label = "ok" if probe["status"] == "ok" else "degraded"
+    pending_alerts = 0
+    try:
+        if probe["status"] == "ok":
+            async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
+                r = await client.get(url.rstrip("/") + "/alerts?limit=1")
+                if r.status_code == 200:
+                    pending_alerts = int(r.json().get("total", 0))
+    except Exception:
+        pass
+
+    result = {
+        "status": status_label,
+        "endpoint": url,
+        "last_ping": datetime.now(UTC).isoformat(),
+        "pending_alerts": pending_alerts,
+        "recent_log": [],
+        "probe": probe,
+    }
+    _tv_probe_cache.update({"ts": now, "result": result})
+    return result
+
+
+async def _tradingview_status() -> dict[str, Any]:
+    """TradingView webhook pipeline status (live probe when URL is configured)."""
+    status = await _probe_tradingview_webhook()
+    # Also read a local log tail if the dashboard is co-located with the receiver.
     log_path_env = _env("DASHBOARD_TV_LOG", "").strip()
-    recent_log_lines: list[str] = []
     if log_path_env:
         try:
             path = Path(log_path_env)
             if path.exists():
-                recent_log_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()[-10:]
+                status["recent_log"] = path.read_text(encoding="utf-8", errors="ignore").splitlines()[-10:]
         except Exception as exc:
             log.warning("failed to read TV log %s: %s", log_path_env, exc)
-
-    return {
-        "status": _env("TV_WEBHOOK_STATUS", "standby"),
-        "endpoint": _env("TV_WEBHOOK_URL", "not configured"),
-        "last_ping": _env("TV_LAST_PING", datetime.now(UTC).isoformat()),
-        "pending_alerts": int(_env("TV_PENDING_ALERTS", "0")),
-        "recent_log": recent_log_lines,
-    }
+    return status
 
 
 async def _probe_health(name: str, url: str | None, timeout: float = 2.0) -> dict[str, Any]:
@@ -466,13 +515,14 @@ async def _business_health() -> dict[str, Any]:
     }
 
 
-def _system_health() -> dict[str, Any]:
+async def _system_health() -> dict[str, Any]:
     """High-level system health aggregates."""
+    tv = await _tradingview_status()
     return {
         "dashboard": "ok",
         "gate": _gate_status()["state"],
         "telegram": _telegram_queue()["status"],
-        "tradingview": _tradingview_status()["status"],
+        "tradingview": tv["status"],
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
@@ -486,7 +536,7 @@ async def api_status(request: Request, user: str = Depends(require_auth)) -> dic
         "authenticated_user": user,
         "gate": _gate_status(),
         "wallet": _wallet_status(),
-        "system_health": _system_health(),
+        "system_health": await _system_health(),
     }
 
 
@@ -499,11 +549,44 @@ async def api_widgets(request: Request, user: str = Depends(require_auth)) -> di
         "telegram_queue": _telegram_queue(),
         "recent_signals": _recent_signals(),
         "defi_report": _defi_report_feed(),
-        "tradingview": _tradingview_status(),
+        "tradingview": await _tradingview_status(),
         "business_health": await _business_health(),
-        "system_health": _system_health(),
+        "system_health": await _system_health(),
         "rendered_at": datetime.now(UTC).isoformat(),
     }
+
+
+@app.get("/api/v1/tradingview/alerts")
+@limiter.limit("60/minute")
+async def api_tradingview_alerts(
+    request: Request,
+    user: str = Depends(require_auth),
+    limit: int = 10,
+    persisted: bool = True,
+) -> dict[str, Any]:
+    """Proxy recent TradingView webhook alerts from the Windows receiver.
+
+    Set persisted=false to request only the receiver's in-memory window.
+    """
+    url = _env("TV_WEBHOOK_URL", "").strip()
+    if not url or url == "not configured":
+        return {"alerts": [], "total": 0, "source": "not_configured"}
+
+    alerts_url = url.rstrip("/") + f"/alerts?limit={max(1, min(limit, 100))}&persisted={str(persisted).lower()}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            r = await client.get(alerts_url)
+        if r.status_code == 200:
+            data = r.json()
+            return {
+                "alerts": data.get("alerts", []),
+                "total": data.get("total", 0),
+                "source": data.get("source", "webhook"),
+            }
+        return {"alerts": [], "total": 0, "source": "webhook", "error": f"HTTP {r.status_code}"}
+    except Exception as exc:
+        log.warning("failed to fetch TradingView alerts: %s", exc)
+        return {"alerts": [], "total": 0, "source": "webhook", "error": str(exc)}
 
 
 @app.get("/assets/{filename}", response_class=FileResponse)
