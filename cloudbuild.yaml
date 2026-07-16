@@ -35,7 +35,7 @@ steps:
       - '--update-env-vars'
       - 'TELEGRAM_BOT_POLLING=true'
       - '--update-env-vars'
-      - 'TV_WEBHOOK_URL=not configured'
+      - 'TV_WEBHOOK_URL=https://greene-script-email-edward.trycloudflare.com'
       - '--update-env-vars'
       - 'TDR_PRO_LIVE=1'
       - '--update-env-vars'
