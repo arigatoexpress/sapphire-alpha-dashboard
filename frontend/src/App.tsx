@@ -15,6 +15,7 @@ import type {
 import { Starfield } from './components/Starfield'
 import { StatusTile } from './components/StatusTile'
 import { AlertStream } from './components/AlertStream'
+import { LiveClock } from './components/LiveClock'
 import { useTradingViewAlerts } from './hooks/useTradingViewAlerts'
 import { useReducedMotion } from './hooks/useReducedMotion'
 import { ShieldIcon, WalletIcon, ChartIcon, TelegramIcon, ClipIcon } from './components/icons'
@@ -101,6 +102,7 @@ export default function App() {
       <div className="mesh-gradient" aria-hidden="true" />
       <Starfield />
       <div className="grid-overlay" aria-hidden="true" />
+      <div className="grain-overlay" aria-hidden="true" />
       <AnimatePresence mode="wait">
         {!creds ? (
           <Login key="login" onLogin={setCreds} error={error} />
@@ -122,6 +124,7 @@ export default function App() {
                 <div className="sub">Mission Control — autonomous trading & business control plane</div>
               </div>
               <div className="header-right">
+                <LiveClock />
                 <span className={`status-dot ${data ? 'ok' : 'warn'} ${loading ? 'pulse' : ''}`} />
                 <span className="muted">{data ? 'live' : loading ? 'loading' : 'waiting'}</span>
                 <span className="muted timestamp">{data ? formatTime(data.rendered_at) : '—'}</span>
