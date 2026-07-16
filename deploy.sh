@@ -26,7 +26,12 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars "TELEGRAM_BOT_POLLING=${TELEGRAM_BOT_POLLING:-true}" \
   --set-env-vars "TV_WEBHOOK_STATUS=${TV_WEBHOOK_STATUS:-standby}" \
   --set-env-vars "TV_WEBHOOK_URL=${TV_WEBHOOK_URL:-not configured}" \
-  --set-env-vars "TDR_PRO_LIVE=${TDR_PRO_LIVE:-0}"
+  --set-env-vars "TDR_PRO_LIVE=${TDR_PRO_LIVE:-0}" \
+  --set-env-vars "DASHBOARD_ARMED=${DASHBOARD_ARMED:-false}" \
+  --set-env-vars "DASHBOARD_MODE=${DASHBOARD_MODE:-telegram}" \
+  --set-env-vars "DASHBOARD_FORCE_KILLSWITCH=${DASHBOARD_FORCE_KILLSWITCH:-false}" \
+  --set-env-vars "DASHBOARD_EXECUTOR_HEARTBEAT=${DASHBOARD_EXECUTOR_HEARTBEAT:-}" \
+  --set-env-vars "DASHBOARD_SIGNALS_JSON=${DASHBOARD_SIGNALS_JSON:-}"
 
 echo
 echo "Service URL:"
