@@ -39,8 +39,6 @@ steps:
       - '--update-env-vars'
       - 'TDR_PRO_LIVE=1'
       - '--update-env-vars'
-      - 'DASHBOARD_TDR_CLIPS_JSON=${_DASHBOARD_TDR_CLIPS_JSON}'
-      - '--update-env-vars'
       - 'DASHBOARD_ARMED=false'
       - '--update-env-vars'
       - 'DASHBOARD_MODE=telegram'
@@ -55,4 +53,3 @@ options:
 
 substitutions:
   _AUTH_PASSWORD: ''
-  _DASHBOARD_TDR_CLIPS_JSON: '[{"id":"tdr-placeholder","title":"DeFi Report — weekly rollup","source":"tdr_pro","path":""}]'
