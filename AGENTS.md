@@ -45,12 +45,20 @@ The `/api/v1/tradingview/alerts` endpoint proxies recent alerts from the configu
 
 ## Env overrides for Cloud Run
 - `AUTH_USERNAME`, `AUTH_PASSWORD` (required, min 12 chars)
-- `WALLET_ADDRESS`, `MAX_ORDER_USD`, `TELEGRAM_BOT_POLLING`
+- `WALLET_ADDRESS` — full on-chain address (e.g. Robinhood Chain L2 wallet); dashboard masks it.
+- `MAX_ORDER_USD`, `TELEGRAM_BOT_POLLING`
 - `DASHBOARD_ARMED`, `DASHBOARD_MODE`, `DASHBOARD_FORCE_KILLSWITCH`
 - `DASHBOARD_EXECUTOR_HEARTBEAT`, `DASHBOARD_SKIN_BOOK`, `DASHBOARD_SIGNALS_JSON`, `DASHBOARD_TV_LOG`
 - `TV_WEBHOOK_STATUS`, `TV_WEBHOOK_URL`, `TV_LAST_PING`, `TV_PENDING_ALERTS`
+  - `TV_WEBHOOK_URL` should be the **base origin** of the receiver (no path); the dashboard probes `<url>/webhook/health` and proxies `<url>/alerts`.
 - `GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`
 - `TDR_PRO_LIVE`
+
+## Stable TradingView webhook hostname
+The Mac Cloudflare Quick Tunnel URL rotates when the tunnel process restarts. For a persistent hostname:
+1. **Tailscale Funnel** (preferred): enable at `https://login.tailscale.com/f/funnel?node=nV9oEWE1bM11CNTRL`, then set `TV_WEBHOOK_URL` to the Funnel origin.
+2. **Cloudflare named tunnel**: create a tunnel, store its JSON credentials / token in `~/.config/sapphire-secrets/`, and run `cloudflared tunnel --config ...` as a LaunchAgent. Set `TV_WEBHOOK_URL` to the fixed origin.
+3. Keep the Quick Tunnel as a fallback; update `TV_WEBHOOK_URL` and restart the Cloud Run revision after any rotation.
 
 ## Health checks
 The app exposes `GET /healthz` (public). Note: Cloud Run's Google Front End intercepts exact `/healthz` on `*.run.app` service URLs; use `/healthz/` or the custom domain apex for probing.
