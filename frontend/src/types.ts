@@ -6,21 +6,26 @@ export interface Gate {
   armed: boolean
   killswitch: boolean
   mode: string
-  wallet_address: string | null
-  cap_usd: number
+  // Operator-only fields — absent in the public read-only view.
+  wallet_address?: string | null
+  cap_usd?: number
   executor_alive: boolean
   updated_at: string
 }
 
 export interface Wallet {
   address: string | null
-  deployed_usd: number
   n_open: number
-  positions_count: number
-  fills_count: number
   skin_in_game: boolean
-  limits: Record<string, number>
   updated_at: string
+  // Operator-only fields — absent in the public read-only view.
+  deployed_usd?: number
+  positions_count?: number
+  fills_count?: number
+  limits?: Record<string, number>
+  // Public-view fields.
+  funded?: boolean
+  deployed_usd_approx?: number
 }
 
 export interface Proposal {
@@ -46,8 +51,9 @@ export interface Signal {
   id: string
   instrument: string
   side: string
-  venue: string
-  confidence: string
+  // Operator-only fields — absent in the public read-only view.
+  venue?: string
+  confidence?: string
   timestamp: string
 }
 
@@ -60,10 +66,11 @@ export interface Clip {
 
 export interface TradingView {
   status: string
-  endpoint: string
   last_ping: string
   pending_alerts: number
-  recent_log: string[]
+  // Operator-only fields — absent in the public read-only view.
+  endpoint?: string
+  recent_log?: string[]
 }
 
 export interface HealthService {
@@ -76,6 +83,9 @@ export interface HealthService {
 export interface BusinessHealth {
   services: HealthService[]
   timestamp: string
+  // Public-view aggregate counts.
+  ok_count?: number
+  total?: number
 }
 
 export interface SystemHealth {
@@ -100,6 +110,7 @@ export interface TradingViewAlert {
 }
 
 export interface WidgetData {
+  public_view?: boolean
   gate: Gate
   wallet: Wallet
   telegram_queue: TelegramQueue

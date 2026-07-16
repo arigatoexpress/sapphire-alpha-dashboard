@@ -37,6 +37,9 @@ function statusClass(status: string): 'ok' | 'warn' | 'danger' {
 
 export default function App() {
   const [creds, setCreds] = useState<{ user: string; pass: string } | null>(null)
+  // null = probing anonymous access; true = public read-only mode; false = auth required
+  const [publicMode, setPublicMode] = useState<boolean | null>(null)
+  const [showLogin, setShowLogin] = useState(false)
   const [data, setData] = useState<WidgetData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -48,33 +51,46 @@ export default function App() {
   }, [creds])
 
   const fetchData = async () => {
-    if (!authHeader) return
     setLoading(true)
     setError('')
     try {
       const r = await fetch('/api/v1/widgets', {
-        headers: { Authorization: authHeader },
+        headers: authHeader ? { Authorization: authHeader } : {},
       })
       if (r.status === 401) {
-        setError('Invalid credentials')
-        setCreds(null)
+        if (authHeader) {
+          setError('Invalid credentials')
+          setCreds(null)
+        } else {
+          // Public mode is off (or was turned off): fall back to the login screen.
+          setPublicMode(false)
+          setData(null)
+        }
         return
       }
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      setData(await r.json())
+      const payload: WidgetData = await r.json()
+      setData(payload)
+      if (!authHeader) setPublicMode(true)
     } catch (e) {
+      if (!authHeader && publicMode === null) setPublicMode(false)
       setError(e instanceof Error ? e.message : 'fetch failed')
     } finally {
       setLoading(false)
     }
   }
 
+  // Probe anonymously first; if public read-only mode is on, the dashboard
+  // renders without credentials. Poll whichever mode is active.
   useEffect(() => {
-    if (!creds) return
+    if (!creds && publicMode === false) return
     fetchData()
     const id = setInterval(fetchData, 30000)
     return () => clearInterval(id)
-  }, [creds])
+  }, [creds, publicMode === false])
+
+  const isAnonymous = !creds && publicMode === true
+  const showDashboard = Boolean(creds) || (isAnonymous && !showLogin)
 
   const { alerts: tvAlerts, error: alertsError } = useTradingViewAlerts(authHeader)
 
@@ -104,8 +120,20 @@ export default function App() {
       <div className="grid-overlay" aria-hidden="true" />
       <div className="grain-overlay" aria-hidden="true" />
       <AnimatePresence mode="wait">
-        {!creds ? (
-          <Login key="login" onLogin={setCreds} error={error} />
+        {publicMode === null && !creds ? (
+          <div key="probe" className="login">
+            <div className="muted">connecting…</div>
+          </div>
+        ) : !showDashboard ? (
+          <Login
+            key="login"
+            onLogin={(c) => {
+              setCreds(c)
+              setShowLogin(false)
+            }}
+            error={error}
+            onBackToPublic={publicMode === true ? () => setShowLogin(false) : undefined}
+          />
         ) : (
           <motion.div
             key="dashboard"
@@ -124,6 +152,18 @@ export default function App() {
                 <div className="sub">Mission Control — autonomous trading & business control plane</div>
               </div>
               <div className="header-right">
+                {isAnonymous && (
+                  <a
+                    className="muted"
+                    href="#signin"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setShowLogin(true)
+                    }}
+                  >
+                    public view — sign in for operator detail
+                  </a>
+                )}
                 <a className="muted" href="/vault/rag-map" target="_blank" rel="noreferrer">
                   vault map
                 </a>
@@ -169,7 +209,15 @@ export default function App() {
   )
 }
 
-function Login({ onLogin, error }: { onLogin: (c: { user: string; pass: string }) => void; error: string }) {
+function Login({
+  onLogin,
+  error,
+  onBackToPublic,
+}: {
+  onLogin: (c: { user: string; pass: string }) => void
+  error: string
+  onBackToPublic?: () => void
+}) {
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
   const reducedMotion = useReducedMotion()
@@ -209,6 +257,19 @@ function Login({ onLogin, error }: { onLogin: (c: { user: string; pass: string }
         <button type="submit">Enter Mission Control</button>
       </form>
       {error && <div className="error">{error}</div>}
+      {onBackToPublic && (
+        <a
+          className="muted"
+          href="#public"
+          style={{ marginTop: '1rem', display: 'inline-block' }}
+          onClick={(e) => {
+            e.preventDefault()
+            onBackToPublic()
+          }}
+        >
+          ← back to public view
+        </a>
+      )}
     </motion.div>
   )
 }
@@ -248,7 +309,7 @@ function GateCard({ gate, variants }: { gate: Gate; variants?: Variants }) {
         </div>
         <div className="metric-row">
           <span className="muted">Per-order cap</span>
-          <span>${gate.cap_usd}</span>
+          <span>{gate.cap_usd != null ? `$${gate.cap_usd}` : '●●●'}</span>
         </div>
         <div className="metric-row">
           <span className="muted">Updated</span>
@@ -372,8 +433,8 @@ function SignalsTape({ signals, variants }: { signals: Signal[]; variants?: Vari
             <span className="signal-id">{s.id}</span>
             <span className="signal-instr">{s.instrument}</span>
             <span className={`signal-side ${s.side.toLowerCase()}`}>{s.side}</span>
-            <span className="muted">{s.venue}</span>
-            <span className="tag">{s.confidence}</span>
+            {s.venue && <span className="muted">{s.venue}</span>}
+            {s.confidence && <span className="tag">{s.confidence}</span>}
             <span className="muted">{formatTime(s.timestamp)}</span>
           </div>
         ))}
