@@ -20,21 +20,62 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 log = logging.getLogger("sapphire-alpha-dashboard")
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="Sapphire Alpha Dashboard", version="0.1.0")
-security = HTTPBasic()
-
-_FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
+
+
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(title="Sapphire Alpha Dashboard", version="0.1.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+security = HTTPBasic()
+
+
+@app.middleware("http")
+async def _reject_path_traversal(request: Request, call_next: Any) -> Response:
+    # FastAPI normalizes paths before routing; reject any raw path containing '..'.
+    if ".." in request.url.path.split("/"):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": "forbidden"},
+        )
+    return await call_next(request)
+
+# CORS: default deny; allow configured origin only.
+_cors_origin = _env("CORS_ORIGIN", "")
+if _cors_origin:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[_cors_origin],
+        allow_credentials=True,
+        allow_methods=["GET"],
+        allow_headers=["Authorization"],
+    )
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next: Any) -> Response:
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return response
+
+
+_FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 def _mask_address(addr: str | None) -> str | None:
@@ -54,11 +95,19 @@ def _safe_bool(raw: Any) -> bool:
 
 @lru_cache(maxsize=1)
 def _auth_credentials() -> tuple[str, str]:
-    username = _env("AUTH_USERNAME", "sapphire")
+    username = _env("AUTH_USERNAME", "sapphire").strip()
     password = _env("AUTH_PASSWORD", "")
+    secret_path = _env("AUTH_PASSWORD_SECRET", "")
+    if secret_path:
+        try:
+            password = Path(secret_path).read_text(encoding="utf-8").strip()
+        except Exception as exc:
+            raise RuntimeError(f"Failed to read AUTH_PASSWORD_SECRET at {secret_path}: {exc}") from exc
     if not password:
-        raise RuntimeError("AUTH_PASSWORD environment variable must be set")
-    weak = {"sapphire", "password", "changeme", "admin", "123456"}
+        raise RuntimeError("AUTH_PASSWORD environment variable or AUTH_PASSWORD_SECRET file must be set")
+    if len(password) < 12:
+        raise RuntimeError("AUTH_PASSWORD must be at least 12 characters")
+    weak = {"sapphire", "password", "changeme", "admin", "123456", "sapphirealpha"}
     if password.lower() in weak:
         raise RuntimeError("AUTH_PASSWORD is too weak")
     return username, password
@@ -82,7 +131,8 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> str:
 
 
 @app.get("/healthz")
-async def healthz() -> dict[str, Any]:
+@limiter.limit("30/minute")
+async def healthz(request: Request) -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "sapphire-alpha-dashboard",
@@ -219,7 +269,8 @@ def _system_health() -> dict[str, Any]:
 
 
 @app.get("/api/v1/status")
-async def api_status(user: str = Depends(require_auth)) -> dict[str, Any]:
+@limiter.limit("60/minute")
+async def api_status(request: Request, user: str = Depends(require_auth)) -> dict[str, Any]:
     return {
         "service": "sapphire-alpha-dashboard",
         "authenticated_user": user,
@@ -229,7 +280,8 @@ async def api_status(user: str = Depends(require_auth)) -> dict[str, Any]:
 
 
 @app.get("/api/v1/widgets")
-async def api_widgets(user: str = Depends(require_auth)) -> dict[str, Any]:
+@limiter.limit("60/minute")
+async def api_widgets(request: Request, user: str = Depends(require_auth)) -> dict[str, Any]:
     return {
         "gate": _gate_status(),
         "telegram_queue": _telegram_queue(),
@@ -242,15 +294,24 @@ async def api_widgets(user: str = Depends(require_auth)) -> dict[str, Any]:
 
 
 @app.get("/assets/{filename}")
-async def frontend_assets(filename: str, user: str = Depends(require_auth)) -> FileResponse:
-    path = _FRONTEND_DIST_DIR / "assets" / filename
-    if not path.exists():
+@limiter.limit("120/minute")
+async def frontend_assets(filename: str, request: Request, user: str = Depends(require_auth)) -> FileResponse:
+    base = _FRONTEND_DIST_DIR / "assets"
+    try:
+        path = (base / filename).resolve(strict=False)
+        # Prevent directory traversal outside the assets directory.
+        if not path.is_relative_to(base.resolve()):
+            raise HTTPException(status_code=403, detail="forbidden")
+    except (ValueError, RuntimeError):
+        raise HTTPException(status_code=403, detail="forbidden")
+    if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(path)
 
 
 @app.get("/{catchall:path}")
-async def frontend_root(catchall: str, user: str = Depends(require_auth)) -> FileResponse:
+@limiter.limit("60/minute")
+async def frontend_root(catchall: str, request: Request, user: str = Depends(require_auth)) -> FileResponse:
     # SPA catch-all: return index.html for any non-API route.
     index = _FRONTEND_DIST_DIR / "index.html"
     if not index.exists():
