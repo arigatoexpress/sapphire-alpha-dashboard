@@ -75,7 +75,7 @@ The `/api/v1/tradingview/alerts` endpoint proxies recent alerts from the configu
 The Mac Cloudflare Quick Tunnel URL rotates when the tunnel process restarts. For a persistent hostname:
 1. **Tailscale Funnel** (preferred): enable at `https://login.tailscale.com/f/funnel?node=nV9oEWE1bM11CNTRL`, then set `TV_WEBHOOK_URL` to the Funnel origin.
 2. **Cloudflare named tunnel**: create a tunnel, store its JSON credentials / token in `~/.config/sapphire-secrets/`, and run `cloudflared tunnel --config ...` as a LaunchAgent. Set `TV_WEBHOOK_URL` to the fixed origin.
-3. Keep the Quick Tunnel as a fallback; update `TV_WEBHOOK_URL` and restart the Cloud Run revision after any rotation.
+3. Keep the Quick Tunnel as a fallback; run `./update-tv-webhook-url.sh` after any tunnel rotation to push the new origin into Cloud Run without a full rebuild.
 
 ## Health checks
 The app exposes `GET /healthz` (public). Note: Cloud Run's Google Front End intercepts exact `/healthz` on `*.run.app` service URLs; use `/healthz/` or the custom domain apex for probing.
