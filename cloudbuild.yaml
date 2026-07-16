@@ -1,0 +1,37 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'sapphire-alpha-dashboard'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--update-env-vars'
+      - 'AUTH_USERNAME=sapphire,AUTH_PASSWORD=${_AUTH_PASSWORD},WALLET_ADDRESS=0x6D669f4b197Ee634A8744Fcdc55bA4ceFf057c5E,MAX_ORDER_USD=25,TELEGRAM_BOT_POLLING=true,TV_WEBHOOK_URL=not configured,TDR_PRO_LIVE=0,DASHBOARD_ARMED=false,DASHBOARD_MODE=telegram,DASHBOARD_FORCE_KILLSWITCH=false'
+
+images:
+  - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+
+options:
+  logging: LEGACY
+
+substitutions:
+  _AUTH_PASSWORD: ''
