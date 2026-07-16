@@ -54,7 +54,7 @@ The `/api/v1/widgets` endpoint aggregates:
 - Wallet / PnL (`~/ops-state/rh-chain/skin-book.json` or `DASHBOARD_SKIN_BOOK`).
 - Telegram approval queue (`~/ops-state/telegram-bot/pending_queue.json`, `decisions.jsonl`).
 - Recent signals (`~/ops-state/rh-chain/signals.json` or `DASHBOARD_SIGNALS_JSON`).
-- DeFi Report clips (`~/Knowledge/3-Resources/Clippings/*.md`).
+- DeFi Report clips (`~/Knowledge/3-Resources/Clippings/*.md`). With `TDR_PRO_LIVE=1`, Cloud Run falls back to fetching the public RSS feed directly.
 - TradingView webhook status/log (`TV_WEBHOOK_URL`, `DASHBOARD_TV_LOG`).
 - Business health probes (`GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`).
 
