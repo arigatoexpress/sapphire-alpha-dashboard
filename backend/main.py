@@ -165,11 +165,15 @@ def _gate_status() -> dict[str, Any]:
     pause = home / ".sapphire" / "autonomous_trading_pause"
     box_pause = Path("C:/Users/aribs/.sapphire/autonomous_trading_pause")
 
-    armed = _safe_bool(gate.get("armed", skin.get("armed", False)))
-    mode = gate.get("mode") or skin.get("mode") or "telegram"
-    killswitch = pause.exists() or box_pause.exists() or _safe_bool(
-        os.environ.get("DASHBOARD_FORCE_KILLSWITCH", "")
-    )
+    # Env overrides allow the dashboard to reflect state when running on Cloud Run
+    # without access to the user's local filesystem.
+    env_armed = os.environ.get("DASHBOARD_ARMED", "")
+    env_mode = os.environ.get("DASHBOARD_MODE", "")
+    env_killswitch = os.environ.get("DASHBOARD_FORCE_KILLSWITCH", "")
+
+    armed = _safe_bool(env_armed) if env_armed else _safe_bool(gate.get("armed", skin.get("armed", False)))
+    mode = env_mode or gate.get("mode") or skin.get("mode") or "telegram"
+    killswitch = _safe_bool(env_killswitch) if env_killswitch else (pause.exists() or box_pause.exists())
 
     if killswitch:
         state = "killswitch"
