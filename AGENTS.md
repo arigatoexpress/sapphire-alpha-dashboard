@@ -85,3 +85,10 @@ The app exposes `GET /healthz` (public). Note: Cloud Run's Google Front End inte
 - No real names, balances, chat IDs, or positions are exposed.
 - Aggregate metrics and synthetic identifiers only.
 - Telegram proposals/decisions are sanitized: PII keys (`chat_id`, `user_id`, `username`, etc.) are dropped before serialization.
+
+## Knowledge base (one brain)
+Shared vault: `~/Knowledge`. For deep research/context questions (never general coding):
+1. Read `~/Knowledge/wiki/hot.md` (session cache), then `~/Knowledge/wiki/index.md`.
+2. Then the relevant domain sub-index; only then drill into individual pages.
+3. Retrieval: `python3 ~/Knowledge/wiki/wiki_query.py "question"` (lexical, cited) —
+   add `--rag` (run with `~/Knowledge/7-Visual-Graphs/.venv/bin/python`) for semantic, cited retrieval.
