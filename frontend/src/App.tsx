@@ -11,12 +11,15 @@ import type {
   BusinessHealth,
   SystemHealth,
   HealthService,
+  FleetCounts,
+  FleetData,
 } from './types'
 import { Starfield } from './components/Starfield'
 import { StatusTile } from './components/StatusTile'
 import { AlertStream } from './components/AlertStream'
 import { LiveClock } from './components/LiveClock'
 import { useTradingViewAlerts } from './hooks/useTradingViewAlerts'
+import { useFleet } from './hooks/useFleet'
 import { useReducedMotion } from './hooks/useReducedMotion'
 import { ShieldIcon, WalletIcon, ChartIcon, TelegramIcon, ClipIcon } from './components/icons'
 
@@ -93,6 +96,7 @@ export default function App() {
   const showDashboard = Boolean(creds) || (isAnonymous && !showLogin)
 
   const { alerts: tvAlerts, error: alertsError } = useTradingViewAlerts(authHeader)
+  const { fleet } = useFleet(authHeader)
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -195,6 +199,7 @@ export default function App() {
                   <TelegramQueueCard queue={data.telegram_queue} variants={cardVariants} />
                   <SignalsTape signals={data.recent_signals} variants={cardVariants} />
                   <AlertStreamCard alerts={tvAlerts} variants={cardVariants} />
+                  <FleetCard fleet={fleet} variants={cardVariants} />
                   <BusinessHealthCard health={data.business_health} variants={cardVariants} />
                   <SystemHealthCard health={data.system_health} variants={cardVariants} />
                 </motion.div>
@@ -447,6 +452,67 @@ function AlertStreamCard({ alerts, variants }: { alerts: import('./types').Tradi
   return (
     <motion.div className="card card-tall alert-stream-wrapper" variants={variants} whileHover={{ y: -2 }}>
       <AlertStream alerts={alerts} />
+    </motion.div>
+  )
+}
+
+const STALE_AFTER_S = 15 * 60
+
+function staleness(ageS: number | null): { label: string; cls: 'ok' | 'warn' } {
+  if (ageS == null) return { label: 'no snapshot', cls: 'warn' }
+  if (ageS >= STALE_AFTER_S) return { label: `stale · ${Math.round(ageS / 60)}m old`, cls: 'warn' }
+  const label = ageS < 90 ? `${Math.round(ageS)}s ago` : `${Math.round(ageS / 60)}m ago`
+  return { label, cls: 'ok' }
+}
+
+function FleetCard({ fleet, variants }: { fleet: FleetData | FleetCounts | null; variants?: Variants }) {
+  const countsOnly = fleet != null && 'public_view' in fleet
+  const badge = staleness(fleet?.snapshot_age_s ?? null)
+  const leases = !fleet || countsOnly ? [] : fleet.leases
+  const gates = !fleet || countsOnly ? [] : [...fleet.gates].sort((a, b) => b.age_hours - a.age_hours)
+  const leaseCount = !fleet ? 0 : countsOnly ? fleet.leases : fleet.counts.leases
+  const gateCount = !fleet ? 0 : countsOnly ? fleet.gates_open : fleet.counts.gates_open
+
+  return (
+    <motion.div className="card card-wide fleet" variants={variants} whileHover={{ y: -2 }}>
+      <div className="card-glow" />
+      <div className="fleet-header">
+        <h2>Fleet</h2>
+        <span className={`tag ${badge.cls === 'warn' ? 'warn' : ''}`}>
+          <span className={`status-dot ${badge.cls}`} /> snapshot {badge.label}
+        </span>
+      </div>
+      <div className="fleet-columns">
+        <div className="fleet-col">
+          <div className="fleet-col-title muted">Presence · {leaseCount} agent lease{leaseCount === 1 ? '' : 's'}</div>
+          {leases.length === 0 && (
+            <div className="muted">{countsOnly ? 'detail is operator-only' : 'no active leases'}</div>
+          )}
+          {leases.map((l, i) => (
+            <div key={`${l.agent}-${l.repo}-${i}`} className="fleet-row">
+              <span className="tag">{l.agent}</span>
+              <span className="fleet-repo">{l.repo}</span>
+              <span className="muted fleet-purpose">{l.purpose || '—'}</span>
+              <span className="muted">exp {formatTime(l.expires_at)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="fleet-col">
+          <div className="fleet-col-title muted">Inbox · {gateCount} open gate{gateCount === 1 ? '' : 's'}</div>
+          {gates.length === 0 && (
+            <div className="muted">{countsOnly && gateCount > 0 ? 'detail is operator-only' : 'nothing waiting on you'}</div>
+          )}
+          {gates.map((g, i) => (
+            <div key={g.id} className={`fleet-row ${i === 0 ? 'fleet-oldest' : ''}`}>
+              <span className="tag">#{g.id}</span>
+              <span className="fleet-repo">{g.title}</span>
+              <span className="muted">
+                {g.age_hours < 1 ? `${Math.round(g.age_hours * 60)}m` : `${g.age_hours.toFixed(1)}h`} old
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </motion.div>
   )
 }

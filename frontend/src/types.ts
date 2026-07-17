@@ -109,6 +109,37 @@ export interface TradingViewAlert {
   signal_id: string
 }
 
+export interface FleetLease {
+  agent: string
+  repo: string
+  purpose: string
+  expires_at: string
+}
+
+export interface FleetGate {
+  id: number
+  title: string
+  age_hours: number
+  status: string
+}
+
+// Authenticated /api/fleet payload. Anonymous public read-only mode returns
+// counts only: { public_view: true, leases: number, gates_open: number, snapshot_age_s }.
+export interface FleetData {
+  generated_at: string | null
+  leases: FleetLease[]
+  gates: FleetGate[]
+  counts: { leases: number; gates_open: number }
+  snapshot_age_s: number | null
+}
+
+export interface FleetCounts {
+  public_view: true
+  leases: number
+  gates_open: number
+  snapshot_age_s: number | null
+}
+
 export interface WidgetData {
   public_view?: boolean
   gate: Gate

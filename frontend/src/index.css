@@ -675,6 +675,71 @@ main {
   font-size: 0.8rem;
 }
 
+/* Fleet (presence + inbox) */
+.fleet {
+  grid-column: span 12;
+}
+
+.fleet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.fleet-header .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.fleet-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.fleet-col-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+.fleet-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+}
+
+.fleet-row + .fleet-row {
+  margin-top: 0.35rem;
+}
+
+.fleet-repo {
+  font-weight: 600;
+}
+
+.fleet-purpose {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-oldest {
+  border-color: rgba(255, 176, 32, 0.25);
+  background: rgba(255, 176, 32, 0.06);
+  box-shadow: 0 0 12px rgba(255, 176, 32, 0.06);
+}
+
 /* Business health */
 .business-health {
   grid-column: span 8;
