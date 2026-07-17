@@ -861,6 +861,94 @@ async def api_tradingview_alerts(
         return {"alerts": [], "total": 0, "source": "webhook", "error": str(exc)}
 
 
+# ---------------------------------------------------------------------------
+# Fleet snapshot (/api/fleet) — sanitized output of `fleet-lease export
+# --sanitized`, pushed to FLEET_SNAPSHOT_PATH. The backend never trusts the
+# file: lease/gate fields are whitelisted so a poisoned snapshot cannot leak
+# paths, hints, or extra keys. Anonymous public read-only gets counts only.
+# ---------------------------------------------------------------------------
+
+_EMPTY_FLEET = {
+    "generated_at": None,
+    "leases": [],
+    "gates": [],
+    "counts": {"leases": 0, "gates_open": 0},
+}
+
+
+def _fleet_snapshot_path() -> Path:
+    return Path(_env("FLEET_SNAPSHOT_PATH", "data/fleet.json"))
+
+
+def _no_paths(value: Any) -> str:
+    """Coerce to str and drop anything path-like (defense in depth)."""
+    text = str(value or "")
+    if "/" in text or "\\" in text:
+        text = text.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    return text[:120]
+
+
+def _whitelist_fleet(raw: Any) -> dict[str, Any]:
+    """Reduce an untrusted fleet.json to the exact serving shape."""
+    if not isinstance(raw, dict):
+        return dict(_EMPTY_FLEET)
+    leases = [
+        {
+            "agent": _no_paths(lease.get("agent")),
+            "repo": _no_paths(lease.get("repo")),
+            "purpose": _no_paths(lease.get("purpose")),
+            "expires_at": _no_paths(lease.get("expires_at")),
+        }
+        for lease in raw.get("leases", [])
+        if isinstance(lease, dict)
+    ]
+    gates = [
+        {
+            "id": int(gate.get("id", 0)),
+            "title": _no_paths(gate.get("title")),
+            "age_hours": _safe_float(gate.get("age_hours")),
+            "status": _no_paths(gate.get("status")),
+        }
+        for gate in raw.get("gates", [])
+        if isinstance(gate, dict)
+    ]
+    generated_at = raw.get("generated_at")
+    return {
+        "generated_at": str(generated_at) if isinstance(generated_at, str) else None,
+        "leases": leases,
+        "gates": gates,
+        "counts": {"leases": len(leases), "gates_open": len(gates)},
+    }
+
+
+def _fleet_age_seconds(generated_at: str | None) -> float | None:
+    if not generated_at:
+        return None
+    try:
+        gen = datetime.fromisoformat(generated_at)
+        if gen.tzinfo is None:
+            gen = gen.replace(tzinfo=UTC)
+        return max(0.0, round((datetime.now(UTC) - gen).total_seconds(), 1))
+    except ValueError:
+        return None
+
+
+@app.get("/api/fleet")
+@limiter.limit(_api_rate_limit)
+async def api_fleet(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+    """Fleet presence (leases) + human-approval inbox (gates) with staleness."""
+    snapshot = _whitelist_fleet(_read_json(_fleet_snapshot_path()))
+    age_s = _fleet_age_seconds(snapshot["generated_at"])
+    if user == PUBLIC_USER:
+        return {
+            "public_view": True,
+            "leases": snapshot["counts"]["leases"],
+            "gates_open": snapshot["counts"]["gates_open"],
+            "snapshot_age_s": age_s,
+        }
+    return dict(snapshot, snapshot_age_s=age_s)
+
+
 @app.get("/vault/rag-map", response_class=FileResponse)
 @limiter.limit("30/minute")
 async def vault_rag_map(request: Request, user: str = Depends(require_auth)) -> Response:
