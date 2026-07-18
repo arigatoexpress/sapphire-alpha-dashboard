@@ -45,7 +45,9 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
 
 ## Endpoints
 - Public: `GET /healthz`, `GET /api/health`
-- Authenticated (`/api/v1/*`): `GET /status`, `GET /widgets`, `GET /tradingview/alerts`
+- Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
+- Public/operator projections: `GET /api/v1/live`, `GET /api/v1/moss`
+- Legacy authenticated: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
 
 ## Widget data sources
 The `/api/v1/widgets` endpoint aggregates:
@@ -70,6 +72,8 @@ The `/api/v1/tradingview/alerts` endpoint proxies recent alerts from the configu
   - `TV_WEBHOOK_URL` should be the **base origin** of the receiver (no path); the dashboard probes `<url>/webhook/health` and proxies `<url>/alerts`.
 - `GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`
 - `TDR_PRO_LIVE`
+- `TELEMETRY_STORE`, `TELEMETRY_INGEST_SECRET`, `MOSS_TELEMETRY_INGEST_SECRET`
+- `TELEMETRY_FIRESTORE_DATABASE`, `MOSS_TELEMETRY_FIRESTORE_COLLECTION`
 
 ## Stable TradingView webhook hostname
 The Mac Cloudflare Quick Tunnel URL rotates when the tunnel process restarts. For a persistent hostname:
@@ -81,8 +85,9 @@ The Mac Cloudflare Quick Tunnel URL rotates when the tunnel process restarts. Fo
 The app exposes `GET /healthz` (public). Note: Cloud Run's Google Front End intercepts exact `/healthz` on `*.run.app` service URLs; use `/healthz/` or the custom domain apex for probing.
 
 ## Privacy rules
-- Wallet addresses are masked (`0xabcd…1234`).
-- No real names, balances, chat IDs, or positions are exposed.
+- No wallet identifier is exposed anonymously, including a masked one.
+- Exact MOSS balances and masked identity are operator-only; the public view receives funding/freshness bands.
+- No real names, exact public balances, chat IDs, or positions are exposed.
 - Aggregate metrics and synthetic identifiers only.
 - Telegram proposals/decisions are sanitized: PII keys (`chat_id`, `user_id`, `username`, etc.) are dropped before serialization.
 

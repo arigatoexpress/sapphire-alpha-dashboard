@@ -231,3 +231,24 @@ export interface LiveSnapshot {
   }
   events: LiveEvent[]
 }
+
+export interface MossSnapshot {
+  version: number
+  status: LiveStatus
+  freshness_s: number | null
+  served_at: string
+  public_view?: boolean
+  network?: string
+  asset?: string
+  usdm_band?: string
+  eth_state?: string
+  observation_freshness?: string
+  custody?: string
+  authority?: string
+  chain?: string
+  identity_masked?: string
+  usdm?: string
+  eth?: string
+  block?: string
+  observed_at?: string
+}

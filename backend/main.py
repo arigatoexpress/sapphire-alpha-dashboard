@@ -43,8 +43,10 @@ from slowapi.util import get_remote_address
 
 try:
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
+    from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
+    from moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 
 log = logging.getLogger("sapphire-alpha-dashboard")
 logging.basicConfig(level=logging.INFO)
@@ -217,6 +219,11 @@ def _reset_live_telemetry_for_tests() -> None:
     live_telemetry_store.reset()
 
 
+def _reset_moss_telemetry_for_tests() -> None:
+    """Reset the in-memory MOSS test backend; production persistence never deletes."""
+    moss_telemetry_store.reset()
+
+
 @app.post("/api/v1/telemetry", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("120/minute")
 async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
@@ -258,6 +265,49 @@ async def api_live(request: Request, user: str = Depends(auth_or_public)) -> dic
     except ValueError:
         delay_seconds = 15.0
     return live_telemetry_store.get(public=public, delay_seconds=delay_seconds)
+
+
+@app.post("/api/v1/moss/telemetry", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("120/minute")
+async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
+    """Accept one HMAC-signed, masked MOSS observation from the home projector."""
+    body = await request.body()
+    if len(body) > 8 * 1024:
+        raise HTTPException(status_code=413, detail="MOSS telemetry body too large")
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail="invalid MOSS telemetry JSON") from None
+    try:
+        snapshot = moss_telemetry_store.accept(
+            body=body,
+            headers={key.lower(): value for key, value in request.headers.items()},
+            secret=_env("MOSS_TELEMETRY_INGEST_SECRET", ""),
+            parsed_json=payload,
+        )
+    except OverflowError:
+        raise HTTPException(status_code=413, detail="MOSS telemetry body too large") from None
+    except PermissionError:
+        raise HTTPException(status_code=401, detail="invalid MOSS telemetry signature") from None
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="MOSS telemetry replay rejected") from None
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="MOSS telemetry ingest unavailable") from None
+    except (MossTelemetryValidationError, TelemetryValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return {"accepted": True, "sequence": snapshot["sequence"]}
+
+
+@app.get("/api/v1/moss")
+@limiter.limit(_api_rate_limit)
+async def api_moss(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+    """Serve exact operator detail or a banded anonymous MOSS projection."""
+    public = user == PUBLIC_USER
+    try:
+        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "15"))))
+    except ValueError:
+        delay_seconds = 15.0
+    return moss_telemetry_store.get(public=public, delay_seconds=delay_seconds)
 
 
 def _read_json(path: Path) -> Any:
