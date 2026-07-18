@@ -5,7 +5,8 @@ import { LiveClock } from './components/LiveClock'
 import { ShieldIcon } from './components/icons'
 import { useLiveTelemetry } from './hooks/useLiveTelemetry'
 import { useMossSnapshot } from './hooks/useMossSnapshot'
-import type { LiveAgent, LiveEvent, LiveSnapshot, MossSnapshot } from './types'
+import { useFleet } from './hooks/useFleet'
+import type { FleetCounts, FleetData, LiveAgent, LiveEvent, LiveSnapshot, MossSnapshot } from './types'
 
 function formatAge(seconds: number | null): string {
   if (seconds == null) return 'not observed'
@@ -31,6 +32,7 @@ export default function App() {
   const authHeader = useMemo(() => creds ? `Basic ${btoa(`${creds.user}:${creds.pass}`)}` : '', [creds])
   const { snapshot, error, loading, authRequired } = useLiveTelemetry(authHeader)
   const { snapshot: mossSnapshot, error: mossError } = useMossSnapshot(authHeader)
+  const { fleet, error: fleetError } = useFleet(authHeader)
   const publicView = snapshot?.public_view !== false && !creds
 
   if ((authRequired || showLogin) && !creds) {
@@ -45,6 +47,12 @@ export default function App() {
           <ShieldIcon className="brand-mark" />
           <span>SAPPHIRE <b>ALPHA</b></span>
         </a>
+        <nav className="site-nav" aria-label="Sections">
+          <a href="#loom">Loom</a>
+          <a href="#assets">Assets</a>
+          <a href="#fleet">Fleet</a>
+          <a href="#activity">Activity</a>
+        </nav>
         <div className="topbar-meta">
           <span className={`live-pill status-${snapshot?.status ?? 'offline'}`}><i />{snapshot?.status ?? (loading ? 'connecting' : 'offline')}</span>
           <span className="mono">{formatAge(snapshot?.freshness_s ?? null)}</span>
@@ -71,10 +79,15 @@ export default function App() {
         {snapshot?.status === 'stale' && <div className="notice stale-notice">Telemetry is stale. Status is historical until the home projector reconnects.</div>}
 
         <SafetyRail snapshot={snapshot} />
-        <SignalLoom nodes={snapshot?.nodes ?? []} links={snapshot?.links ?? []} status={snapshot?.status ?? 'offline'} />
-        <MossPanel snapshot={mossSnapshot} error={mossError} />
+        <div id="loom" className="anchor-wrap">
+          <SignalLoom nodes={snapshot?.nodes ?? []} links={snapshot?.links ?? []} status={snapshot?.status ?? 'offline'} />
+        </div>
+        <div id="assets" className="anchor-wrap">
+          <MossPanel snapshot={mossSnapshot} error={mossError} />
+        </div>
+        <FleetPanel fleet={fleet} error={fleetError} />
 
-        <div className="lower-grid">
+        <div id="activity" className="lower-grid">
           <AgentPanel agents={snapshot?.agents ?? []} />
           <MarketPanel snapshot={snapshot} />
           <EventLedger events={snapshot?.events ?? []} />
@@ -174,6 +187,64 @@ function MossPanel({ snapshot, error }: { snapshot: MossSnapshot | null; error: 
         {operator && snapshot?.identity_masked ? <span className="operator-hint mono">Operator identity {snapshot.identity_masked} · block {snapshot.block ?? '—'}</span> : null}
         {error ? <span className="moss-error">{error}</span> : null}
       </div>
+    </section>
+  )
+}
+
+function isFleetCounts(fleet: FleetData | FleetCounts): fleet is FleetCounts {
+  return typeof fleet.leases === 'number'
+}
+
+function FleetPanel({ fleet, error }: { fleet: FleetData | FleetCounts | null; error: string }) {
+  const ageS = fleet?.snapshot_age_s ?? null
+  const stale = ageS != null && ageS >= 900
+  const leaseCount = fleet ? (isFleetCounts(fleet) ? fleet.leases : fleet.counts.leases) : 0
+  const gateCount = fleet ? (isFleetCounts(fleet) ? fleet.gates_open : fleet.counts.gates_open) : 0
+  const detail = fleet && !isFleetCounts(fleet) ? fleet : null
+  const oldestGateId = detail?.gates.length
+    ? detail.gates.reduce((a, b) => (b.age_hours > a.age_hours ? b : a)).id
+    : null
+  return (
+    <section id="fleet" className="data-panel fleet-panel" aria-label="Fleet coordination">
+      <div className="section-heading">
+        <div><p className="eyebrow">Fleet coordination</p><h2>Agent leases &amp; approval gates</h2></div>
+        <div className="fleet-badges">
+          {stale ? <span className="fleet-stale">stale {Math.round(ageS! / 60)}m</span> : null}
+          <span className="count-badge">{leaseCount + gateCount}</span>
+        </div>
+      </div>
+      <div className="fleet-summary">
+        <Metric label="Active leases" value={String(leaseCount)} />
+        <Metric label="Open gates" value={String(gateCount)} />
+        <Metric label="Snapshot" value={ageS != null ? formatAge(ageS) : 'not observed'} />
+      </div>
+      {detail ? (
+        <div className="fleet-detail">
+          <div>
+            <p className="eyebrow">Leases</p>
+            {detail.leases.length ? detail.leases.map((lease, index) => (
+              <article className="fleet-row" key={`${lease.agent}-${index}`}>
+                <span className="presence state-working" />
+                <div><strong>{lease.agent}</strong><p>{lease.repo} · {lease.purpose}</p></div>
+                <span className="mono">until {formatTime(lease.expires_at)}</span>
+              </article>
+            )) : <Empty label="No active leases" />}
+          </div>
+          <div>
+            <p className="eyebrow">Approval gates</p>
+            {detail.gates.length ? detail.gates.map((gate) => (
+              <article className={`fleet-row${gate.id === oldestGateId ? ' fleet-oldest' : ''}`} key={gate.id}>
+                <span className={`presence state-${gate.status === 'open' ? 'blocked' : 'offline'}`} />
+                <div><strong>{gate.title}</strong><p>{gate.status}</p></div>
+                <span className="mono">{Math.round(gate.age_hours)}h</span>
+              </article>
+            )) : <Empty label="No open gates" />}
+          </div>
+        </div>
+      ) : (
+        <p className="panel-caption">Public projection shows aggregate coordination counts only. Operator sign-in reveals sanitized lease and gate detail.</p>
+      )}
+      {error ? <span className="moss-error">{error}</span> : null}
     </section>
   )
 }
