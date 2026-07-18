@@ -42,9 +42,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 try:
+    from . import telegram_miniapp
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
+    import telegram_miniapp
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 
@@ -1067,6 +1069,68 @@ async def frontend_assets(filename: str, request: Request, user: str = Depends(a
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(path)
+
+
+# ---------------------------------------------------------------------------
+# Telegram Mini App surface (read-only; approvals stay on the bot's button rail)
+# ---------------------------------------------------------------------------
+
+_MINIAPP_HTML = Path(__file__).resolve().parent / "static" / "miniapp.html"
+
+
+def tg_auth(request: Request) -> telegram_miniapp.TelegramUser:
+    """Authenticate a Mini App API request via `Authorization: tma <initData>`."""
+    try:
+        return telegram_miniapp.authenticate_header(request.headers.get("Authorization"))
+    except telegram_miniapp.InitDataError as exc:
+        if str(exc) == "bot token not configured":
+            raise HTTPException(status_code=503, detail="miniapp not configured") from exc
+        raise HTTPException(
+            status_code=401,
+            detail="invalid telegram credentials",
+            headers={"WWW-Authenticate": "tma"},
+        ) from exc
+
+
+@app.get("/miniapp", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def miniapp_page(request: Request) -> Response:
+    """Public static shell; all data behind /api/tg/* (validated initData)."""
+    if not _MINIAPP_HTML.is_file():
+        raise HTTPException(status_code=404, detail="miniapp not built")
+    return FileResponse(_MINIAPP_HTML, media_type="text/html")
+
+
+@app.get("/api/tg/summary")
+@limiter.limit("60/minute")
+async def api_tg_summary(
+    request: Request, user: telegram_miniapp.TelegramUser = Depends(tg_auth)
+) -> dict[str, Any]:
+    """Operator-grade, PII-scrubbed snapshot for the Mini App (read-only)."""
+    fleet = _whitelist_fleet(_read_json(_fleet_snapshot_path()))
+    return {
+        "viewer": {"first_name": user.first_name},
+        "chain": telegram_miniapp.tag_chain({}),
+        "desk": _gate_status(),
+        "wallet": _wallet_status(),
+        "queue": _telegram_queue(),
+        "signals": _recent_signals(),
+        "fleet": dict(fleet, snapshot_age_s=_fleet_age_seconds(fleet["generated_at"])),
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@app.get("/api/tg/decisions")
+@limiter.limit("60/minute")
+async def api_tg_decisions(
+    request: Request, user: telegram_miniapp.TelegramUser = Depends(tg_auth)
+) -> dict[str, Any]:
+    """Read-only decision history from decisions.jsonl (sanitized, chain-tagged)."""
+    rows = _read_jsonl(_TELEGRAM_DIR / "decisions.jsonl", limit=50)
+    return {
+        "decisions": [telegram_miniapp.sanitize_decision(r, i + 1) for i, r in enumerate(rows)],
+        "count": len(rows),
+    }
 
 
 @app.get("/{catchall:path}", response_class=FileResponse)
