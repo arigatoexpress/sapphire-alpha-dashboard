@@ -493,6 +493,44 @@ def _wallet_status() -> dict[str, Any]:
     }
 
 
+def _magnum_status() -> dict[str, Any]:
+    """Magnum Opus overnight lab — local harness projection (read-only)."""
+    gate = _read_json(_RH_CHAIN_DIR / "gate.json") or {}
+    fr = _read_json(_RH_CHAIN_DIR / "free-reign.json") or {}
+    l2 = _read_json(_RH_CHAIN_DIR / "l2-wallet-snapshot.json") or {}
+    adapt = _read_json(_RH_CHAIN_DIR / "overnight-adapt.json") or {}
+    health = _read_json(_RH_CHAIN_DIR / "agent-health-state.json") or {}
+    night = _read_json(_HOME / "ops-state" / "sov-lab" / "night" / "latest.json") or {}
+    moss = _read_json(_HOME / "ops-state" / "moss" / "session.json") or {}
+    limits = fr.get("limits") if isinstance(fr.get("limits"), dict) else {}
+    top = (adapt.get("universe") or {}).get("top_fillable_candidates") or []
+    candidates = [
+        str(t.get("symbol") or "")
+        for t in top[:8]
+        if isinstance(t, dict) and t.get("symbol")
+    ]
+    moss_ok = bool(moss) and not moss.get("revoked")
+    moss_exp = moss.get("expiry")
+    return {
+        "product": "magnum-opus",
+        "gate_armed": _safe_bool(gate.get("armed")),
+        "mode": gate.get("mode") or "—",
+        "free_reign": _safe_bool(fr.get("enabled")),
+        "daily_cap_usd": limits.get("daily_cap_usd"),
+        "per_trade_verified_usd": limits.get("per_trade_cap_verified_usd"),
+        "per_trade_thesis_usd": limits.get("per_trade_cap_thesis_usd"),
+        "l2_eth": l2.get("eth"),
+        "l2_address_masked": _mask_address(l2.get("address")),
+        "health": health.get("overall") or "—",
+        "night_severity": night.get("severity") or "—",
+        "night_issues": list(night.get("issues") or [])[:5],
+        "moss_ok": moss_ok,
+        "moss_expiry": moss_exp,
+        "candidates": candidates,
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+
+
 def _telegram_queue() -> dict[str, Any]:
     """Surface Telegram approval queue length and recent proposals without exposing chat IDs."""
     queue_path = _TELEGRAM_DIR / "pending_queue.json"
@@ -1127,6 +1165,7 @@ async def api_tg_summary(
         "chain": telegram_miniapp.tag_chain({}),
         "desk": _gate_status(),
         "wallet": _wallet_status(),
+        "magnum": _magnum_status(),
         "queue": _telegram_queue(),
         "signals": _recent_signals(),
         "fleet": dict(fleet, snapshot_age_s=_fleet_age_seconds(fleet["generated_at"])),
