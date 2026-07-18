@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sapphire Command</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #0d1117);
+    --fg: var(--tg-theme-text-color, #e6edf3);
+    --hint: var(--tg-theme-hint-color, #8b949e);
+    --link: var(--tg-theme-link-color, #58a6ff);
+    --card: var(--tg-theme-secondary-bg-color, #161b22);
+    --accent: var(--tg-theme-button-color, #2ea6ff);
+    --accent-fg: var(--tg-theme-button-text-color, #ffffff);
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.45 -apple-system, system-ui, sans-serif;
+         padding: 12px 12px calc(16px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 17px; margin: 4px 0 2px; }
+  .sub { color: var(--hint); font-size: 12px; margin-bottom: 10px; }
+  nav { display: flex; gap: 6px; margin: 8px 0 12px; overflow-x: auto; }
+  nav button { flex: 0 0 auto; border: 0; border-radius: 16px; padding: 6px 12px; font-size: 13px;
+               background: var(--card); color: var(--fg); }
+  nav button.on { background: var(--accent); color: var(--accent-fg); }
+  .card { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 14px; }
+  .row .k { color: var(--hint); }
+  .pill { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+  .pill.ok { background: rgba(63,185,80,.15); color: var(--ok); }
+  .pill.warn { background: rgba(210,153,34,.15); color: var(--warn); }
+  .pill.bad { background: rgba(248,81,73,.15); color: var(--bad); }
+  .chain { font-size: 11px; color: var(--hint); border: 1px solid var(--hint); border-radius: 8px;
+           padding: 0 6px; margin-left: 6px; }
+  .muted { color: var(--hint); font-size: 13px; }
+  .err { color: var(--bad); }
+  a.deep { display: block; text-align: center; background: var(--accent); color: var(--accent-fg);
+           border-radius: 10px; padding: 10px; text-decoration: none; font-weight: 600; margin-top: 8px; }
+  .note { font-size: 12px; color: var(--hint); text-align: center; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Sapphire Command</h1>
+<div class="sub" id="who">Connecting…</div>
+<nav id="tabs"></nav>
+<main id="view"><div class="card muted">Loading…</div></main>
+
+<script>
+"use strict";
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const initData = tg ? tg.initData : "";
+const H = { "Authorization": "tma " + initData };
+const esc = s => String(s ?? "—").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const TABS = ["Desk", "Proposals", "Decisions", "Fleet", "Markets"];
+let tab = "Desk", summary = null, decisions = null;
+
+function pill(state) {
+  const cls = /armed|open|alive|approved|polling|true/i.test(state) ? "ok"
+            : /kill|halt|denied|down|stale/i.test(state) ? "bad" : "warn";
+  return `<span class="pill ${cls}">${esc(state)}</span>`;
+}
+const chainTag = o => o && o.chain ? `<span class="chain">${esc(o.chain)}</span>` : "";
+const rows = pairs => pairs.map(([k, v]) => `<div class="row"><span class="k">${esc(k)}</span><span>${v}</span></div>`).join("");
+const deepLink = `<a class="deep" href="#" onclick="if(tg)tg.openTelegramLink('https://t.me/sapphirerelaybot');return false;">Open bot to decide (✅/❌)</a>
+<div class="note">Approvals happen only on the bot's button rail — this app is read-only.</div>`;
+
+function render() {
+  document.getElementById("tabs").innerHTML = TABS.map(t =>
+    `<button class="${t === tab ? "on" : ""}" onclick="setTab('${t}')">${t}</button>`).join("");
+  const v = document.getElementById("view");
+  if (!summary) { v.innerHTML = `<div class="card muted">Loading…</div>`; return; }
+  const s = summary;
+  if (tab === "Desk") {
+    const d = s.desk || {}, w = s.wallet || {};
+    v.innerHTML = `<div class="card"><b>Desk ${chainTag(s.chain)}</b>${rows([
+      ["State", pill(d.label || d.state)], ["Mode", esc(d.mode)],
+      ["Executor", pill(d.executor_alive ? "alive" : "down")],
+      ["Order cap", "$" + esc(d.cap_usd)], ["Wallet", esc(w.address)],
+      ["Deployed", "$" + esc(w.deployed_usd)], ["Open positions", esc(w.n_open)],
+    ])}</div>`;
+  } else if (tab === "Proposals") {
+    const q = s.queue || {}; const items = q.proposals || [];
+    v.innerHTML = `<div class="card"><b>Inbox</b>${rows([["Pending", esc(q.pending)], ["Gate", pill(q.gate || "telegram")], ["Bot", pill(q.status)]])}</div>` +
+      (items.length ? items.map(p => `<div class="card">${rows([
+        ["Action", esc(p.action)], ["Instrument", esc(p.instrument) + chainTag(p)],
+        ["Side", esc(p.side)], ["Confidence", esc(p.confidence)], ["Status", pill(p.status)],
+        ["When", esc(p.timestamp)]])}</div>`).join("")
+      : `<div class="card muted">No proposals in view.</div>`) + deepLink;
+  } else if (tab === "Decisions") {
+    const items = (decisions && decisions.decisions) || [];
+    v.innerHTML = (items.length ? items.map(d => `<div class="card">${rows([
+        ["Action", esc(d.action)], ["Instrument", esc(d.instrument) + chainTag(d)],
+        ["Decision", pill(d.decision)], ["Reason", esc(d.reason)], ["When", esc(d.timestamp)]])}</div>`).join("")
+      : `<div class="card muted">No decision history readable.</div>`);
+  } else if (tab === "Fleet") {
+    const f = s.fleet || {}, c = f.counts || {};
+    v.innerHTML = `<div class="card"><b>Fleet</b>${rows([
+      ["Leases", esc(c.leases)], ["Gates open", esc(c.gates_open)],
+      ["Snapshot age", f.snapshot_age_s == null ? "—" : Math.round(f.snapshot_age_s) + "s"]])}</div>` +
+      ((f.leases || []).map(l => `<div class="card">${rows([["Agent", esc(l.agent || l.name)], ["Scope", esc(l.scope)], ["State", pill(l.state || "active")]])}</div>`).join(""));
+  } else if (tab === "Markets") {
+    const sig = s.signals || [];
+    v.innerHTML = (sig.length ? sig.map(x => `<div class="card">${rows([
+        ["Signal", esc(x.name || x.id)], ["Instrument", esc(x.instrument || x.symbol) + chainTag(x)],
+        ["Side", esc(x.side)], ["Strength", esc(x.strength || x.confidence)]])}</div>`).join("")
+      : `<div class="card muted">No recent signals.</div>`);
+  }
+}
+function setTab(t) { tab = t; if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); render(); }
+window.setTab = setTab;
+
+async function load() {
+  try {
+    const r = await fetch("/api/tg/summary", { headers: H });
+    if (r.status === 401) throw new Error("Not authorized for this desk (Telegram identity not on the allowlist).");
+    if (r.status === 503) throw new Error("Mini App backend not configured yet.");
+    if (!r.ok) throw new Error("Backend error " + r.status);
+    summary = await r.json();
+    document.getElementById("who").textContent =
+      `Hi ${summary.viewer.first_name || "operator"} · ${summary.chain.chain} · updated ${new Date(summary.updated_at).toLocaleTimeString()}`;
+    const rd = await fetch("/api/tg/decisions", { headers: H });
+    decisions = rd.ok ? await rd.json() : null;
+    render();
+  } catch (e) {
+    document.getElementById("who").textContent = "";
+    document.getElementById("view").innerHTML = `<div class="card err">${esc(e.message)}</div>` + deepLink;
+  }
+}
+render(); load(); setInterval(load, 30000);
+if (tg) tg.onEvent("themeChanged", render);
+</script>
+</body>
+</html>
