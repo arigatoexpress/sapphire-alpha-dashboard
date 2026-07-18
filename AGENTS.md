@@ -46,7 +46,7 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
 ## Endpoints
 - Public: `GET /healthz`, `GET /api/health`
 - Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
-- Public/operator projections: `GET /api/v1/live`, `GET /api/v1/moss`
+- Public/operator projections: `GET /api/v1/live`, `GET /api/v1/moss`, `GET /api/v1/transparency`
 - Legacy authenticated: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
 
 ## Widget data sources
@@ -62,12 +62,15 @@ The `/api/v1/widgets` endpoint aggregates:
 
 The `/api/v1/tradingview/alerts` endpoint proxies recent alerts from the configured `TV_WEBHOOK_URL` receiver (`/alerts`).
 
+The `/api/v1/transparency` endpoint serves the trade-rail explanation ledger (`~/ops-state/telegram-bot/explanations.jsonl`, schema 1 from telegram-bot `explain.py`): operators get the full whitelisted record; the public projection gets hashed ids and coarse USD bands (MOSS-pane masking precedent).
+
 ## Env overrides for Cloud Run
 - `AUTH_USERNAME`, `AUTH_PASSWORD` (required, min 12 chars)
 - `WALLET_ADDRESS` — full on-chain address (e.g. Robinhood Chain L2 wallet); dashboard masks it.
 - `MAX_ORDER_USD`, `TELEGRAM_BOT_POLLING`
 - `DASHBOARD_ARMED`, `DASHBOARD_MODE`, `DASHBOARD_FORCE_KILLSWITCH`
 - `DASHBOARD_EXECUTOR_HEARTBEAT`, `DASHBOARD_SKIN_BOOK`, `DASHBOARD_SIGNALS_JSON`, `DASHBOARD_TV_LOG`
+- `DASHBOARD_EXPLANATIONS_PATH` — override path to the explanations.jsonl ledger (Cloud Run has no Mac filesystem)
 - `TV_WEBHOOK_STATUS`, `TV_WEBHOOK_URL`, `TV_LAST_PING`, `TV_PENDING_ALERTS`
   - `TV_WEBHOOK_URL` should be the **base origin** of the receiver (no path); the dashboard probes `<url>/webhook/health` and proxies `<url>/alerts`.
 - `GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`
