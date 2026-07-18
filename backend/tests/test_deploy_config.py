@@ -9,8 +9,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_cloudbuild_uses_semantic_config_and_secret_manager():
     content = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
-    assert "SAPPHIRE_AUTH_PASSWORD:latest" in content
-    assert "SAPPHIRE_TELEMETRY_INGEST_SECRET:latest" in content
+    # Live service has AUTH_PASSWORD as a plain env var; Cloud Build must not
+    # --set-secrets it (type mismatch fails deploy). Password is preserved
+    # across deploys; migration to Secret Manager is a separate ops step.
+    assert "SAPPHIRE_AUTH_PASSWORD:latest" not in content
+    assert "--set-secrets" not in content or "AUTH_PASSWORD=" not in content.split("--set-secrets")[-1]
     assert "TELEMETRY_STORE=firestore" in content
     assert "AUTH_PASSWORD=${" not in content
     assert "WALLET_ADDRESS=" not in content
