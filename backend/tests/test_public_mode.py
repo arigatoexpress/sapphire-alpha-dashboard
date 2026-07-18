@@ -19,12 +19,12 @@ AUTH = ("testuser", "testpass-strong-99")
 # Strings that must NEVER appear in an anonymous payload.
 FORBIDDEN_SUBSTRINGS = [
     "ts.net",
-    "tailfbdf93",
-    "192.168.",
+    "example.ts.net",
+    "192.0.2.",
     "127.0.0.1",
     "/Users/",
     "C:\\Users",
-    "desktop-hfck6u9",
+    "private-node",
     "authenticated_user",
 ]
 
@@ -36,7 +36,7 @@ def public_mode(monkeypatch):
     monkeypatch.setenv("PUBLIC_READ_ONLY", "1")
     # Realistic-looking sensitive state that sanitization must strip.
     monkeypatch.setenv(
-        "TV_WEBHOOK_URL", "http://desktop-hfck6u9-2.tailfbdf93.ts.net:9090"
+        "TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090"
     )
     monkeypatch.setenv(
         "DASHBOARD_SKIN_BOOK",
