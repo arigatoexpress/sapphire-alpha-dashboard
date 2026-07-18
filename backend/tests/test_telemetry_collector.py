@@ -57,3 +57,92 @@ def test_signature_headers_match_server_contract():
     headers = signed_headers(body, "x" * 32, timestamp=1234, nonce="nonce-0000000001")
     expected = hmac.new(b"x" * 32, b"1234.nonce-0000000001." + body, hashlib.sha256).hexdigest()
     assert headers["X-Sapphire-Signature"] == expected
+
+
+def test_projector_uses_reduced_agent_presence_as_live_activity(tmp_path):
+    missing = tmp_path / "missing.json"
+    presence = _write(
+        tmp_path / "agent-presence.json",
+        {
+            "version": 1,
+            "observed_at": datetime.fromtimestamp(NOW - 2, UTC).isoformat(),
+            "summary": {"active": 1, "blocked": 0, "verified": 1},
+            "agents": [
+                {
+                    "role": "Local build agent",
+                    "state": "verifying",
+                    "activity": "Golden evals and scope verified",
+                    "verification": "verified",
+                    "provider_class": "local GPU",
+                    "updated_at": datetime.fromtimestamp(NOW - 3, UTC).isoformat(),
+                }
+            ],
+            "events": [
+                {
+                    "occurred_at": datetime.fromtimestamp(NOW - 3, UTC).isoformat(),
+                    "event_type": "verification.passed",
+                    "phase": "verifying",
+                    "actor_role": "Local build agent",
+                    "provider_class": "local GPU",
+                    "source": "harness",
+                    "status": "verified",
+                    "verification": "verified",
+                    "label": "Golden evals and scope verified",
+                    "activity_band": "light",
+                    "duration_band": "under 100 ms",
+                }
+            ],
+            "source_errors": 0,
+        },
+    )
+    snapshot = validate_snapshot(
+        build_snapshot(
+            Sources(missing, missing, missing, missing, missing, missing, presence),
+            now=NOW,
+        )
+    )
+
+    assert snapshot["agents"][0]["role"] == "Local build agent"
+    assert snapshot["agents"][0]["state"] == "verifying"
+    assert snapshot["agents"][0]["activity"] == "Golden evals and scope verified"
+    assert snapshot["events"][0]["label"] == "Golden evals and scope verified"
+    assert snapshot["events"][0]["status"] == "verified"
+    assert snapshot["summary"]["active_agents"] == 1
+    intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
+    assert intelligence["status"] == "healthy"
+    assert intelligence["activity_rate"] > 0
+
+
+def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
+    missing = tmp_path / "missing.json"
+    fresh_snapshot_time = datetime.fromtimestamp(NOW, UTC).isoformat()
+    stale_agent_time = datetime.fromtimestamp(NOW - 1_000, UTC).isoformat()
+    presence = _write(
+        tmp_path / "agent-presence.json",
+        {
+            "version": 1,
+            "observed_at": fresh_snapshot_time,
+            "summary": {"active": 0, "blocked": 1, "verified": 0},
+            "agents": [
+                {
+                    "role": "Build observer",
+                    "state": "blocked",
+                    "activity": "Build proposal refused",
+                    "verification": "not_applicable",
+                    "provider_class": "local CPU",
+                    "updated_at": stale_agent_time,
+                }
+            ],
+            "events": [],
+            "source_errors": 0,
+        },
+    )
+
+    snapshot = validate_snapshot(
+        build_snapshot(Sources(missing, missing, missing, missing, missing, missing, presence), now=NOW)
+    )
+    intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
+    assert intelligence["status"] == "degraded"
+    assert intelligence["freshness_s"] == 1_000
+    assert snapshot["summary"]["active_agents"] == 0
+    assert snapshot["summary"]["attention"] >= 1
