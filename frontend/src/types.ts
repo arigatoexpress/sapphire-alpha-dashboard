@@ -152,3 +152,82 @@ export interface WidgetData {
   system_health: SystemHealth
   rendered_at: string
 }
+
+export type LiveStatus = 'live' | 'stale' | 'warming' | 'offline'
+export type NodeHealth = 'healthy' | 'degraded' | 'down' | 'unknown'
+export type ActivityBand = 'quiet' | 'light' | 'active' | 'busy'
+
+export interface LiveNode {
+  id: string
+  zone: 'edge' | 'orchestration' | 'compute' | 'intelligence' | 'markets' | 'archive'
+  label: string
+  status: NodeHealth
+  load_band: 'idle' | 'low' | 'medium' | 'high'
+  activity_band?: ActivityBand
+  activity_rate?: number
+  freshness_band?: string
+  freshness_s?: number
+}
+
+export interface LiveLink {
+  source: string
+  target: string
+  status: NodeHealth
+  signal_class: 'network' | 'agent' | 'market' | 'reliability' | 'archive'
+  latency_band?: string
+  latency_ms?: number | null
+  activity_band?: ActivityBand
+  event_rate?: number
+}
+
+export interface LiveAgent {
+  role: string
+  state: 'working' | 'verifying' | 'idle' | 'blocked' | 'offline'
+  activity: string
+  verification: 'verified' | 'pending' | 'failed' | 'not_applicable'
+  provider_class: 'local GPU' | 'local CPU' | 'cloud reasoning' | 'hybrid' | 'unassigned'
+}
+
+export interface LiveEvent {
+  id: string
+  observed_at: string
+  event_class: 'network' | 'agent' | 'market' | 'reliability' | 'archive'
+  source: string
+  target: string
+  label: string
+  status: 'observed' | 'verified' | 'pending' | 'degraded' | 'failed' | 'recovered'
+}
+
+export interface LiveSnapshot {
+  version: number
+  observed_at: string | null
+  sequence: number | null
+  status: LiveStatus
+  freshness_s: number | null
+  served_at: string
+  public_view?: boolean
+  public_policy?: string
+  summary: {
+    state: string
+    active_agents: number
+    activity_band?: ActivityBand
+    events_per_min?: number
+    verified_today: number
+    attention: number
+  }
+  nodes: LiveNode[]
+  links: LiveLink[]
+  agents: LiveAgent[]
+  markets: {
+    network: string
+    status: string
+    feed_freshness?: string
+    feed_age_s?: number | null
+    activity_band?: ActivityBand
+    events_per_min?: number
+    paper_strategies: number
+    decision_gate: string
+    execution: string
+  }
+  events: LiveEvent[]
+}

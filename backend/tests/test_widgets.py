@@ -119,6 +119,14 @@ def test_recent_signals_env(monkeypatch):
     assert result[0]["id"] == "sig-001"
 
 
+def test_recent_signals_missing_is_honestly_empty(tmp_path, monkeypatch):
+    import main
+
+    monkeypatch.delenv("DASHBOARD_SIGNALS_JSON", raising=False)
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
+    assert _recent_signals() == []
+
+
 def test_defi_report_feed(tmp_path, monkeypatch):
     import asyncio
     import main

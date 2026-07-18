@@ -24,32 +24,17 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--service-account'
+      - 'sapphire-dashboard-sa@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars'
       - 'AUTH_USERNAME=sapphire'
       - '--update-env-vars'
-      - 'AUTH_PASSWORD=${_AUTH_PASSWORD}'
-      - '--update-env-vars'
-      - 'WALLET_ADDRESS=0x6D669f4b197Ee634A8744Fcdc55bA4ceFf057c5E'
-      - '--update-env-vars'
-      - 'MAX_ORDER_USD=25'
-      - '--update-env-vars'
-      - 'TELEGRAM_BOT_POLLING=true'
-      - '--update-env-vars'
-      - 'TV_WEBHOOK_URL=https://greene-script-email-edward.trycloudflare.com'
-      - '--update-env-vars'
-      - 'TDR_PRO_LIVE=1'
-      - '--update-env-vars'
-      - 'DASHBOARD_ARMED=false'
-      - '--update-env-vars'
-      - 'DASHBOARD_MODE=telegram'
-      - '--update-env-vars'
-      - 'DASHBOARD_FORCE_KILLSWITCH=false'
+      - 'PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=15,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1'
+      - '--set-secrets'
+      - 'AUTH_PASSWORD=SAPPHIRE_AUTH_PASSWORD:latest,TELEMETRY_INGEST_SECRET=SAPPHIRE_TELEMETRY_INGEST_SECRET:latest'
 
 images:
   - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
 
 options:
   logging: LEGACY
-
-substitutions:
-  _AUTH_PASSWORD: ''

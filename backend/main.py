@@ -41,6 +41,11 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+try:
+    from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
+except ImportError:  # Tests import `main` directly from backend/.
+    from live_telemetry import TelemetryValidationError, store as live_telemetry_store
+
 log = logging.getLogger("sapphire-alpha-dashboard")
 logging.basicConfig(level=logging.INFO)
 
@@ -205,6 +210,54 @@ async def healthz(request: Request) -> dict[str, Any]:
 async def api_health(request: Request) -> dict[str, Any]:
     """Public health endpoint that avoids Cloud Run /healthz interception."""
     return await healthz(request)
+
+
+def _reset_live_telemetry_for_tests() -> None:
+    """Reset the in-memory test backend; production persistence never deletes."""
+    live_telemetry_store.reset()
+
+
+@app.post("/api/v1/telemetry", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("120/minute")
+async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
+    """Accept one HMAC-signed semantic snapshot from the local collector."""
+    body = await request.body()
+    if len(body) > 64 * 1024:
+        raise HTTPException(status_code=413, detail="telemetry body too large")
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail="invalid telemetry JSON") from None
+    try:
+        snapshot = live_telemetry_store.accept(
+            body=body,
+            headers={key.lower(): value for key, value in request.headers.items()},
+            secret=_env("TELEMETRY_INGEST_SECRET", ""),
+            parsed_json=payload,
+        )
+    except OverflowError:
+        raise HTTPException(status_code=413, detail="telemetry body too large") from None
+    except PermissionError:
+        raise HTTPException(status_code=401, detail="invalid telemetry signature") from None
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="telemetry replay rejected") from None
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="telemetry ingest unavailable") from None
+    except TelemetryValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return {"accepted": True, "sequence": snapshot["sequence"]}
+
+
+@app.get("/api/v1/live")
+@limiter.limit(_api_rate_limit)
+async def api_live(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+    """Serve the current operator snapshot or delayed public projection."""
+    public = user == PUBLIC_USER
+    try:
+        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "15"))))
+    except ValueError:
+        delay_seconds = 15.0
+    return live_telemetry_store.get(public=public, delay_seconds=delay_seconds)
 
 
 def _read_json(path: Path) -> Any:
@@ -401,7 +454,7 @@ def _telegram_queue() -> dict[str, Any]:
 
 
 def _recent_signals() -> list[dict[str, Any]]:
-    """Recent trading signals with synthetic identifiers only."""
+    """Recent observed trading signals with synthetic display identifiers."""
     env = _env("DASHBOARD_SIGNALS_JSON", "").strip()
     data: Any = None
     if env:
@@ -424,17 +477,8 @@ def _recent_signals() -> list[dict[str, Any]]:
             }
             for i, s in enumerate(data[:12])
         ]
-    # Graceful mock when no signal file is available (Cloud Run default).
-    return [
-        {
-            "id": "sig-001",
-            "instrument": "RICH",
-            "side": "BUY",
-            "venue": "on_chain",
-            "confidence": "high",
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-    ]
+    # Missing observations must stay visibly empty; production never fabricates alpha.
+    return []
 
 
 def _parse_tdr_rss(xml_text: str) -> list[dict[str, Any]]:
@@ -564,7 +608,7 @@ async def _probe_tradingview_webhook() -> dict[str, Any]:
     """Probe the TradingView webhook receiver health endpoint.
 
     Uses TV_WEBHOOK_URL env (e.g. https://webhook.sapphirealpha.xyz/webhook/health
-    or http://desktop-hfck6u9-2.tailfbdf93.ts.net:9090/webhook/health). Falls back
+    or an authenticated private-mesh health endpoint). Falls back
     to env stub when no URL is configured.
     """
     now = datetime.now(UTC).timestamp()

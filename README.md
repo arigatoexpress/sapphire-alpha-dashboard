@@ -1,47 +1,42 @@
-# Sapphire Alpha Dashboard
+# Sapphire Alpha Observatory
 
-Mission Control for the Sapphire trading + ops stack — a unified, animated, privacy-preserving control plane running on Google Cloud Run at **[sapphirealpha.xyz](https://sapphirealpha.xyz)**.
+The public, read-only front door for the Sapphire system: a professional live view of distributed compute, agent activity, Robinhood Chain research, and verified system events at **[sapphirealpha.xyz](https://sapphirealpha.xyz)**.
 
-FastAPI backend + React/Vite frontend, shipped as a single container.
+FastAPI + React/Vite, shipped as one Cloud Run container. The application has no trading or infrastructure actuation routes.
 
-## What's new (2026-07)
+## Signal Loom architecture
 
-- **Mission Control UI** — full artistic refactor: starfield canvas, glass status tiles, live alert stream, cinematic grain, live clock.
-- **TradingView alerts pipeline** — live webhook probe + durable alert log widget (`/api/v1/tradingview/alerts`), with a helper script to rotate the webhook URL.
-- **TDR Pro clips** — backend fetches The DeFi Report Pro RSS directly from Cloud Run (`TDR_PRO_LIVE=1`); no baked-in data blobs.
-- **Knowledge-vault RAG map** — auth-gated interactive map at `/vault/rag-map`.
-- **Public read-only mode** — anonymous visitors get a sanitized, read-only main page; operator detail (queues, heartbeats, vault views) stays behind auth.
-- **Deploy hardening** — `deploy.sh` now *merges* env vars on redeploy instead of wiping them; cross-platform image builds via `cloudbuild.yaml`.
-- **CI** — backend pytest + frontend build on every push (`.github/workflows/ci.yml`).
+```text
+home-mesh raw observations
+  RH Chain, Windows GPU, agent health, knowledge cycles
+       |
+       v
+local semantic projector
+  aggregate -> allowlist -> validate -> HMAC sign
+       |
+       v
+Cloud Run signed ingest -> Firestore latest + bounded history
+       |
+       +--> delayed public projection
+       +--> authenticated operator projection
+       v
+Signal Loom + agents + research + evidence ledger
+```
 
-## Widgets
+The animation is data-backed. Link width and speed come from observed activity; color comes from signal class and health. A quiet link does not animate. Missing sources render `not observed`, `warming`, `stale`, or `offline`—never synthetic market activity.
 
-The main page composes live status tiles served by `/api/v1/widgets`:
+## Privacy boundary
 
-| Widget | What it shows |
-|---|---|
-| Gate | Trading-gate armed/disarmed state |
-| Wallet | Masked wallet status (addresses always redacted) |
-| Telegram queue | Pending decision proposals (sanitized) |
-| Signals | Recent strategy signals |
-| TradingView | Webhook liveness probe + recent alerts |
-| TDR clips | Latest The DeFi Report Pro items |
-| Business health | Upstream service health probes |
-| System | Executor heartbeat + system health |
+Public telemetry may contain semantic roles, status and load bands, bucketed freshness/latency/activity, bounded agent presence, research feed state, paper-strategy count, decision-gate class, and execution mode.
 
-## Access model
+It rejects hostnames, addresses, ports, endpoints, paths, credentials, prompts, wallet/account material, balances, positions, orders, raw errors, and unknown fields. The local projector and server both enforce the boundary.
 
-- **Anonymous (public read-only):** sanitized main page — aggregate metrics, masked identifiers, no operational controls.
-- **Authenticated (HTTP Basic):** full widget detail plus `/vault/rag-map`.
-- `/healthz` and `/api/health` are public liveness endpoints.
+## APIs
 
-## Structure
-
-- `backend/` — FastAPI service: auth, widget aggregation, sanitizers, security-header + path-traversal middleware
-- `frontend/` — React + Vite dark animated UI
-- `deploy.sh` — Cloud Run deploy (env-merge mode)
-- `cloudbuild.yaml` / `Dockerfile` — container build
-- `update-tv-webhook-url.sh` — rotate the TradingView webhook target env var
+- `POST /api/v1/telemetry` — HMAC-signed, replay-protected semantic snapshots, 64 KiB maximum
+- `GET /api/v1/live` — delayed aggregate public view or bounded authenticated operator view
+- `GET /api/health` — public service liveness
+- Legacy `/api/v1/widgets` and `/api/fleet` remain during migration, but the observatory does not treat their deploy-time state as live truth.
 
 ## Local development
 
@@ -49,35 +44,39 @@ The main page composes live status tiles served by `/api/v1/widgets`:
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-AUTH_USERNAME=sapphire AUTH_PASSWORD=change-me-now python -m uvicorn main:app --reload --port 8080
+AUTH_USERNAME=sapphire AUTH_PASSWORD=change-me-now \
+  TELEMETRY_INGEST_SECRET=replace-with-32-plus-random-characters \
+  PUBLIC_READ_ONLY=1 PUBLIC_TELEMETRY_DELAY_SECONDS=0 \
+  python -m uvicorn main:app --reload --port 8080
 ```
+
+In another terminal, inspect the safe projection or push it to the local server:
+
+```bash
+PYTHONPATH=backend:. python -m telemetry.collector
+
+SAPPHIRE_TELEMETRY_ENDPOINT=http://127.0.0.1:8080/api/v1/telemetry \
+TELEMETRY_INGEST_SECRET=replace-with-32-plus-random-characters \
+PYTHONPATH=backend:. python -m telemetry.collector --push
+```
+
+Optional local-only probe variables (`SAPPHIRE_EDGE_PROBE`, `SAPPHIRE_COMPUTE_PROBE`, `SAPPHIRE_MARKETS_PROBE`, `SAPPHIRE_ARCHIVE_PROBE`) add measured RTT to the corresponding semantic link. Probe addresses are never included in the snapshot; missing measurements remain `not observed`.
 
 ```bash
 cd frontend
-npm install
-npm run dev
+npm ci
+npm run build
 ```
 
-## Tests
+## Verification
 
 ```bash
-cd backend && pytest
+cd backend && PYTHONPATH=.. pytest -q
 cd frontend && npm run build
 ```
 
-## Deploy
+Golden tests cover signature validation, timestamp skew, nonce replay, sequence ordering, schema bounds, non-finite numbers, public projection, sensitive-field rejection, missing-source honesty, and local-projector fidelity.
 
-```bash
-./deploy.sh
-```
+## Deployment gate
 
-Reads secrets from the local keychain; merges (never clobbers) existing Cloud Run env vars.
-
-## Privacy
-
-This repo and the deployed dashboard are privacy-preserving by construction:
-
-- Wallet addresses are masked (`0xabcd...1234`); never shown in full.
-- No real names, balances, chat IDs, or account identifiers are exposed.
-- Aggregate metrics and synthetic identifiers only.
-- Anonymous traffic sees a further-sanitized read-only view.
+Production uses Firestore and Secret Manager through the least-privileged `sapphire-dashboard-sa` service account. `infra/bootstrap-telemetry.sh` is a one-time IAM/secret bootstrap and is intentionally never called by CI. Creating the telemetry secret, changing IAM, deploying, and activating the home publisher are explicit operator gates.
