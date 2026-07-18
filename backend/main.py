@@ -8,6 +8,7 @@ Public endpoints:
 Authenticated endpoints (HTTP Basic Auth):
   GET /api/v1/status
   GET /api/v1/widgets
+  GET /api/v1/transparency
 
 Public read-only mode (PUBLIC_READ_ONLY=1):
   Anonymous GETs to the frontend, /assets/*, /api/v1/status, /api/v1/widgets and
@@ -42,11 +43,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 try:
-    from . import telegram_miniapp
+    from . import telegram_miniapp, transparency
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
     import telegram_miniapp
+    import transparency
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 
@@ -310,6 +312,18 @@ async def api_moss(request: Request, user: str = Depends(auth_or_public)) -> dic
     except ValueError:
         delay_seconds = 15.0
     return moss_telemetry_store.get(public=public, delay_seconds=delay_seconds)
+
+
+@app.get("/api/v1/transparency")
+@limiter.limit(_api_rate_limit)
+async def api_transparency(
+    request: Request, user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
+    """Explanation-ledger pane: operator full detail or sanitized public bands."""
+    public = user == PUBLIC_USER
+    ledger = Path(_env("DASHBOARD_EXPLANATIONS_PATH", "")
+                  or (_TELEGRAM_DIR / transparency.LEDGER_NAME))
+    return transparency.snapshot(ledger, public=public)
 
 
 def _read_json(path: Path) -> Any:
