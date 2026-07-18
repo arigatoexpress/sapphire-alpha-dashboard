@@ -4,7 +4,8 @@ import { SignalLoom } from './components/SignalLoom'
 import { LiveClock } from './components/LiveClock'
 import { ShieldIcon } from './components/icons'
 import { useLiveTelemetry } from './hooks/useLiveTelemetry'
-import type { LiveAgent, LiveEvent, LiveSnapshot } from './types'
+import { useMossSnapshot } from './hooks/useMossSnapshot'
+import type { LiveAgent, LiveEvent, LiveSnapshot, MossSnapshot } from './types'
 
 function formatAge(seconds: number | null): string {
   if (seconds == null) return 'not observed'
@@ -29,6 +30,7 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false)
   const authHeader = useMemo(() => creds ? `Basic ${btoa(`${creds.user}:${creds.pass}`)}` : '', [creds])
   const { snapshot, error, loading, authRequired } = useLiveTelemetry(authHeader)
+  const { snapshot: mossSnapshot, error: mossError } = useMossSnapshot(authHeader)
   const publicView = snapshot?.public_view !== false && !creds
 
   if ((authRequired || showLogin) && !creds) {
@@ -70,6 +72,7 @@ export default function App() {
 
         <SafetyRail snapshot={snapshot} />
         <SignalLoom nodes={snapshot?.nodes ?? []} links={snapshot?.links ?? []} status={snapshot?.status ?? 'offline'} />
+        <MossPanel snapshot={mossSnapshot} error={mossError} />
 
         <div className="lower-grid">
           <AgentPanel agents={snapshot?.agents ?? []} />
@@ -82,7 +85,7 @@ export default function App() {
             <p className="eyebrow">Public by design</p>
             <h2>Transparent outcomes. Protected infrastructure.</h2>
           </div>
-          <p>Every public signal is aggregated, delayed, and projected into semantic roles before it leaves the home mesh. The observatory shows health, flow, verification, and research activity—not credentials, addresses, balances, endpoints, or execution details.</p>
+          <p>Every public signal is aggregated, delayed, and projected into semantic roles before it leaves the home mesh. The observatory shows health, flow, verification, and research activity—not credentials, addresses, exact balances, endpoints, or execution details.</p>
         </section>
       </main>
 
@@ -144,6 +147,33 @@ function MarketPanel({ snapshot }: { snapshot: LiveSnapshot | null }) {
         <Metric label="Execution" value={market?.execution ?? 'off'} />
       </div>
       <p className="panel-caption">Public-chain activity is research telemetry. Decisions remain gated; execution is separate and off.</p>
+    </section>
+  )
+}
+
+function MossPanel({ snapshot, error }: { snapshot: MossSnapshot | null; error: string }) {
+  const operator = snapshot?.public_view === false || Boolean(snapshot?.identity_masked)
+  const stableValue = operator ? snapshot?.usdm ?? 'not observed' : snapshot?.usdm_band ?? 'not observed'
+  const ethValue = operator ? snapshot?.eth ?? 'not observed' : snapshot?.eth_state ?? 'not observed'
+  const freshness = snapshot?.observation_freshness ?? formatAge(snapshot?.freshness_s ?? null)
+  return (
+    <section className="data-panel moss-panel" aria-label="MegaETH MOSS wallet observation">
+      <div className="moss-intro">
+        <div>
+          <p className="eyebrow">Onchain assets · read only</p>
+          <h2>MegaETH / MOSS</h2>
+          <p>Hosted passkey custody with a separately projected public-state observer. No transaction authority enters Sapphire Alpha.</p>
+        </div>
+        <span className={`moss-state status-${snapshot?.status ?? 'offline'}`}><i />{snapshot?.status ?? 'offline'}</span>
+      </div>
+      <div className="moss-metrics">
+        <Metric label="USDm observed" value={stableValue} />
+        <Metric label="ETH gas" value={ethValue} />
+        <Metric label="Freshness" value={freshness} />
+        <Metric label="Authority" value={snapshot?.authority ?? 'read-only'} />
+        {operator && snapshot?.identity_masked ? <span className="operator-hint mono">Operator identity {snapshot.identity_masked} · block {snapshot.block ?? '—'}</span> : null}
+        {error ? <span className="moss-error">{error}</span> : null}
+      </div>
     </section>
   )
 }
