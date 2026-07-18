@@ -185,7 +185,7 @@ export interface LiveAgent {
   state: 'working' | 'verifying' | 'idle' | 'blocked' | 'offline'
   activity: string
   verification: 'verified' | 'pending' | 'failed' | 'not_applicable'
-  provider_class: 'local GPU' | 'local CPU' | 'cloud reasoning' | 'hybrid' | 'unassigned'
+  provider_class: 'local GPU' | 'local CPU' | 'cloud reasoning' | 'hybrid' | 'rule-only' | 'unassigned'
 }
 
 export interface LiveEvent {
