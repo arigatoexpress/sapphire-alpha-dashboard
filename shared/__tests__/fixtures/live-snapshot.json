@@ -15,7 +15,7 @@
       "zone": "edge",
       "label": "Public edge",
       "status": "healthy",
-      "load_band": "low",
+      "load": "low",
       "activity_rate": 29.95,
       "freshness_s": 0.0
     },
@@ -24,7 +24,7 @@
       "zone": "orchestration",
       "label": "Orchestration",
       "status": "down",
-      "load_band": "medium",
+      "load": "medium",
       "activity_rate": 63.6,
       "freshness_s": 9262.541
     },
@@ -33,7 +33,7 @@
       "zone": "compute",
       "label": "GPU compute",
       "status": "healthy",
-      "load_band": "medium",
+      "load": "medium",
       "activity_rate": 24.0,
       "freshness_s": 99.541
     },
@@ -42,7 +42,7 @@
       "zone": "intelligence",
       "label": "Agent intelligence",
       "status": "down",
-      "load_band": "idle",
+      "load": "idle",
       "activity_rate": 0.0,
       "freshness_s": 84359.831
     },
@@ -51,7 +51,7 @@
       "zone": "markets",
       "label": "Robinhood Chain",
       "status": "healthy",
-      "load_band": "high",
+      "load": "high",
       "activity_rate": 599.0,
       "freshness_s": 1.541
     },
@@ -60,7 +60,7 @@
       "zone": "archive",
       "label": "Knowledge archive",
       "status": "down",
-      "load_band": "medium",
+      "load": "medium",
       "activity_rate": 63.6,
       "freshness_s": 9262.541
     },
@@ -69,7 +69,7 @@
       "zone": "compute",
       "label": "Windows workhorse",
       "status": "healthy",
-      "load_band": "idle",
+      "load": "idle",
       "activity_rate": 8.0,
       "freshness_s": 0.0
     },
@@ -78,7 +78,7 @@
       "zone": "intelligence",
       "label": "Agent worker",
       "status": "healthy",
-      "load_band": "idle",
+      "load": "idle",
       "activity_rate": 8.0,
       "freshness_s": 58.581
     },
@@ -87,7 +87,7 @@
       "zone": "edge",
       "label": "Telegram command bot",
       "status": "healthy",
-      "load_band": "medium",
+      "load": "medium",
       "activity_rate": 17.0,
       "freshness_s": 134.581
     },
@@ -96,7 +96,7 @@
       "zone": "compute",
       "label": "Ollama inference",
       "status": "healthy",
-      "load_band": "medium",
+      "load": "medium",
       "activity_rate": 8.0,
       "freshness_s": 0.0
     },
@@ -105,7 +105,7 @@
       "zone": "archive",
       "label": "Knowledge archive",
       "status": "healthy",
-      "load_band": "medium",
+      "load": "medium",
       "activity_rate": 32.0,
       "freshness_s": 58.581
     }

@@ -29,6 +29,10 @@ numeric fields differ, which is the entire point of the fixture.
 `validate_snapshot()` runs `_scan_forbidden()` over the whole payload, so this file provably
 contains no hostname, URL, IP address, filesystem path or wallet address.
 
+Regenerated the same day against commit `bf76b82`, which renamed the served node field
+`load_band` to `load`. Producers still send `load_band` on the wire and the backend renames it
+on ingest, so the fixture is what a *consumer* sees, which is what these tests are about.
+
 ## `empty-snapshot.json`
 
 The literal output of `live_telemetry._empty_snapshot(public=False, status="offline")` — what

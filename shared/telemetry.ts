@@ -21,11 +21,14 @@ export type Zone = 'edge' | 'orchestration' | 'compute' | 'intelligence' | 'mark
 export type Health = 'healthy' | 'degraded' | 'down' | 'unknown'
 
 /**
- * `_LOAD`. Note this is a band and it stays one after the public projection is
- * deleted: `load_band` is a *required ingest field*, not a redaction artifact.
- * Producers never send a raw load number, so there is none to un-redact.
+ * `_LOAD`. Served as `load`. It reads like a redaction band and is not one:
+ * producers measure a categorical load directly, there is no underlying number,
+ * and nothing is being withheld. It was *called* `load_band` until the
+ * redaction tier was deleted; the backend still accepts that name on the wire
+ * from producers and renames it before storing or serving (live_telemetry.py
+ * `validate_snapshot` and `_normalize_stored`). Consumers only ever see `load`.
  */
-export type LoadBand = 'idle' | 'low' | 'medium' | 'high'
+export type NodeLoad = 'idle' | 'low' | 'medium' | 'high'
 
 /**
  * `_SUMMARY_STATES`, plus `'not observed'`, which only `_empty_snapshot()`
@@ -84,7 +87,7 @@ export interface LiveNode {
   zone: Zone
   label: string
   status: Health
-  load_band: LoadBand
+  load: NodeLoad
   /** Events per minute attributed to this node. */
   activity_rate: number
   /** Age of this node's own reading, in seconds. */

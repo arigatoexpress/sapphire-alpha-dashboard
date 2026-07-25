@@ -12,7 +12,7 @@ function node(partial: Partial<LiveNode> & Pick<LiveNode, 'id'>): LiveNode {
     zone: 'compute',
     label: 'A node',
     status: 'healthy',
-    load_band: 'low',
+    load: 'low',
     activity_rate: 0,
     freshness_s: 1,
     ...partial,
