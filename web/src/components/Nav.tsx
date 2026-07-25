@@ -5,6 +5,7 @@ export const ROUTES = [
   { href: '/trading/', label: 'Trading' },
   { href: '/security/', label: 'Security' },
   { href: '/onchain/', label: 'On-Chain' },
+  { href: '/research/', label: 'Research' },
   { href: '/about/', label: 'About' },
 ] as const
 

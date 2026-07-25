@@ -1,12 +1,12 @@
 import type { Metric } from '@/data/metrics'
 
 /**
- * A figure plus the command that reproduces it.
+ * A figure and what it actually counts.
  *
- * The disclosure is a native <details>, not React state: it works before
- * hydration, survives a JS failure, and is keyboard-accessible for free. On a
- * statically exported page that argues for verifiability, shipping a component
- * that needs a bundle to reveal its own proof would undercut the point.
+ * The `verify` command stays in the data file as the internal record of how the
+ * number was produced, but it is not rendered — a reader should not need to
+ * read shell to trust a claim. What earns trust here is precision about what is
+ * being counted: "test functions defined" rather than a rounder, vaguer number.
  */
 export default function MetricCard({ metric, index = 0 }: { metric: Metric; index?: number }) {
   return (
@@ -26,16 +26,6 @@ export default function MetricCard({ metric, index = 0 }: { metric: Metric; inde
       </p>
 
       <p className="mt-3 max-w-[34ch] text-sm leading-relaxed text-ink-dim">{metric.detail}</p>
-
-      <details className="mt-4">
-        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 font-mono text-[11px] tracking-[0.12em] text-sapphire uppercase transition-opacity hover:opacity-70 [&::-webkit-details-marker]:hidden">
-          Verify
-          <span aria-hidden="true" className="text-[9px]">▼</span>
-        </summary>
-        <pre className="mt-2.5 overflow-x-auto border-l-2 border-sapphire/40 bg-sunk px-3 py-2.5 font-mono text-[11px] leading-relaxed text-ink-dim">
-          <code>{metric.verify}</code>
-        </pre>
-      </details>
     </div>
   )
 }

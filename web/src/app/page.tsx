@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import MetricCard from '@/components/Metric'
-import { Eyebrow, Panel, Rule, Terminal, Verified } from '@/components/Primitives'
-import { CHAIN, CORE_METRICS, MEASURED_AT, MEASURED_SHA } from '@/data/metrics'
+import LiveSystem from '@/components/LiveSystem'
+import { Eyebrow, Panel, Rule, Verified } from '@/components/Primitives'
+import { CHAIN, CORE_METRICS, MEASURED_AT } from '@/data/metrics'
 
 const CAPABILITIES = [
   {
@@ -37,8 +38,13 @@ export default function Home() {
       <section className="mx-auto max-w-6xl px-6 pt-20 pb-8 md:pt-32">
         <div className="grid items-start gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
           <div>
+            {/* Deliberately not a status badge. Live status is asserted in exactly
+                one place — the panel opposite, which reads the real feed. A second,
+                hardcoded "operational" claim would be green with nothing behind it. */}
             <div className="rise">
-              <Verified>System operational · {CHAIN.name}</Verified>
+              <Eyebrow>
+                {CHAIN.name} · chain {CHAIN.id}
+              </Eyebrow>
             </div>
 
             <h1
@@ -54,9 +60,9 @@ export default function Home() {
               className="rise mt-8 max-w-xl text-lg leading-relaxed text-ink-dim text-pretty md:text-xl"
               style={{ animationDelay: '150ms' }}
             >
-              Sapphire Alpha builds autonomous trading and agent infrastructure for people
-              who read the source. Every number on this site ships with the command that
-              reproduces it.
+              Autonomous trading and agent infrastructure that shows its work. The system
+              below is running right now — and every claim on this site is one you can hold
+              us to, because we say in advance what would prove it wrong.
             </p>
 
             <div
@@ -78,28 +84,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* The hero's proof object. Not a screenshot — a transcript. */}
+          {/* The hero's proof object: the running system itself, not a transcript. */}
           <div className="rise lg:pt-3" style={{ animationDelay: '300ms' }}>
-            <Terminal
-              title="sapphirealpha.xyz — public projection"
-              scanline
-              lines={[
-                { prompt: true, text: 'curl -s https://sapphirealpha.xyz/api/health' },
-                { text: '{', tone: 'dim' },
-                { text: '  "status": "ok",' },
-                { text: '  "service": "sapphire-alpha-dashboard",' },
-                { text: '  "version": "0.2.0"' },
-                { text: '}', tone: 'dim' },
-                { text: '' },
-                { prompt: true, text: `git rev-parse --short HEAD` },
-                { text: MEASURED_SHA, tone: 'sapphire' },
-                { text: '' },
-                { prompt: true, text: "git ls-files '*.py' | xargs grep -hc 'def test_'" },
-                { text: '7695', tone: 'verified' },
-                { text: '' },
-                { text: '# every figure below is one command away.', tone: 'dim' },
-              ]}
-            />
+            <LiveSystem />
           </div>
         </div>
       </section>
@@ -120,8 +107,7 @@ export default function Home() {
             </h2>
           </div>
           <p className="font-mono text-[11px] text-ink-faint">
-            <span className="tnum">{MEASURED_AT}</span> · commit{' '}
-            <span className="tnum text-ink-dim">{MEASURED_SHA}</span> · clean tree
+            counted <span className="tnum text-ink-dim">{MEASURED_AT}</span>
           </p>
         </div>
 
@@ -132,9 +118,9 @@ export default function Home() {
         </div>
 
         <p className="mt-12 max-w-2xl text-sm leading-relaxed text-ink-faint">
-          These count what they say they count. &ldquo;Test functions defined&rdquo; is not
-          &ldquo;tests passing&rdquo; — the honest version of a metric is usually the less
-          impressive one, and it is the only kind worth putting on a page like this.
+          Each of these says exactly what it counts. &ldquo;Test functions
+          defined&rdquo; is not the same claim as &ldquo;tests passing,&rdquo; and we use the
+          narrower one — the honest version of a number is usually the less impressive one.
         </p>
       </section>
 
@@ -191,18 +177,19 @@ export default function Home() {
 
           <div className="space-y-6 text-base leading-relaxed text-ink-dim md:text-lg">
             <p>
-              Backtests are presented without the data that produced them. Uptime is asserted
-              rather than shown. &ldquo;Institutional-grade&rdquo; means whatever the deck
+              Backtests get shown without the data behind them. Uptime gets asserted rather
+              than displayed. &ldquo;Institutional-grade&rdquo; means whatever the pitch deck
               needs it to mean.
             </p>
             <p>
-              This system is built the other way around. The test suite is the specification.
-              The public API serves a delayed, sanitized projection of the same state the
-              operator sees — not a marketing mirror of it. Wallet addresses are masked before
-              they leave the process, and the masking is itself under test.
+              This works the other way around. Before a position is taken, we write down what
+              would prove the thesis wrong — and then that judgement gets scored against what
+              actually happened. The panel above is the live system, not a recording, and it
+              goes blank rather than pretending when the feed stops.
             </p>
             <p className="text-ink">
-              The claim is not that the system is flawless. It is that you can check.
+              The claim is not that we are always right. It is that you can tell when we
+              were not.
             </p>
           </div>
         </div>
