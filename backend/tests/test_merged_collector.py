@@ -26,7 +26,7 @@ def _sample_snapshot(agent_id: str, node_id: str, sequence: int) -> dict:
                 "zone": "edge",
                 "label": node_id,
                 "status": "healthy",
-                "load_band": "low",
+                "load": "low",
                 "activity_rate": 1.0,
                 "freshness_s": 0.0,
             }

@@ -67,13 +67,17 @@ def public_mode(monkeypatch):
     yield
 
 
-def test_public_mode_off_widgets_requires_auth(monkeypatch):
+def test_anonymous_reads_no_longer_depend_on_an_env_flag(monkeypatch):
+    """Anonymous GET is the contract, not a mode that can be switched off.
+
+    PUBLIC_READ_ONLY used to decide this. It no longer does — the sanitizers
+    are what protect these payloads, and they run on their own.
+    """
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    assert client.get("/api/v1/widgets").status_code == 401
-    assert client.get("/api/v1/status").status_code == 401
-    # `/` is the public marketing site and is intentionally anonymous; the
-    # operator surface it replaced is gated at /dashboard.
-    assert client.get("/dashboard").status_code == 401
+    for path in ("/api/v1/widgets", "/api/v1/status"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert r.json()["public_view"] is True
 
 
 def test_anonymous_widgets_sanitized(public_mode):
@@ -197,9 +201,10 @@ def test_public_rate_limit_tightened(public_mode):
     assert main._api_rate_limit() == "20/minute"
 
 
-def test_rate_limit_normal_when_private(monkeypatch):
+def test_rate_limit_is_unconditional(monkeypatch):
+    """There is no private mode left in which the looser limit would apply."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    assert main._api_rate_limit() == "60/minute"
+    assert main._api_rate_limit() == "20/minute"
 
 
 def test_round_usd():

@@ -214,8 +214,9 @@ def test_security_headers_full_set_on_success():
 
 
 def test_security_headers_on_401(monkeypatch):
-    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    r = client.get("/api/v1/widgets")
+    # GETs are anonymous now, so /vault/rag-map — which keeps require_auth
+    # unconditionally — is where a 401 can still be observed.
+    r = client.get("/vault/rag-map")
     assert r.status_code == 401
     _assert_security_headers(r)
 
@@ -297,26 +298,32 @@ def test_wrong_username_rejected_even_in_public_mode(monkeypatch):
     assert r.status_code == 401
 
 
-def test_401_sends_basic_challenge(monkeypatch):
-    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    r = client.get("/api/v1/status")
+def test_401_sends_basic_challenge():
+    r = client.get("/vault/rag-map")
     assert r.status_code == 401
     assert r.headers.get("WWW-Authenticate") == "Basic"
 
 
-def test_dashboard_requires_auth_in_private_mode(monkeypatch, tmp_path):
-    """The operator SPA moved to /dashboard; its auth gate moved with it.
+def test_non_get_still_challenges_anonymously():
+    """Un-redacting reads must not un-protect writes."""
+    r = client.post("/api/v1/status")
+    assert r.status_code in (401, 405)
+    if r.status_code == 401:
+        assert r.headers.get("WWW-Authenticate") == "Basic"
 
-    `/` is now the public marketing site and is anonymous by design — the gate
-    that used to live on the catch-all lives on /dashboard instead.
+
+def test_dashboard_is_anonymous_and_serves_only_the_static_bundle(monkeypatch, tmp_path):
+    """The operator SPA is public now — it is a bundle, not a data source.
+
+    Everything it renders comes from the API routes, which do their own
+    sanitizing. Serving the bundle anonymously therefore discloses nothing that
+    `GET /api/v1/live` does not already disclose on purpose.
     """
-    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
     (tmp_path / "index.html").write_text("<html>x</html>")
     monkeypatch.setattr(main, "_FRONTEND_DIST_DIR", tmp_path)
-    assert client.get("/dashboard").status_code == 401
-    assert client.get("/dashboard/any/spa/route").status_code == 401
+    assert client.get("/dashboard").status_code == 200
+    assert client.get("/dashboard/any/spa/route").status_code == 200
     assert client.get("/dashboard", auth=AUTH).status_code == 200
-    assert client.get("/dashboard/any/spa/route", auth=AUTH).status_code == 200
 
 
 def test_dashboard_503_when_bundle_missing(tmp_path, monkeypatch):
@@ -339,9 +346,11 @@ def test_marketing_catchall_never_serves_operator_state(monkeypatch, tmp_path):
     r = client.get("/")
     assert r.status_code == 200
     assert "OPERATOR-BUNDLE" not in r.text
-    # Operator surfaces stay gated regardless of the public root.
-    assert client.get("/api/v1/widgets").status_code == 401
-    assert client.get("/dashboard").status_code == 401
+    # The root serves the marketing bundle and nothing else — the operator
+    # bundle lives at /dashboard, which is a separate route, not a fallback.
+    assert "OPERATOR-BUNDLE" in client.get("/dashboard").text
+    # And the anonymous widgets payload is still the sanitized one.
+    assert client.get("/api/v1/widgets").json().get("public_view") is True
 
 
 # ---------------------------------------------------------------------------

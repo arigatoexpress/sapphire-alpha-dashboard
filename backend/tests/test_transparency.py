@@ -121,7 +121,11 @@ def test_endpoint_public_sanitized(ledger, monkeypatch):
     assert body["records"][0]["size_band"] == "$5–10"
 
 
-def test_endpoint_requires_auth_when_not_public(ledger, monkeypatch):
+def test_endpoint_is_anonymous_and_still_sanitized_without_the_env_flag(ledger, monkeypatch):
+    """Anonymous readers get the banded ledger whether or not PUBLIC_READ_ONLY is set."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
     r = client.get("/api/v1/transparency")
-    assert r.status_code == 401
+    assert r.status_code == 200
+    body = r.json()
+    assert body["public_view"] is True
+    assert "size_usd" not in json.dumps(body)

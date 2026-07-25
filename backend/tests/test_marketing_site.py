@@ -110,17 +110,16 @@ def test_marketing_site_cannot_escape_its_directory(web_out):
         assert "operator-only" not in response.text, attack
 
 
-def test_dashboard_is_still_served_and_still_gated(web_out, monkeypatch):
-    """The operator SPA moved to /dashboard but kept its auth posture."""
-    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    dist = Path(main._FRONTEND_DIST_DIR)
+def test_dashboard_is_still_served_and_now_anonymous(web_out, monkeypatch):
+    """The operator SPA is served at /dashboard and no longer behind Basic auth.
 
-    assert client.get("/dashboard").status_code == 401
-    assert client.get("/dashboard/live").status_code == 401
-
-    if (dist / "index.html").is_file():
-        assert client.get("/dashboard", auth=AUTH).status_code == 200
-        assert client.get("/dashboard/live", auth=AUTH).status_code == 200
+    A 503 here means the Vite bundle is not built in this checkout, which is a
+    build-state fact rather than an auth fact — what matters is that neither
+    the anonymous nor the authenticated request is refused with a 401.
+    """
+    for path in ("/dashboard", "/dashboard/live"):
+        assert client.get(path).status_code in (200, 503)
+        assert client.get(path, auth=AUTH).status_code in (200, 503)
 
 
 def test_marketing_site_does_not_shadow_the_api(web_out):
@@ -130,8 +129,10 @@ def test_marketing_site_does_not_shadow_the_api(web_out):
     assert health.json()["service"] == "sapphire-alpha-dashboard"
 
     assert client.get("/healthz").status_code == 200
-    # Still auth-gated rather than answered with marketing HTML.
-    assert client.get("/api/v1/widgets").status_code == 401
+    # Answered by the API with JSON, not swallowed by the catch-all as HTML.
+    widgets = client.get("/api/v1/widgets")
+    assert widgets.status_code == 200
+    assert widgets.headers["content-type"].startswith("application/json")
 
 
 def test_falls_back_to_dashboard_when_site_not_built(tmp_path, monkeypatch):

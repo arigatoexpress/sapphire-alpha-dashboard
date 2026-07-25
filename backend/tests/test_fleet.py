@@ -53,11 +53,19 @@ def fleet_file(tmp_path, monkeypatch):
 # --- auth ---------------------------------------------------------------------
 
 
-def test_fleet_requires_auth_in_private_mode(monkeypatch, fleet_file):
+def test_fleet_get_is_anonymous_but_sanitized(monkeypatch, fleet_file):
+    """Reads are public now; the sanitizer, not the auth gate, is the protection."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
+    fleet_file.write_text(json.dumps(_snapshot()), encoding="utf-8")
     r = client.get("/api/fleet")
-    assert r.status_code == 401
-    assert r.headers.get("WWW-Authenticate") == "Basic"
+    assert r.status_code == 200
+    assert r.json()["public_view"] is True
+
+
+def test_fleet_non_get_still_requires_auth(fleet_file):
+    r = client.post("/api/fleet")
+    assert r.status_code in (401, 405)
+    assert r.status_code != 200
 
 
 def test_fleet_wrong_creds_rejected_even_in_public_mode(monkeypatch, fleet_file):

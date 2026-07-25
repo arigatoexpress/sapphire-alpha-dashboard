@@ -10,12 +10,17 @@ Authenticated endpoints (HTTP Basic Auth):
   GET /api/v1/widgets
   GET /api/v1/transparency
 
-Public read-only mode (PUBLIC_READ_ONLY=1):
-  Anonymous GETs to the frontend, /assets/*, /api/v1/status, /api/v1/widgets and
-  /api/v1/tradingview/alerts are allowed but served a whitelist-sanitized payload
-  (no internal URLs/hostnames, no proposal bodies, no exact capital figures, no
-  limits/caps, no file paths). Authenticated users always get the full payload.
-  /vault/rag-map ALWAYS requires auth regardless of PUBLIC_READ_ONLY.
+Anonymous read access:
+  Every GET is anonymous. /api/v1/live is served un-redacted — the real
+  latencies, event rates and freshness, identical to what an operator sees.
+  The remaining sanitizers are narrow and deliberate, not a general tier:
+  /api/v1/status, /api/v1/widgets, /api/v1/fleet and /api/v1/tradingview/alerts
+  still drop internal URLs/hostnames, proposal bodies, exact capital figures,
+  limits/caps and file paths for anonymous callers, and /api/v1/moss keeps
+  capital in bands (Ari, 2026-07-25). Authenticated users get the full payload.
+
+  Reads being public does not make writes public: non-GET methods require auth,
+  signed ingest keeps its HMAC, and /vault/rag-map always requires auth.
 """
 
 from __future__ import annotations
@@ -70,14 +75,14 @@ security_optional = HTTPBasic(auto_error=False)
 PUBLIC_USER = "public"
 
 
-def _public_read_only() -> bool:
-    """Whether anonymous read-only access is enabled (checked per request)."""
-    return _safe_bool(_env("PUBLIC_READ_ONLY", ""))
-
-
 def _api_rate_limit() -> str:
-    """Tighter limiter on API routes while the dashboard is publicly readable."""
-    return "20/minute" if _public_read_only() else "60/minute"
+    """Rate limit for API routes.
+
+    Anonymous reads are unconditional now, so the tighter of the two former
+    limits is the only one that applies; there is no operator-only mode left in
+    which the looser 60/minute would have been correct.
+    """
+    return "20/minute"
 
 
 @app.middleware("http")
@@ -275,14 +280,20 @@ def auth_or_public(
     request: Request,
     credentials: HTTPBasicCredentials | None = Depends(security_optional),
 ) -> str:
-    """Allow anonymous GETs when PUBLIC_READ_ONLY is enabled; otherwise require auth.
+    """Anonymous GETs are allowed; every other method requires auth.
 
-    Presented credentials are always validated (bad creds never fall back to the
-    anonymous path). Non-GET methods always require auth.
+    Reads are public because the system is meant to be watched — that is the
+    whole point of the machine room. Writes are a different question and the
+    answer did not change: un-redacting reads must not un-protect writes, so
+    non-GET methods still require credentials, and signed ingest keeps its HMAC
+    regardless of this dependency.
+
+    Presented credentials are always validated, so bad credentials never fall
+    back to the anonymous path.
     """
     if credentials is not None:
         return require_auth(credentials)
-    if _public_read_only() and request.method == "GET":
+    if request.method == "GET":
         return PUBLIC_USER
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -353,13 +364,8 @@ async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
 @app.get("/api/v1/live")
 @limiter.limit(_api_rate_limit)
 async def api_live(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
-    """Serve the current operator snapshot or delayed public projection."""
-    public = user == PUBLIC_USER
-    try:
-        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "15"))))
-    except ValueError:
-        delay_seconds = 15.0
-    return live_telemetry_store.get(public=public, delay_seconds=delay_seconds)
+    """Serve the current snapshot — the same one, undelayed, to every reader."""
+    return live_telemetry_store.get(public=user == PUBLIC_USER)
 
 
 @app.post("/api/v1/moss/telemetry", status_code=status.HTTP_202_ACCEPTED)
@@ -396,12 +402,18 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
 @app.get("/api/v1/moss")
 @limiter.limit(_api_rate_limit)
 async def api_moss(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
-    """Serve exact operator detail or a banded anonymous MOSS projection."""
+    """Serve exact operator detail or a banded anonymous MOSS projection.
+
+    Capital is the one thing that stays redacted (Ari, 2026-07-25) — but it is
+    redacted by *banding*, not by delay. The delay knob survives here only for
+    MOSS; it now defaults to 0 so the code agrees with the deployed config
+    instead of relying on an env var to switch off a behaviour nobody wants.
+    """
     public = user == PUBLIC_USER
     try:
-        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "15"))))
+        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "0"))))
     except ValueError:
-        delay_seconds = 15.0
+        delay_seconds = 0.0
     return moss_telemetry_store.get(public=public, delay_seconds=delay_seconds)
 
 
