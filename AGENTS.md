@@ -1,13 +1,21 @@
 # AGENTS.md — sapphire-alpha-dashboard
 
 ## Role
-Public, privacy-preserving Mission Control for the Sapphire Alpha trading & business stack.
+Two surfaces on one Cloud Run service:
+- `/` — the **public marketing site** (`web/`), the front door for consulting and investor conversations.
+- `/dashboard` — privacy-preserving **Mission Control** (`frontend/`) for the trading & business stack.
 
 ## Tech stack
-- Backend: FastAPI + uvicorn (Python 3.11)
-- Frontend: React 19 + Vite + TypeScript + Framer Motion
-- Hosting: Cloud Run (Docker / Cloud Build deploy)
-- Visual effects: WebGL starfield, animated grain, glassmorphism cards, reduced-motion support
+- Backend: FastAPI + uvicorn (Python 3.11) — also serves both frontends as static files
+- Marketing site (`web/`): Next.js 16 static export + Tailwind v4 + TypeScript
+- Operator dashboard (`frontend/`): React 19 + Vite + TypeScript + Framer Motion
+- Hosting: Cloud Run (Docker / Cloud Build deploy), one image, one domain
+
+### Why a static export
+`next.config.ts` sets `output: 'export'`, so `web/` compiles to plain prerendered HTML in
+`web/out/`. The FastAPI container serves that directory directly — no second service, no
+reverse proxy, and every marketing route is a real HTML file for crawlers and unfurlers.
+There is no Next.js server at runtime; do not add a route handler or server action to `web/`.
 
 ## Local dev
 ```bash
@@ -15,11 +23,32 @@ cd backend
 /opt/homebrew/bin/python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-PYTHONPATH=backend:. pytest -q
 cd ..
-cd frontend
-npm install && npm run build
+PYTHONPATH=backend:. backend/.venv/bin/python -m pytest backend/tests -q
+
+# Marketing site (produces web/out/, which the backend serves at /)
+cd web && npm install && npm run build && cd ..
+
+# Operator dashboard (produces frontend/dist/, served at /dashboard)
+cd frontend && npm install && npm run build && cd ..
+
+# Serve everything together
+AUTH_USERNAME=sapphire AUTH_PASSWORD=<12+ chars> \
+  backend/.venv/bin/python -m uvicorn backend.main:app --port 8099
 ```
+
+## Marketing site rules (`web/`)
+- **Every figure ships with the command that reproduces it.** All numbers live in
+  `web/src/data/metrics.ts`, each with a `verify` one-liner rendered on the page.
+  Re-measure with `./web/scripts/measure.sh` and update `MEASURED_SHA` / `MEASURED_AT`
+  in the same commit. Never hand-edit a value.
+- **Green means verified, and nothing else.** The `verified` colour token is owned solely by
+  the `<Verified>` component. Do not use it decoratively — a green pixel is a claim.
+- Sapphire is the only accent. Structure is hairlines; no glassmorphism, shadows, or
+  radii past 2px.
+- Prefer zero-JS primitives (`<details>` for the verify reveal, CSS for motion). The site
+  must be fully readable with JavaScript disabled.
+- All motion respects `prefers-reduced-motion`.
 
 ## Offline fallback
 If `sapphirealpha.xyz` is unreachable from the current network/client, run the local fallback:
@@ -52,6 +81,14 @@ The Dockerfile uses `npm install` rather than `npm ci` so the container build to
 Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` Cloud Run service in `us-central1`.
 
 ## Endpoints
+- Public marketing site: `GET /`, `/architecture/`, `/trading/`, `/security/`, `/onchain/`, `/about/`
+  - Anonymous **by design** — the front door must not sit behind Basic auth. Served only from
+    `web/out`; no operator state reaches it. Asserted in `backend/tests/test_marketing_site.py`.
+- Public SEO assets: `GET /robots.txt`, `GET /sitemap.xml`, `GET /opengraph-image`
+  - Next.js writes the OG image **without a file extension**; `backend/main.py` maps it to
+    `image/png` explicitly, or unfurlers drop the preview.
+- Public build assets: `GET /_next/*` (fingerprinted, immutable cache)
+- Operator dashboard: `GET /dashboard`, `GET /dashboard/*` — auth-gated (`auth_or_public`)
 - Public: `GET /healthz`, `GET /api/health`
 - Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
 - Public/operator projections: `GET /api/v1/live`, `GET /api/v1/moss`, `GET /api/v1/transparency`

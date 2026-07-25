@@ -35,5 +35,10 @@ steps:
 images:
   - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
 
+# The image now builds two frontends (Vite dashboard + Next.js marketing site)
+# alongside the Python runtime. That comfortably exceeds Cloud Build's 10-minute
+# default on a cold layer cache.
+timeout: 1800s
+
 options:
   logging: LEGACY

@@ -40,3 +40,38 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  web-build:
+    name: web-build (public marketing site)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Assert the static export is complete
+        run: |
+          set -euo pipefail
+          for path in \
+            index.html \
+            architecture/index.html \
+            trading/index.html \
+            security/index.html \
+            onchain/index.html \
+            about/index.html \
+            robots.txt \
+            sitemap.xml \
+            opengraph-image
+          do
+            test -s "out/$path" || { echo "missing or empty: out/$path"; exit 1; }
+          done
+          # The OG image is written without a file extension; make sure it is
+          # still a real PNG before it reaches a social unfurler.
+          file out/opengraph-image | grep -q 'PNG image data'
