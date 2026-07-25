@@ -30,6 +30,11 @@ COPY web/package.json web/package-lock.json ./
 RUN npm install
 COPY web/next.config.ts web/tsconfig.json web/postcss.config.mjs ./
 COPY web/src ./src
+# The published research corpus. lib/research.ts reads it at build time to
+# enumerate /research/[slug] via generateStaticParams(); without it the directory
+# is absent, the corpus reads as empty, and `output: export` fails the build with
+# the misleading "missing generateStaticParams()" (see the note in lib/research.ts).
+COPY web/content ./content
 # `next build` fetches the Google fonts declared via next/font at build time and
 # inlines them, so the deployed site makes no third-party font request.
 RUN npm run build
