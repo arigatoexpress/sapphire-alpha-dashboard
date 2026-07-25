@@ -1,0 +1,20 @@
+{
+  /* Type-checks the pure ../shared modules and their tests. They are outside
+     this package's `src`, so `npm run build` (tsc -b) only sees the ones the app
+     actually imports. `npm run typecheck:shared` covers all of them, including
+     the tests, whether or not a renderer has been wired up yet. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2020"],
+    "types": [],
+    /* ../shared is not an npm package and has no node_modules of its own, so a
+       test file sitting there cannot walk up to vitest's types. Point at the
+       copy installed here, which is the only one. */
+    "paths": {
+      "@shared/*": ["../shared/*"],
+      "vitest": ["./node_modules/vitest"]
+    }
+  },
+  "include": ["../shared/**/*.ts"]
+}

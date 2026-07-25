@@ -6,6 +6,13 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    /* Both surfaces import the pure modules in ../shared through this alias, so
+       `@shared/narrate` means the same file in web/ and in frontend/.
+       No `baseUrl`: it is deprecated in TS 6, and paths resolve relative to this
+       file without it. */
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
