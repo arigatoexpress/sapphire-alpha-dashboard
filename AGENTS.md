@@ -15,11 +15,19 @@ cd backend
 /opt/homebrew/bin/python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-PYTHONPATH=. pytest -q
+PYTHONPATH=backend:. pytest -q
 cd ..
 cd frontend
 npm install && npm run build
 ```
+
+## Offline fallback
+If `sapphirealpha.xyz` is unreachable from the current network/client, run the local fallback:
+```bash
+python local_dashboard_server.py --port 8080
+open http://127.0.0.1:8080
+```
+It serves the existing `frontend/dist` bundle and mirrors `/api/v1/live` by running the local telemetry collector directly. `/api/v1/moss` and `/api/fleet` return safe offline stubs so the UI renders cleanly without operator auth.
 
 ## Deploy
 Preferred: Cloud Build with explicit env substitution.

@@ -241,13 +241,16 @@ def build_snapshot(
     agent_rate = presence_event_rate if presence_agents else float(len(agents) * 4)
     desk_status = _health(desk.get("status"), age_s=desk_age)
 
+    def _fresh(age: float) -> float:
+        return min(float(age), 86_400.0)
+
     nodes = [
         {"id": "public-edge", "zone": "edge", "label": "Public edge", "status": "healthy", "load_band": "low", "activity_rate": max(1.0, msg_rate / 20), "freshness_s": 0.0},
-        {"id": "orchestration", "zone": "orchestration", "label": "Orchestration", "status": desk_status, "load_band": "medium" if inserted else "idle", "activity_rate": min(120.0, inserted / 5), "freshness_s": desk_age},
-        {"id": "gpu-compute", "zone": "compute", "label": "GPU compute", "status": gpu_status, "load_band": "medium" if service_count else "idle", "activity_rate": service_count * 8.0, "freshness_s": gpu_age},
-        {"id": "intelligence", "zone": "intelligence", "label": "Agent intelligence", "status": rh_status, "load_band": "high" if agent_rate >= 60 else "medium" if agent_rate else "idle", "activity_rate": agent_rate, "freshness_s": intelligence_age},
-        {"id": "markets", "zone": "markets", "label": "Robinhood Chain", "status": market_health, "load_band": "high" if msg_rate >= 60 else "medium" if msg_rate else "idle", "activity_rate": msg_rate, "freshness_s": feed_age},
-        {"id": "archive", "zone": "archive", "label": "Knowledge archive", "status": desk_status, "load_band": "medium" if inserted else "idle", "activity_rate": min(120.0, inserted / 5), "freshness_s": desk_age},
+        {"id": "orchestration", "zone": "orchestration", "label": "Orchestration", "status": desk_status, "load_band": "medium" if inserted else "idle", "activity_rate": min(120.0, inserted / 5), "freshness_s": _fresh(desk_age)},
+        {"id": "gpu-compute", "zone": "compute", "label": "GPU compute", "status": gpu_status, "load_band": "medium" if service_count else "idle", "activity_rate": service_count * 8.0, "freshness_s": _fresh(gpu_age)},
+        {"id": "intelligence", "zone": "intelligence", "label": "Agent intelligence", "status": rh_status, "load_band": "high" if agent_rate >= 60 else "medium" if agent_rate else "idle", "activity_rate": agent_rate, "freshness_s": _fresh(intelligence_age)},
+        {"id": "markets", "zone": "markets", "label": "Robinhood Chain", "status": market_health, "load_band": "high" if msg_rate >= 60 else "medium" if msg_rate else "idle", "activity_rate": msg_rate, "freshness_s": _fresh(feed_age)},
+        {"id": "archive", "zone": "archive", "label": "Knowledge archive", "status": desk_status, "load_band": "medium" if inserted else "idle", "activity_rate": min(120.0, inserted / 5), "freshness_s": _fresh(desk_age)},
     ]
     links = [
         {"source": "public-edge", "target": "orchestration", "status": desk_status, "latency_ms": link_latencies.get("public-edge:orchestration"), "event_rate": max(1.0, len(agents)), "signal_class": "network"},

@@ -86,7 +86,7 @@ npm run build
 ## Verification
 
 ```bash
-cd backend && PYTHONPATH=.. pytest -q
+PYTHONPATH=backend:. pytest -q
 cd frontend && npm run build
 ```
 
@@ -95,3 +95,23 @@ Golden tests cover signature validation, timestamp skew, nonce replay, sequence 
 ## Deployment gate
 
 Production uses Firestore and Secret Manager through the least-privileged `sapphire-dashboard-sa` service account. `infra/bootstrap-telemetry.sh` is a one-time IAM/secret bootstrap and is intentionally never called by CI. Creating the telemetry secret, changing IAM, deploying, and activating the home publisher are explicit operator gates.
+
+## IPv6 accessibility note
+
+`sapphirealpha.xyz` publishes both IPv4 and IPv6 (AAAA) records. Some networks cannot route the IPv6 endpoints, which makes the site appear unreachable in browsers that prefer IPv6 even though IPv4 works. If the site does not load, force IPv4:
+
+```bash
+curl -4 https://sapphirealpha.xyz/api/v1/live
+```
+
+or disable IPv6 for the domain in the browser/OS. The service itself is healthy on IPv4.
+
+## Merged Mac + Windows telemetry
+
+`telemetry/merged_collector.py` combines the Mac fleet snapshot with the Windows workhorse snapshot (over SSH) and pushes a single signed snapshot so both sources appear on the dashboard at once. The Mac collector and Windows collector individually overwrite the single latest snapshot; use the merged collector for the live demo loop:
+
+```bash
+SAPPHIRE_TELEMETRY_ENDPOINT=https://sapphirealpha.xyz/api/v1/telemetry \
+TELEMETRY_INGEST_SECRET=... \
+python3 telemetry/merged_collector.py --push
+```

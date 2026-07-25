@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 os.environ["AUTH_USERNAME"] = "testuser"
 os.environ["AUTH_PASSWORD"] = "testpass-strong-99"
 
+import live_telemetry
 import main
 from main import app
 from live_telemetry import LiveTelemetryStore, MemoryTelemetryPersistence
@@ -242,3 +243,19 @@ def test_invalid_state_values_and_nonfinite_numbers_rejected():
     payload["links"][0]["latency_ms"] = float("nan")
     raw, headers = _signed(payload, nonce="nonce-invalid-001")
     assert client.post("/api/v1/telemetry", content=raw, headers=headers).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("age_s", "expected"),
+    [
+        (0.0, "current"),
+        (60.0, "current"),
+        (61.0, "delayed"),
+        (3_599.0, "delayed"),
+        (3_600.0, "stale"),
+        (86_400.0, "stale"),
+    ],
+)
+def test_freshness_band_separates_dead_feeds_from_brief_delays(age_s, expected):
+    """A clamped two-day outage must not render identically to a 61s lag."""
+    assert live_telemetry._freshness_band(age_s) == expected
