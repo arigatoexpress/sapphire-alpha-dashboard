@@ -1,0 +1,86 @@
+"""Tests for the Mac + Windows merged telemetry collector."""
+
+from __future__ import annotations
+
+import copy
+import json
+
+from telemetry.merged_collector import _merge_snapshots
+
+
+def _sample_snapshot(agent_id: str, node_id: str, sequence: int) -> dict:
+    return {
+        "version": 1,
+        "observed_at": "2026-07-23T00:00:00+00:00",
+        "sequence": sequence,
+        "summary": {
+            "state": "observing",
+            "active_agents": 1,
+            "events_per_min": 1.0,
+            "verified_today": 1,
+            "attention": 1,
+        },
+        "nodes": [
+            {
+                "id": node_id,
+                "zone": "edge",
+                "label": node_id,
+                "status": "healthy",
+                "load_band": "low",
+                "activity_rate": 1.0,
+                "freshness_s": 0.0,
+            }
+        ],
+        "links": [],
+        "agents": [
+            {
+                "id": agent_id,
+                "role": agent_id,
+                "state": "working",
+                "activity": "observing",
+                "verification": "verified",
+                "provider_class": "local GPU",
+                "updated_at": "2026-07-23T00:00:00+00:00",
+            }
+        ],
+        "markets": {
+            "network": "Robinhood Chain",
+            "status": "offline",
+            "feed_age_s": 0.0,
+            "events_per_min": 0.0,
+            "paper_strategies": 0,
+            "decision_gate": "off",
+            "execution": "off",
+        },
+        "events": [],
+    }
+
+
+def test_merge_unions_agents_nodes_and_links():
+    mac = _sample_snapshot("mac-agent", "mac-node", 100)
+    win = _sample_snapshot("win-agent", "win-node", 200)
+    merged = _merge_snapshots(mac, win)
+
+    assert {a["id"] for a in merged["agents"]} == {"mac-agent", "win-agent"}
+    assert {n["id"] for n in merged["nodes"]} == {"mac-node", "win-node"}
+    assert merged["sequence"] == 201
+    assert merged["summary"]["active_agents"] == 2
+    assert merged["summary"]["attention"] == 2
+
+
+def test_merge_prefers_later_observation():
+    mac = _sample_snapshot("mac-agent", "mac-node", 100)
+    win = copy.deepcopy(mac)
+    win["observed_at"] = "2026-07-23T01:00:00+00:00"
+    merged = _merge_snapshots(mac, win)
+    assert merged["observed_at"] == "2026-07-23T01:00:00+00:00"
+
+
+def test_merge_respects_bounds():
+    mac = _sample_snapshot("mac-agent", "mac-node", 100)
+    win = copy.deepcopy(mac)
+    win["agents"] = [dict(agent, id=f"agent-{i}") for i, agent in enumerate(win["agents"] * 40)]
+    win["nodes"] = [dict(node, id=f"node-{i}") for i, node in enumerate(win["nodes"] * 30)]
+    merged = _merge_snapshots(mac, win)
+    assert len(merged["agents"]) <= 32
+    assert len(merged["nodes"]) <= 24

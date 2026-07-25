@@ -371,6 +371,19 @@ def _activity_band(value: float) -> str:
     return "busy"
 
 
+def _freshness_band(age_s: float) -> str:
+    """Bucket node age so a dead feed reads differently from a brief delay.
+
+    Producers clamp freshness_s to the 86_400 validation ceiling, so without a
+    third band a two-day outage and a 61-second lag both render as "delayed".
+    """
+    if age_s <= 60:
+        return "current"
+    if age_s < 3_600:
+        return "delayed"
+    return "stale"
+
+
 def public_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Bucket timing/rate detail and expose only public narrative fields."""
     out = {
@@ -392,7 +405,7 @@ def public_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
                 "status": node["status"],
                 "load_band": node["load_band"],
                 "activity_band": _activity_band(node["activity_rate"]),
-                "freshness_band": "current" if node["freshness_s"] <= 60 else "delayed",
+                "freshness_band": _freshness_band(node["freshness_s"]),
             }
             for node in snapshot["nodes"]
         ],
