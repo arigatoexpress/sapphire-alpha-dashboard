@@ -304,18 +304,44 @@ def test_401_sends_basic_challenge(monkeypatch):
     assert r.headers.get("WWW-Authenticate") == "Basic"
 
 
-def test_catchall_requires_auth_in_private_mode(monkeypatch, tmp_path):
+def test_dashboard_requires_auth_in_private_mode(monkeypatch, tmp_path):
+    """The operator SPA moved to /dashboard; its auth gate moved with it.
+
+    `/` is now the public marketing site and is anonymous by design — the gate
+    that used to live on the catch-all lives on /dashboard instead.
+    """
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
     (tmp_path / "index.html").write_text("<html>x</html>")
     monkeypatch.setattr(main, "_FRONTEND_DIST_DIR", tmp_path)
-    assert client.get("/any/spa/route").status_code == 401
-    assert client.get("/any/spa/route", auth=AUTH).status_code == 200
+    assert client.get("/dashboard").status_code == 401
+    assert client.get("/dashboard/any/spa/route").status_code == 401
+    assert client.get("/dashboard", auth=AUTH).status_code == 200
+    assert client.get("/dashboard/any/spa/route", auth=AUTH).status_code == 200
 
 
-def test_catchall_503_when_bundle_missing(tmp_path, monkeypatch):
+def test_dashboard_503_when_bundle_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "_FRONTEND_DIST_DIR", tmp_path / "empty")
-    r = client.get("/", auth=AUTH)
+    r = client.get("/dashboard", auth=AUTH)
     assert r.status_code == 503
+
+
+def test_marketing_catchall_never_serves_operator_state(monkeypatch, tmp_path):
+    """Opening `/` anonymously must not expose the operator bundle or API data."""
+    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
+    (tmp_path / "index.html").write_text("<html>OPERATOR-BUNDLE</html>")
+    monkeypatch.setattr(main, "_FRONTEND_DIST_DIR", tmp_path)
+
+    web_out = tmp_path / "out"
+    web_out.mkdir()
+    (web_out / "index.html").write_text("<html>marketing</html>")
+    monkeypatch.setattr(main, "_WEB_OUT_DIR", web_out)
+
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "OPERATOR-BUNDLE" not in r.text
+    # Operator surfaces stay gated regardless of the public root.
+    assert client.get("/api/v1/widgets").status_code == 401
+    assert client.get("/dashboard").status_code == 401
 
 
 # ---------------------------------------------------------------------------

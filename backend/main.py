@@ -114,6 +114,97 @@ async def _security_headers(request: Request, call_next: Any) -> Response:
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
+# Statically exported Next.js marketing site (`web/`). Served from this same
+# container so the public site, the operator dashboard, and the API share one
+# Cloud Run service and one domain.
+_WEB_OUT_DIR = Path(__file__).resolve().parent.parent / "web" / "out"
+
+# Explicit map rather than `mimetypes.guess_type`, which depends on the host's
+# mime database and would vary between a Mac dev box and the slim container.
+_MEDIA_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json",
+    ".txt": "text/plain; charset=utf-8",
+    ".xml": "application/xml",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".webmanifest": "application/manifest+json",
+}
+
+# Next.js emits metadata images with no file extension (`out/opengraph-image`).
+# Without an explicit type these serve as octet-stream and social unfurlers
+# silently drop the preview image.
+_EXTENSIONLESS_MEDIA_TYPES = {
+    "opengraph-image": "image/png",
+    "twitter-image": "image/png",
+    "icon": "image/png",
+    "apple-icon": "image/png",
+}
+
+
+def _media_type_for(path: Path) -> str:
+    if not path.suffix:
+        return _EXTENSIONLESS_MEDIA_TYPES.get(path.name, "application/octet-stream")
+    return _MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
+
+
+def _resolve_static(root: Path, relative: str) -> Path | None:
+    """Resolve `relative` to a file inside `root`, or None.
+
+    Tries the literal path, then `.html`, then `index.html` — covering how the
+    Next.js export names routes. Any candidate that escapes `root` after
+    symlink resolution is refused, so a crafted path cannot read the image.
+    """
+    if not root.is_dir():
+        return None
+    try:
+        base = root.resolve(strict=True)
+    except OSError:
+        return None
+
+    cleaned = relative.strip("/")
+    candidates = ("index.html",) if not cleaned else (
+        cleaned,
+        f"{cleaned}.html",
+        f"{cleaned}/index.html",
+    )
+
+    for candidate in candidates:
+        try:
+            path = (base / candidate).resolve(strict=False)
+        except (ValueError, RuntimeError, OSError):
+            continue
+        if not path.is_relative_to(base):
+            continue
+        if path.is_file():
+            return path
+    return None
+
+
+def _static_file_response(path: Path, cache: str) -> FileResponse:
+    return FileResponse(
+        path,
+        media_type=_media_type_for(path),
+        headers={"Cache-Control": cache},
+    )
+
+
+# The marketing site is the public front door and must never sit behind Basic
+# auth — unlike the operator dashboard, which keeps `auth_or_public`.
+_MARKETING_CACHE = "public, max-age=0, must-revalidate"
+# Next.js fingerprints every filename under /_next/static, so these are immutable.
+_IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
+
 # Canonical local state paths (Mac). Cloud Run uses env overrides.
 _HOME = Path.home()
 _RH_CHAIN_DIR = _HOME / "ops-state" / "rh-chain"
@@ -1186,14 +1277,77 @@ async def api_tg_decisions(
     }
 
 
+# ---------------------------------------------------------------------------
+# Public marketing site (statically exported Next.js) + operator dashboard.
+#
+# Route order matters: FastAPI matches in declaration order and the catch-all
+# below swallows everything, so every specific route must be declared above it.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/_next/{path:path}", response_class=FileResponse)
+@limiter.limit("240/minute")
+async def web_next_assets(path: str, request: Request) -> Response:
+    """Fingerprinted Next.js build assets. Public, immutable, no auth."""
+    resolved = _resolve_static(_WEB_OUT_DIR / "_next", path)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return _static_file_response(resolved, _IMMUTABLE_CACHE)
+
+
+def _dashboard_index() -> Response:
+    """Serve the operator SPA shell.
+
+    Vite emits absolute asset URLs (`/assets/...`), so the bundle works unchanged
+    from this path — only the entry point moved off `/`.
+    """
+    index = _FRONTEND_DIST_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=503, detail="frontend bundle not built")
+    return _static_file_response(index, _MARKETING_CACHE)
+
+
+@app.get("/dashboard", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def dashboard_root(request: Request, user: str = Depends(auth_or_public)) -> Response:
+    return _dashboard_index()
+
+
+@app.get("/dashboard/{path:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def dashboard_spa(path: str, request: Request, user: str = Depends(auth_or_public)) -> Response:
+    return _dashboard_index()
+
+
 @app.get("/{catchall:path}", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def frontend_root(catchall: str, request: Request, user: str = Depends(auth_or_public)) -> Response:
-    # SPA catch-all: return index.html for any non-API route.
-    index = _FRONTEND_DIST_DIR / "index.html"
-    if not index.exists():
-        raise HTTPException(status_code=503, detail="frontend bundle not built")
-    return FileResponse(index)
+async def frontend_root(catchall: str, request: Request) -> Response:
+    """Serve the public marketing site.
+
+    Anonymous by design: this is the front door, and gating it behind Basic auth
+    would make the site unreachable whenever PUBLIC_READ_ONLY is off. It serves
+    only statically exported marketing content — no operator state reaches here.
+
+    Falls back to the dashboard shell when `web/out` is absent, so a backend-only
+    checkout still renders something rather than 503-ing.
+    """
+    resolved = _resolve_static(_WEB_OUT_DIR, catchall)
+    if resolved is not None:
+        return _static_file_response(resolved, _MARKETING_CACHE)
+
+    if not _WEB_OUT_DIR.is_dir():
+        return _dashboard_index()
+
+    # Marketing site is built but this path is not one of its routes.
+    not_found = _resolve_static(_WEB_OUT_DIR, "404")
+    if not_found is not None:
+        return FileResponse(
+            not_found,
+            status_code=404,
+            media_type="text/html; charset=utf-8",
+            headers={"Cache-Control": _MARKETING_CACHE},
+        )
+    raise HTTPException(status_code=404, detail="not found")
 
 
 @app.exception_handler(Exception)

@@ -8,3 +8,7 @@ frontend/dist/
 *.tsbuildinfo
 frontend/vite.config.d.ts
 frontend/vite.config.js
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts

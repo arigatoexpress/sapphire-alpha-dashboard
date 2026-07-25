@@ -1,8 +1,33 @@
 # Sapphire Alpha Observatory
 
-The public, read-only front door for the Sapphire system: a professional live view of distributed compute, agent activity, Robinhood Chain research, and verified system events at **[sapphirealpha.xyz](https://sapphirealpha.xyz)**.
+Two surfaces at **[sapphirealpha.xyz](https://sapphirealpha.xyz)**, shipped as one Cloud Run container:
 
-FastAPI + React/Vite, shipped as one Cloud Run container. The application has no trading or infrastructure actuation routes.
+| Path | Surface | Access |
+| --- | --- | --- |
+| `/` | **Marketing site** (`web/`) — the front door: architecture, trading, security, on-chain, about | Anonymous |
+| `/dashboard` | **Observatory** (`frontend/`) — live view of distributed compute, agent activity, Robinhood Chain research, and verified system events | Auth-gated |
+
+FastAPI + a statically exported Next.js site + a React/Vite SPA. The application has no trading or infrastructure actuation routes.
+
+## The marketing site
+
+Its argument is that its claims are checkable, so it is built to make that literal: every
+figure carries the shell one-liner that reproduces it, rendered on the page next to the
+number. Figures live in `web/src/data/metrics.ts` and are produced by:
+
+```bash
+./web/scripts/measure.sh ~/Code/Sapphire
+```
+
+Two rules keep it honest:
+
+- **Numbers are transcribed, never estimated.** Re-run the script and update `MEASURED_SHA`
+  and `MEASURED_AT` in the same commit as any value that moved.
+- **Green means verified.** The verified colour token belongs to the `<Verified>` component
+  alone, so a green pixel always denotes a checked claim rather than decoration.
+
+The site is a static export (`output: 'export'`) — prerendered HTML with no Next.js server,
+fully readable with JavaScript disabled, served straight from the FastAPI container.
 
 ## Signal Loom architecture
 

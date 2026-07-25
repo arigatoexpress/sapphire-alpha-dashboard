@@ -71,7 +71,9 @@ def test_public_mode_off_widgets_requires_auth(monkeypatch):
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
     assert client.get("/api/v1/widgets").status_code == 401
     assert client.get("/api/v1/status").status_code == 401
-    assert client.get("/").status_code == 401
+    # `/` is the public marketing site and is intentionally anonymous; the
+    # operator surface it replaced is gated at /dashboard.
+    assert client.get("/dashboard").status_code == 401
 
 
 def test_anonymous_widgets_sanitized(public_mode):
