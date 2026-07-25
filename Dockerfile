@@ -1,7 +1,13 @@
-# --- Operator dashboard (Vite/React SPA, served at /dashboard) ---------------
+# Both frontend stages import ../shared/theme.css, so each one recreates the
+# repo-relative layout (/repo/shared next to /repo/<app>) rather than flattening.
+
+# --- Operator live desk (Vite/React SPA, served at /dashboard) ----------------
 FROM node:24-slim AS frontend-build
 
-WORKDIR /frontend
+WORKDIR /repo
+COPY shared ./shared
+
+WORKDIR /repo/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install
 COPY frontend/index.html frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts ./
@@ -13,7 +19,10 @@ RUN npm run build
 # Independent of the stage above, so BuildKit runs both concurrently.
 FROM node:24-slim AS web-build
 
-WORKDIR /web
+WORKDIR /repo
+COPY shared ./shared
+
+WORKDIR /repo/web
 COPY web/package.json web/package-lock.json ./
 # `npm install` rather than `npm ci` for the same reason as the stage above:
 # platform-specific optional dependencies (here, the Next.js SWC binaries)
@@ -34,8 +43,8 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./backend/
-COPY --from=frontend-build /frontend/dist ./frontend/dist
-COPY --from=web-build /web/out ./web/out
+COPY --from=frontend-build /repo/frontend/dist ./frontend/dist
+COPY --from=web-build /repo/web/out ./web/out
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080

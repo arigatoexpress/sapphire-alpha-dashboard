@@ -17,6 +17,15 @@ const BAND: Record<ActivityBand, { width: number; duration: number }> = {
   busy: { width: 5, duration: 2.2 },
 }
 
+/* Kept in sync with the `.signal-*` rules in index.css. Held close to sapphire
+   so the loom reads as one instrument rather than a category chart. */
+const LEGEND = [
+  { label: 'network', color: '#4aa8d8' },
+  { label: 'intelligence', color: '#3d78ff' },
+  { label: 'markets', color: '#7c8cf0' },
+  { label: 'archive', color: '#6f59a9' },
+]
+
 function activity(link: LiveLink): ActivityBand {
   if (link.activity_band) return link.activity_band
   const rate = link.event_rate ?? 0
@@ -32,22 +41,43 @@ export function SignalLoom({ nodes, links, status }: { nodes: LiveNode[]; links:
   const byId = new Map(nodes.map((node) => [node.id, node]))
 
   return (
-    <section className="loom-panel" aria-labelledby="loom-title">
-      <div className="section-heading loom-heading">
+    <section
+      className="border border-line bg-raised/60"
+      aria-labelledby="loom-title"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-5">
         <div>
-          <p className="eyebrow">Live architecture</p>
-          <h2 id="loom-title">Signal Loom</h2>
+          <p className="font-mono text-[11px] tracking-[0.2em] text-sapphire uppercase">
+            Live architecture
+          </p>
+          <h2
+            id="loom-title"
+            className="mt-2 font-display text-xl font-semibold tracking-[-0.015em] text-ink"
+          >
+            Signal Loom
+          </h2>
         </div>
-        <p className="section-note">Motion is measured. Quiet systems stay quiet.</p>
+        <p className="font-mono text-[11px] text-ink-faint">
+          Motion is measured. Quiet systems stay quiet.
+        </p>
       </div>
       {nodes.length === 0 ? (
-        <div className="loom-empty">
-          <span className="empty-orbit" aria-hidden="true" />
-          <strong>{status === 'warming' ? 'Building the delayed public view' : 'Home telemetry not observed'}</strong>
-          <span>The display will animate only after a signed snapshot arrives.</span>
+        <div className="flex flex-col items-center gap-3 px-6 py-24 text-center">
+          <span
+            aria-hidden="true"
+            className="h-10 w-10 border border-dashed border-line-lit"
+          />
+          <strong className="font-display text-base font-semibold text-ink-dim">
+            {status === 'warming'
+              ? 'Building the delayed public view'
+              : 'Home telemetry not observed'}
+          </strong>
+          <span className="font-mono text-[11px] text-ink-faint">
+            The display will animate only after a signed snapshot arrives.
+          </span>
         </div>
       ) : (
-        <div className="loom-wrap">
+        <div className="px-6 py-5">
           <svg className="loom" viewBox="0 0 820 430" role="img" aria-label="Live semantic topology and measured signal flows">
             <defs>
               <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
@@ -84,11 +114,20 @@ export function SignalLoom({ nodes, links, status }: { nodes: LiveNode[]; links:
               )
             })}
           </svg>
-          <div className="loom-legend" aria-label="Signal classes">
-            <span><i className="legend-network" /> network</span>
-            <span><i className="legend-agent" /> intelligence</span>
-            <span><i className="legend-market" /> markets</span>
-            <span><i className="legend-archive" /> archive</span>
+          <div
+            className="mt-4 flex flex-wrap justify-center gap-6 border-t border-line pt-4 font-mono text-[11px] tracking-[0.1em] text-ink-faint uppercase"
+            aria-label="Signal classes"
+          >
+            {LEGEND.map((entry) => (
+              <span key={entry.label} className="inline-flex items-center gap-2">
+                <i
+                  aria-hidden="true"
+                  className="inline-block h-1.5 w-1.5"
+                  style={{ background: entry.color }}
+                />
+                {entry.label}
+              </span>
+            ))}
           </div>
         </div>
       )}
