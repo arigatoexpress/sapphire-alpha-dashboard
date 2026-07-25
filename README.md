@@ -115,3 +115,23 @@ SAPPHIRE_TELEMETRY_ENDPOINT=https://sapphirealpha.xyz/api/v1/telemetry \
 TELEMETRY_INGEST_SECRET=... \
 python3 telemetry/merged_collector.py --push
 ```
+
+### Scheduled publisher
+
+Without a scheduled publisher the live feed goes stale and the site advertises a
+days-old snapshot. `telemetry/run_publisher.sh` sources the ingest secret from
+`~/.sapphire/sapphirealpha-telemetry.env` (never from the plist) and pushes a
+merged snapshot; the LaunchAgent runs it every 5 minutes.
+
+```bash
+cp infra/com.sapphire.alpha-telemetry-publisher.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.sapphire.alpha-telemetry-publisher.plist
+launchctl list | grep alpha-telemetry-publisher      # expect exit status 0
+
+tail -f ~/autonomy-status/logs/alpha-telemetry-publisher.log   # {"accepted": true, ...}
+```
+
+To stop publishing: `launchctl unload ~/Library/LaunchAgents/com.sapphire.alpha-telemetry-publisher.plist`.
+
+If the Windows host is asleep or off-network the SSH leg is skipped and the
+snapshot degrades to Mac-only rather than failing.
