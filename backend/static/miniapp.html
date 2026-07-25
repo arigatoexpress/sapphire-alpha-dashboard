@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sapphire Command</title>
+<title>Magnum Opus · Sapphire Command</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
@@ -42,8 +42,8 @@
 </style>
 </head>
 <body>
-<h1>Sapphire Command</h1>
-<div class="sub" id="who">Connecting…</div>
+<h1>Magnum Opus</h1>
+<div class="sub" id="who">Connecting… · local 24/7 harness</div>
 <nav id="tabs"></nav>
 <main id="view"><div class="card muted">Loading…</div></main>
 
@@ -55,8 +55,8 @@ const initData = tg ? tg.initData : "";
 const H = { "Authorization": "tma " + initData };
 const esc = s => String(s ?? "—").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-const TABS = ["Desk", "Proposals", "Decisions", "Fleet", "Markets"];
-let tab = "Desk", summary = null, decisions = null;
+const TABS = ["Magnum", "Desk", "Proposals", "Decisions", "Fleet", "Markets"];
+let tab = "Magnum", summary = null, decisions = null;
 
 function pill(state) {
   const cls = /armed|open|alive|approved|polling|true/i.test(state) ? "ok"
@@ -74,7 +74,30 @@ function render() {
   const v = document.getElementById("view");
   if (!summary) { v.innerHTML = `<div class="card muted">Loading…</div>`; return; }
   const s = summary;
-  if (tab === "Desk") {
+  if (tab === "Magnum") {
+    const m = s.magnum || {};
+    const issues = (m.night_issues || []).length
+      ? (m.night_issues || []).map(i => `<div class="muted">• ${esc(i)}</div>`).join("")
+      : `<div class="muted">No night-watch issues.</div>`;
+    const cands = (m.candidates || []).length
+      ? esc((m.candidates || []).join(", "))
+      : "—";
+    v.innerHTML = `<div class="card"><b>🌌 Magnum Opus</b>${rows([
+      ["Product", esc(m.product || "magnum-opus")],
+      ["Gate", pill(m.gate_armed ? "ARMED" : "DISARMED")],
+      ["Mode", esc(m.mode)],
+      ["FREE-REIGN", pill(m.free_reign ? "ON" : "off")],
+      ["Daily cap", m.daily_cap_usd != null ? "$" + esc(m.daily_cap_usd) : "—"],
+      ["Trade V/T", "$" + esc(m.per_trade_verified_usd) + " / $" + esc(m.per_trade_thesis_usd)],
+      ["L2 ETH", esc(m.l2_eth)],
+      ["L2 wallet", esc(m.l2_address_masked)],
+      ["Health", pill(m.health || "—")],
+      ["Night", pill(m.night_severity || "—")],
+      ["MOSS session", pill(m.moss_ok ? "live" : "off")],
+      ["Candidates", cands],
+    ])}</div>
+    <div class="card"><b>Night watch</b>${issues}</div>` + deepLink;
+  } else if (tab === "Desk") {
     const d = s.desk || {}, w = s.wallet || {};
     v.innerHTML = `<div class="card"><b>Desk ${chainTag(s.chain)}</b>${rows([
       ["State", pill(d.label || d.state)], ["Mode", esc(d.mode)],
