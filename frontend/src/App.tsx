@@ -275,19 +275,37 @@ export function SafetyRail({ snapshot }: { snapshot: LiveSnapshot | null }) {
   )
 }
 
-function AgentPanel({ agents, observed }: { agents: LiveAgent[]; observed: boolean }) {
+const COMPONENT_STATE_ORDER: Record<string, number> = {
+  working: 0,
+  verifying: 1,
+  blocked: 2,
+  idle: 3,
+  offline: 4,
+}
+
+export function AgentPanel({ agents, observed }: { agents: LiveAgent[]; observed: boolean }) {
   const working = agents.filter((agent) => agent.state === 'working').length
+  const ordered = [...agents].sort((left, right) => {
+    const stateDelta =
+      (COMPONENT_STATE_ORDER[left.state] ?? 5) -
+      (COMPONENT_STATE_ORDER[right.state] ?? 5)
+    return stateDelta || right.updated_at.localeCompare(left.updated_at)
+  })
 
   return (
     <Panel label="System components">
       <PanelHeading
         eyebrow="System components"
         title="What is running"
-        right={<Count>{observed ? `${working} / ${agents.length}` : NOT_OBSERVED}</Count>}
+        right={
+          <Count>
+            {observed ? `${working} active · ${agents.length} total` : NOT_OBSERVED}
+          </Count>
+        }
       />
       <div className="divide-y divide-line">
-        {agents.length ? (
-          agents.slice(0, 12).map((agent, index) => {
+        {ordered.length ? (
+          ordered.map((agent, index) => {
             const described = describeAgent(agent.id)
             return (
               <article key={`${agent.id}-${index}`} className="flex items-start gap-3 px-6 py-3.5">
