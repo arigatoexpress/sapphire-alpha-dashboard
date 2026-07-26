@@ -730,6 +730,41 @@ def test_windows_alive_heartbeat_is_not_worker_handoff_traffic(tmp_path, monkeyp
     assert _links(snapshot)[("telegram-bot", "agent-worker")]["event_rate"] == 0.0
 
 
+def test_windows_summary_attention_uses_authoritative_pending_review(
+    tmp_path, monkeypatch
+):
+    home, worker, telegram = _windows_sources(tmp_path)
+    _stub_windows_hardware(monkeypatch)
+    _write(
+        telegram / "desk-summary.json",
+        {
+            "version": 1,
+            "updated_at": "2026-07-26T08:00:00+00:00",
+            "posture": "capital_preservation",
+            "leader": "none",
+            "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
+            "decisions": {
+                "pending": 2,
+                "pending_review": 2,
+                "approved_awaiting_execution": 14,
+                "eligible_execution": 0,
+                "blocked": 14,
+            },
+            "execution": "halted",
+            "feeds": {"fresh": 7, "total": 7},
+        },
+    )
+
+    snapshot = win_collector.build_snapshot(
+        home,
+        agent_worker_dir=worker,
+        telegram_bot_dir=telegram,
+        now=NOW,
+    )
+
+    assert snapshot["summary"]["attention"] == 2
+
+
 def test_missing_windows_measurement_sources_publish_null(tmp_path, monkeypatch):
     home, worker, telegram = _windows_sources(tmp_path)
     _stub_windows_hardware(monkeypatch)
