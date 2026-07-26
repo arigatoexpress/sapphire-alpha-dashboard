@@ -30,6 +30,8 @@ export type {
   MarketStatus,
   NodeLoad,
   ProviderClass,
+  PublicStrategy,
+  PublicTrack,
   ServingStatus,
   SignalClass,
   SummaryState,

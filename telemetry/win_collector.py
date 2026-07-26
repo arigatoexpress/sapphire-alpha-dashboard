@@ -114,6 +114,7 @@ def _unknown_desk() -> dict[str, Any]:
         },
         "execution": "unknown",
         "feeds": {"fresh": None, "total": None},
+        "tracks": [],
         "risk": {
             "ledger_state": "unknown",
             "realized_drawdown_pct": None,
@@ -139,7 +140,9 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             "version", "updated_at", "posture", "leader", "validation",
             "decisions", "execution", "feeds",
         }
-        if not required <= set(value) or not set(value) <= required | {"risk", "experiment"}:
+        if not required <= set(value) or not set(value) <= required | {
+            "risk", "experiment", "tracks",
+        }:
             return _unknown_desk()
         validation = value["validation"]
         decisions = value["decisions"]
@@ -238,6 +241,53 @@ def _desk_projection(path: Path) -> dict[str, Any]:
                     return _unknown_desk()
             except ValueError:
                 return _unknown_desk()
+        tracks_raw = value.get("tracks", [])
+        if not isinstance(tracks_raw, list) or len(tracks_raw) > 7:
+            return _unknown_desk()
+        normalized_tracks = []
+        seen_tracks = set()
+        for track in tracks_raw:
+            if not isinstance(track, dict) or set(track) != {
+                "strategy", "status", "live_return_pct", "green_days",
+                "target_days", "open_count", "data_flags", "freshness_s",
+            }:
+                return _unknown_desk()
+            strategy = track["strategy"]
+            status = track["status"]
+            numeric = (
+                track["live_return_pct"],
+                track["green_days"],
+                track["target_days"],
+                track["open_count"],
+                track["data_flags"],
+                track["freshness_s"],
+            )
+            if (
+                strategy not in _PUBLIC_STRATEGIES
+                or strategy in seen_tracks
+                or status not in {"current", "stale", "inactive"}
+                or any(
+                    isinstance(item, bool)
+                    or not isinstance(item, (int, float))
+                    or not math.isfinite(float(item))
+                    for item in numeric
+                )
+                or any(
+                    isinstance(track[field], bool)
+                    or not isinstance(track[field], int)
+                    for field in (
+                        "green_days", "target_days", "open_count", "data_flags",
+                    )
+                )
+                or not -1_000 <= float(track["live_return_pct"]) <= 10_000
+                or not 0 <= track["green_days"] <= track["target_days"] <= 100
+                or not 0 <= track["open_count"] <= 1_000
+                or not 0 <= track["data_flags"] <= 1_000
+                or not 0 <= float(track["freshness_s"]) <= 31_536_000
+            ):
+                return _unknown_desk()
+            seen_tracks.add(strategy)
+            normalized_tracks.append(dict(track))
         decision_counts = {
             "pending": decisions["pending"],
             "pending_review": decisions.get("pending_review"),
@@ -405,6 +455,7 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         "decisions": decision_counts,
         "execution": value["execution"],
         "feeds": dict(feeds),
+        "tracks": normalized_tracks,
         "risk": dict(risk),
         "experiment": dict(experiment),
     }
