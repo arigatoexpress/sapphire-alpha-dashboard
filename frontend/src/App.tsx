@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { narrate, type Narration } from '@shared/narrate'
 import { describeAgent, describeNode } from '@shared/vocabulary'
 import { SignalRoutes } from './components/SignalRoutes'
+import { MarketAperture } from './components/MarketAperture'
 import { LiveClock } from './components/LiveClock'
 import { ShieldIcon } from './components/icons'
 import {
@@ -94,48 +95,7 @@ export default function App() {
       </header>
 
       <main id="top" className="mx-auto max-w-[1320px] px-5 pt-9 pb-24 md:px-7 md:pt-12">
-        {/* --- Hero ---------------------------------------------------- */}
-        <section className="grid items-end gap-8 border-b border-line pb-9 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="rise">
-            <Eyebrow>Public operating record</Eyebrow>
-            <h1 className="mt-4 font-display text-4xl leading-none font-semibold tracking-[-0.04em] text-balance md:text-6xl">
-              Machine Room
-            </h1>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-ink-dim text-pretty">
-              What is alive, what is measured, what is allowed to act, and what is
-              waiting for a person. No proxy numbers and no private control surface.
-            </p>
-          </div>
-
-          <div
-            className="rise grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-4"
-            style={{ animationDelay: '120ms' }}
-            aria-label="Current system summary"
-          >
-            <div className="bg-void p-4">
-              <Metric label="Agents working" value={formatCount(snapshot?.summary.active_agents)} />
-            </div>
-            <div className="bg-void p-4">
-              <Metric label="Events / min" value={formatRate(snapshot?.summary.events_per_min)} />
-            </div>
-            <div className="bg-void p-4">
-              <Metric
-                label="Verified today"
-                value={formatCount(snapshot?.summary.verified_today)}
-                tone={snapshot?.summary.verified_today ? 'verified' : 'neutral'}
-              />
-            </div>
-            <div className="bg-void p-4">
-              <Metric
-                label="Human gates"
-                value={formatCount(snapshot?.summary.attention)}
-                tone={snapshot?.summary.attention ? 'degraded' : 'neutral'}
-              />
-            </div>
-          </div>
-        </section>
-
-        <ResearchDoctrine />
+        <MarketAperture snapshot={snapshot} />
 
         <Narrator narration={narration} />
 
@@ -227,85 +187,6 @@ export default function App() {
         </div>
       </footer>
     </div>
-  )
-}
-
-function ResearchDoctrine() {
-  const advisers = [
-    { name: 'Hayes', scope: 'liquidity countercase' },
-    { name: 'Bankless', scope: 'crypto structure' },
-    { name: 'Limitless', scope: 'AI frontier' },
-    { name: 'Nadeau', scope: 'fundamentals only' },
-  ]
-
-  return (
-    <section
-      id="doctrine"
-      aria-labelledby="doctrine-title"
-      className="mt-8 scroll-mt-24 overflow-hidden border border-line-lit bg-raised/45"
-    >
-      <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="border-b border-line px-6 py-7 lg:border-r lg:border-b-0 md:px-8">
-          <Eyebrow>Investment doctrine</Eyebrow>
-          <h2
-            id="doctrine-title"
-            className="mt-4 max-w-md font-display text-3xl leading-[1.05] font-semibold tracking-[-0.035em] text-ink md:text-4xl"
-          >
-            Ari’s thesis is the mandate.
-          </h2>
-          <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-dim">
-            Analysts challenge the thesis with evidence. They do not write conviction,
-            change the mandate, or authorize execution.
-          </p>
-        </div>
-
-        <div>
-          <div className="grid gap-px bg-line sm:grid-cols-2">
-            <div className="bg-void px-6 py-5">
-              <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
-                Current cycle posture
-              </p>
-              <p className="mt-2 font-display text-lg font-semibold text-ink">
-                Late-cycle · capital preservation
-              </p>
-            </div>
-            <div className="bg-void px-6 py-5">
-              <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
-                Primary cycle lens
-              </p>
-              <p className="mt-2 font-display text-lg font-semibold text-sapphire">
-                Benjamin Cowen
-              </p>
-            </div>
-          </div>
-
-          <div className="px-6 py-5">
-            <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
-              Advisory lenses
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {advisers.map((adviser) => (
-                <div
-                  key={adviser.name}
-                  className="flex items-baseline justify-between gap-3 border-t border-line py-2.5"
-                >
-                  <strong className="font-display text-sm font-semibold text-ink">
-                    {adviser.name}
-                  </strong>
-                  <span className="text-right font-mono text-[10px] text-ink-faint">
-                    {adviser.scope}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
-              Any analyst claim needs two independent primary sources and a written
-              falsifier. One analyst can supply at most 25% of an evidence packet.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
   )
 }
 
@@ -463,9 +344,9 @@ export function MarketPanel({ snapshot }: { snapshot: LiveSnapshot | null }) {
         </div>
 
         <p className="mt-6 text-[13px] leading-relaxed text-ink-faint">
-          Ari’s checked-in thesis owns conviction. Cowen is the primary cycle lens; Hayes,
-          Bankless, Limitless, and Nadeau contribute bounded, attributed evidence. Execution
-          remains a separate system with pause, sizing, and mandate checks.
+          The private mandate sets conviction. Cycle, liquidity, market-structure,
+          frontier-technology, and fundamentals research contribute bounded evidence.
+          Execution remains a separate system with pause, sizing, and mandate checks.
         </p>
       </div>
     </Panel>

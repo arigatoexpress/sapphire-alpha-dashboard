@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import MetricCard from '@/components/Metric'
 import MachineRoom from '@/components/MachineRoom'
+import MarketAperture from '@/components/MarketAperture'
 import { Eyebrow, Panel, Rule, Verified } from '@/components/Primitives'
 import { CHAIN, CORE_METRICS, MEASURED_AT } from '@/data/metrics'
 
@@ -34,49 +35,21 @@ const CAPABILITIES = [
 export default function Home() {
   return (
     <>
-      {/* ------------------------------------------------------------------
-          THE MACHINE ROOM
+      <section className="mx-auto w-full max-w-[1480px] px-5 pt-8 md:px-10 md:pt-12">
+        <MarketAperture />
 
-          The landing page used to describe the system in prose beside a small
-          status panel. It now *is* the system: the running machine is the first
-          thing a visitor meets, it explains its own parts in plain English, and
-          it says out loud which of its numbers are measured and which are not.
-          The prose that survived is the part the picture cannot say — what the
-          work is for, and what we are willing to be held to.
-          ------------------------------------------------------------------ */}
-      <section className="mx-auto w-full max-w-[1680px] px-5 pt-14 pb-4 md:px-10 md:pt-20">
-        <div className="rise max-w-4xl">
-          <Eyebrow>{CHAIN.name} · chain {CHAIN.id}</Eyebrow>
-          <h1 className="mt-6 font-display text-5xl leading-[0.92] font-semibold tracking-[-0.035em] text-balance md:text-7xl">
-            Verify,
-            <br />
-            don&rsquo;t&nbsp;<span className="text-sapphire">trust</span>.
-          </h1>
-          <p className="mt-7 max-w-2xl text-lg leading-relaxed text-ink-dim text-pretty">
-            Below is the system&rsquo;s declared map and its latest live report. Every part
-            says what it is in plain English. A line moves only when the feed supplies an
-            exact rate; older banded reports stay still, and missing figures say so.
-          </p>
-        </div>
-
-        <div className="rise mt-14 md:mt-16" style={{ animationDelay: '120ms' }}>
-          <MachineRoom />
-        </div>
-
-        <div className="mt-14 flex flex-wrap items-center gap-4">
-          <Link
-            href="/architecture/"
-            className="border border-sapphire bg-sapphire px-6 py-3 font-mono text-[12px] tracking-[0.14em] text-void uppercase transition-colors hover:bg-transparent hover:text-sapphire"
-          >
-            Read the architecture
-          </Link>
-          <Link
-            href="/dashboard"
-            className="underline-grow px-1 py-3 font-mono text-[12px] tracking-[0.14em] text-ink-dim uppercase transition-colors hover:text-ink"
-          >
-            Open the live desk →
-          </Link>
-        </div>
+        <details className="machine-drawer mt-6">
+          <summary>
+            <span>
+              <b>Open the live architecture</b>
+              <small>The full machine map, current readings, and reproducible endpoint</small>
+            </span>
+            <span aria-hidden="true">+</span>
+          </summary>
+          <div className="machine-drawer-body">
+            <MachineRoom />
+          </div>
+        </details>
       </section>
 
       <Rule />

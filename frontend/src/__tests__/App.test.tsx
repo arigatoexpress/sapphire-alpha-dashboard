@@ -17,13 +17,13 @@ const markup = renderToStaticMarkup(<App />)
 
 describe('no gate', () => {
   it('renders the desk without asking for anything', () => {
-    expect(markup).toContain('Machine Room')
-    expect(markup).toContain('Ari’s thesis is the mandate')
-    expect(markup).toContain('Cowen')
-    expect(markup).toContain('Hayes')
-    expect(markup).toContain('Bankless')
-    expect(markup).toContain('Limitless')
-    expect(markup).toContain('Nadeau')
+    expect(markup).toContain('Preserve optionality.')
+    expect(markup).toContain('The mandate sets conviction')
+    expect(markup).toContain('Cycle model')
+    expect(markup).toContain('Liquidity')
+    expect(markup).toContain('Market structure')
+    expect(markup).toContain('Frontier technology')
+    expect(markup).toContain('Fundamentals')
   })
 
   it.each([
@@ -38,6 +38,20 @@ describe('no gate', () => {
   it('uses its visible brand text as the home link name', () => {
     expect(markup).toContain('href="/"')
     expect(markup).not.toContain('aria-label="Sapphire Alpha home"')
+  })
+})
+
+describe('the market aperture', () => {
+  it('makes the mandate and current posture the first-class decision surface', () => {
+    expect(markup).toContain('data-market-aperture="true"')
+    expect(markup).toContain('Preserve optionality.')
+    expect(markup).toContain('The mandate sets conviction')
+    expect(markup).toContain('Cycle model')
+  })
+
+  it('keeps advisory research visibly outside execution authority', () => {
+    expect(markup).toContain('Evidence, not authority')
+    expect(markup).toContain('Execution stays outside this lens')
   })
 })
 

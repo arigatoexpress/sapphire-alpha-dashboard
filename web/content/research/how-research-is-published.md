@@ -10,35 +10,18 @@ Most research you can read for free exists to sell you something. It is written 
 
 This page describes what published research here has to do instead. It is deliberately the first thing on the research index, because a standard that is not written down is not a standard.
 
-## The authority hierarchy
+## The authority boundary
 
-Ari's investment thesis is the mandate. External analysts are advisory evidence
-sources: they can challenge a claim, but they cannot set conviction, rewrite the
-mandate, or authorize execution.
+The investment mandate is private. Published research can challenge a claim, but
+it cannot set conviction, rewrite the mandate, or authorize execution.
 
-**Benjamin Cowen — Into The Cryptoverse.** The primary cycle and risk lens for the
-current posture. It informs the late-cycle, capital-preservation prior through
-liquidity, breadth, Bitcoin dominance, and time-based cycle evidence.
+Evidence is grouped by the job it performs: cycle and risk, liquidity, market
+structure, frontier technology, and protocol fundamentals. These are analytical
+lenses, not public endorsements or delegated authority.
 
-**Arthur Hayes.** A macro and liquidity scenario lens. His work is used to test
-energy, credit, policy-response, and Bitcoin-liquidity paths—including paths that
-challenge the base case.
-
-**Bankless.** A crypto market-structure lens for DeFi, tokenization, capital
-formation, prediction markets, and agentic payments. Themes still have to prove
-retained users, open settlement, and product-market fit.
-
-**Limitless.** An AI and frontier-technology lens for compute, memory, inference,
-local models, devices, and specialized applications. Infrastructure demand must
-ultimately convert into utilization and cash flow.
-
-**Michael Nadeau — The DeFi Report.** A protocol-fundamentals lens only: real fees,
-token capture, and net supply after emissions and vesting. It is not the system's
-cycle authority and is never a default source for unrelated claims.
-
-One analyst may supply at most 25% of an evidence packet. Every consequential claim
-requires at least two independent primary sources and a written falsifier. A claim
-that survives only one lens is weaker and is labelled that way.
+No single input may supply more than 25% of an evidence packet. Every consequential
+claim requires at least two independent checks and a written falsifier. A claim that
+survives only one lens is weaker and is labelled that way.
 
 ## The four questions
 
