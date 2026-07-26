@@ -149,29 +149,85 @@ def authenticate_header(authorization: str | None) -> TelegramUser:
 # --- projections ----------------------------------------------------------
 
 
+def _text(
+    raw: dict[str, Any],
+    keys: tuple[str, ...],
+    *,
+    fallback: str | None = None,
+    limit: int = 240,
+) -> str | None:
+    """Return one bounded scalar as display text without forwarding its field name."""
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            text = " ".join(str(value).split()).strip()
+            if text:
+                return text[:limit]
+    return fallback
+
+
+def _chain_id(raw: dict[str, Any]) -> int | None:
+    value = raw.get("chain_id")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def sanitize_proposal(raw: dict[str, Any], idx: int) -> dict[str, Any]:
+    """Whitelist the context needed to triage a pending decision.
+
+    Raw identifiers, people/source fields, chat metadata, and secrets never
+    enter the result. The synthetic id is deliberately unrelated to producer
+    ids, which may themselves encode a private source.
+    """
+    if not isinstance(raw, dict):
+        raw = {}
+
+    urgency = (_text(raw, ("urgency", "priority"), limit=24) or "").lower()
+    urgency = {
+        "urgent": "critical",
+        "medium": "normal",
+    }.get(urgency, urgency)
+    if urgency not in {"critical", "high", "normal", "low"}:
+        urgency = "unspecified"
+
+    out = {
+        "id": f"proposal-{idx:03d}",
+        "action": _text(raw, ("action", "type"), fallback="Decision", limit=48),
+        "instrument": _text(raw, ("instrument", "symbol"), fallback="—", limit=48),
+        "side": _text(raw, ("side",), fallback="—", limit=24),
+        "urgency": urgency,
+        "expires_at": _text(raw, ("expires_at", "expiry", "deadline"), limit=64),
+        "impact": _text(
+            raw,
+            ("impact", "impact_summary", "expected_impact"),
+            limit=240,
+        ),
+        "created_at": _text(raw, ("created_at", "timestamp", "ts"), limit=64),
+    }
+    return tag_chain(out, _chain_id(raw))
+
+
 def sanitize_decision(raw: dict[str, Any], idx: int) -> dict[str, Any]:
     """Display-safe, chain-tagged view of one decisions.jsonl row.
 
-    Strips PII/secret-shaped keys; keeps decision semantics for history review.
+    Only decision semantics cross the boundary. Producer ids and any fields
+    identifying a person or information source are omitted by construction.
     """
     if not isinstance(raw, dict):
         return tag_chain({"id": f"dec-{idx:03d}", "summary": "unreadable entry"})
-    blocked = {"chat_id", "user_id", "username", "first_name", "last_name", "phone", "email"}
-    safe: dict[str, Any] = {}
-    for key, value in raw.items():
-        low = str(key).lower()
-        if low in blocked or "secret" in low or "password" in low or "token" in low:
-            continue
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            safe[low] = value
+
+    outcome = _text(raw, ("outcome", "result", "reason", "note"), fallback="", limit=240)
     out = {
-        "id": safe.get("id", f"dec-{idx:03d}"),
-        "action": safe.get("action", safe.get("type", "decision")),
-        "instrument": safe.get("instrument", safe.get("symbol", "—")),
-        "side": safe.get("side", "—"),
-        "decision": safe.get("decision", safe.get("status", "—")),
-        "reason": safe.get("reason", safe.get("note", "")),
-        "timestamp": safe.get("timestamp", safe.get("ts", safe.get("created_at", ""))),
+        "id": f"dec-{idx:03d}",
+        "action": _text(raw, ("action", "type"), fallback="Decision", limit=48),
+        "instrument": _text(raw, ("instrument", "symbol"), fallback="—", limit=48),
+        "side": _text(raw, ("side",), fallback="—", limit=24),
+        "decision": _text(raw, ("decision", "status"), fallback="unknown", limit=32),
+        "outcome": outcome,
+        "reason": outcome,
+        "timestamp": _text(raw, ("timestamp", "ts", "created_at"), limit=64),
     }
-    cid = safe.get("chain_id")
-    return tag_chain(out, int(cid) if isinstance(cid, (int, float)) else None)
+    return tag_chain(out, _chain_id(raw))

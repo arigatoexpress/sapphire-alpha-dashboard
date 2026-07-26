@@ -116,6 +116,8 @@ The `/api/v1/transparency` endpoint serves the trade-rail explanation ledger (`~
 
 ## Env overrides for Cloud Run
 - `AUTH_USERNAME`, `AUTH_PASSWORD` (required, min 12 chars)
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN_FILE`, `TG_MINIAPP_ALLOWED_IDS`,
+  `TG_MINIAPP_DECISION_URL` — private Mini App authentication and the bot decision deep link.
 - `WALLET_ADDRESS` — full on-chain address (e.g. Robinhood Chain L2 wallet); dashboard masks it.
 - `MAX_ORDER_USD`, `TELEGRAM_BOT_POLLING`
 - `DASHBOARD_ARMED`, `DASHBOARD_MODE`, `DASHBOARD_FORCE_KILLSWITCH`
