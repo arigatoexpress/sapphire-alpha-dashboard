@@ -88,11 +88,13 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
   - Next.js writes the OG image **without a file extension**; `backend/main.py` maps it to
     `image/png` explicitly, or unfurlers drop the preview.
 - Public build assets: `GET /_next/*` (fingerprinted, immutable cache)
-- Operator dashboard: `GET /dashboard`, `GET /dashboard/*` — auth-gated (`auth_or_public`)
+- Public observatory: `GET /dashboard`, `GET /dashboard/*` — anonymous read-only (`auth_or_public`)
 - Public: `GET /healthz`, `GET /api/health`
 - Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
-- Public/operator projections: `GET /api/v1/live`, `GET /api/v1/moss`, `GET /api/v1/transparency`
-- Legacy authenticated: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
+- Public compute projection: `GET /api/v1/live` (one undelayed numeric view for every reader)
+- Public fixed vault taxonomy: `GET /api/v1/vault-map` (no private metadata); raw `GET /vault/rag-map` remains authenticated
+- Narrow public/operator projections: `GET /api/v1/moss`, `GET /api/v1/transparency`
+- Legacy reads with anonymous sanitizers: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
 
 ## Widget data sources
 The `/api/v1/widgets` endpoint aggregates:

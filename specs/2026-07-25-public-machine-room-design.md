@@ -1,10 +1,16 @@
 # Design — The Machine Room: un-redact the system and make it legible
 
 **Date:** 2026-07-25
-**Status:** design, awaiting Ari's review before Kimi executes
+**Status:** implemented and locally verified; awaiting PR CI and the explicit production deploy gate
 **Repo:** `sapphire-alpha-dashboard`
-**Executor:** Kimi (brief: `~/ops-state/KIMI-BRIEF-sapphire-site-2026-07-25.md`)
-**Orchestrator:** Claude Code (Opus 5) — verifies, reviews, lands the PR
+**Executor:** Codex with parallel implementation agents after the Claude/Kimi usage handoff
+**Orchestrator:** Codex — verifies, reviews, and lands the reversible PR
+
+Implementation note: link throughput is now published only when a collector can
+measure it from a bounded log or directory window. `event_rate: null` is the
+honest result when that observation is unavailable. Latency is likewise measured
+by a configured probe or left unobserved. The earlier design language that called
+every rate "real" was too strong for the pre-existing collector.
 
 ---
 
