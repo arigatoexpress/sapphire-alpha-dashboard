@@ -103,7 +103,10 @@ function flowSentence(snapshot: LiveSnapshot): string {
 }
 
 function agentSentence(snapshot: LiveSnapshot): string {
-  const working = snapshot.agents.filter((agent) => agent.state === 'working').length
+  const working = snapshot.summary.active_agents
+  if (working === null) {
+    return 'The report did not include a count of agents working right now.'
+  }
   if (working === 0) return 'No agents are working right now.'
   return `${count(working)} ${working === 1 ? 'agent is' : 'agents are'} working.`
 }
