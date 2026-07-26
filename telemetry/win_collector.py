@@ -723,9 +723,9 @@ def build_snapshot(
             state=worker_state,
             activity=" | ".join(
                 (
-                    _count_text(tasks_total, "task"),
-                    _count_text(pass_count, "passing check"),
-                    _count_text(fail_count, "failing check"),
+                    _count_text(tasks_total, "lifetime task"),
+                    _count_text(pass_count, "completed task"),
+                    _count_text(fail_count, "failed task"),
                 )
             ),
             verification="verified" if worker_status == "healthy" else "pending" if worker_status == "degraded" else "failed",
