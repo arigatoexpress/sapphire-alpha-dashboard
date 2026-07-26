@@ -1,34 +1,31 @@
 import { useEffect, useState } from 'react'
 import type { FleetCounts, FleetData } from '../types'
 
-/** Poll /api/fleet. Authenticated users get the full sanitized snapshot;
- *  anonymous public read-only mode gets counts only (FleetCounts). */
-export function useFleet(authHeader: string) {
+/**
+ * Poll `/api/fleet`. The feed carries either coordination counts or the full
+ * sanitized snapshot; the desk renders whichever it is given and never claims
+ * that more exists somewhere else.
+ */
+export function useFleet() {
   const [fleet, setFleet] = useState<FleetData | FleetCounts | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     const fetchFleet = async () => {
       try {
-        const r = await fetch('/api/fleet', {
-          headers: authHeader ? { Authorization: authHeader } : {},
-        })
-        if (r.status === 401) {
-          setFleet(null)
-          return
-        }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        setFleet(await r.json())
+        const response = await fetch('/api/fleet')
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        setFleet(await response.json())
         setError('')
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'fleet fetch failed')
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : 'fleet fetch failed')
       }
     }
 
     fetchFleet()
-    const id = setInterval(fetchFleet, 30000)
+    const id = setInterval(fetchFleet, 30_000)
     return () => clearInterval(id)
-  }, [authHeader])
+  }, [])
 
   return { fleet, error }
 }

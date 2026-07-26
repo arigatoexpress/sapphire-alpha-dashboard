@@ -1,39 +1,37 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { LiveSnapshot } from '../types'
 
-export function useLiveTelemetry(authHeader: string) {
+/**
+ * Poll `/api/v1/live`.
+ *
+ * There is no `Authorization` header and no 401 branch, because there is no
+ * second tier to authenticate into: the endpoint serves one snapshot, the same
+ * numbers at the same moment, to whoever asks. A 401 here would now be a real
+ * server fault and is reported as one rather than swallowed into a login form.
+ */
+export function useLiveTelemetry() {
   const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [authRequired, setAuthRequired] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/live', {
-        headers: authHeader ? { Authorization: authHeader } : {},
-      })
-      if (response.status === 401) {
-        setAuthRequired(true)
-        setSnapshot(null)
-        return
-      }
+      const response = await fetch('/api/v1/live')
       if (!response.ok) throw new Error(`Telemetry unavailable (${response.status})`)
       setSnapshot((await response.json()) as LiveSnapshot)
-      setAuthRequired(false)
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Telemetry unavailable')
     } finally {
       setLoading(false)
     }
-  }, [authHeader])
+  }, [])
 
   useEffect(() => {
-    setLoading(true)
     refresh()
     const timer = window.setInterval(refresh, 5_000)
     return () => window.clearInterval(timer)
   }, [refresh])
 
-  return { snapshot, error, loading, authRequired, refresh }
+  return { snapshot, error, loading, refresh }
 }

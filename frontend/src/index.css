@@ -20,14 +20,21 @@
    Signal Loom.
 
    The topology viz drives styling through class names generated at render time
-   (`status-degraded`, `band-busy`, `signal-market`), applied to SVG elements.
+   (`status-degraded`, `is-moving`, `signal-market`), applied to SVG elements.
    Utility classes cannot express that, so it keeps hand-written CSS — bound to
    the shared tokens rather than to literals, so it recolours with the system.
+
+   Geometry is NOT here. Every coordinate comes from `src/desk/loomGeometry.ts`
+   and `@shared/loomLayout`, which is what makes the no-overlapping-labels
+   guarantee testable. The two font sizes below are the one place this file and
+   that one have to agree: `DEFAULT_LOOM_METRICS` estimates 7.6px per label
+   character and 6.2px per subtext character, which are deliberately wide
+   estimates for 12px display type and 10px mono. Changing a size here without
+   changing the metrics there would let labels collide again.
    --------------------------------------------------------------------------- */
 
 .loom {
   width: 100%;
-  height: 470px;
   display: block;
   overflow: visible;
 }
@@ -54,11 +61,16 @@
 .signal-archive .link-current { stroke: #6f59a9; }
 .signal-reliability .link-current { stroke: var(--color-sapphire-deep); }
 
-.loom-link:not(.band-quiet) .link-current {
+/* Motion is a measurement. `is-moving` is set only when the edge reports an
+   event rate above zero, and `--flow-duration` is derived from that rate, so a
+   fast edge visibly cycles faster than a slow one. An edge with no traffic — or
+   no reading at all — gets `is-still` and does not animate. Nothing on this
+   page moves to imply activity the snapshot does not report. */
+.loom-link.is-moving .link-current {
   animation: current-flow var(--flow-duration) linear infinite;
 }
 
-.loom-link.band-quiet .link-current {
+.loom-link.is-still .link-current {
   stroke-dasharray: none;
   opacity: 0.25;
 }
@@ -86,28 +98,96 @@
   stroke-width: 1;
 }
 
-.node-core { fill: var(--color-verified); }
+.node-core { fill: var(--color-sapphire); }
 .loom-node.status-degraded .node-core { fill: var(--color-degraded); }
 .loom-node.status-down .node-core { fill: var(--color-failed); }
 .loom-node.status-unknown .node-core { fill: var(--color-ink-faint); }
 
-.node-zone {
-  font: 500 8px var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  fill: var(--color-ink-faint);
+/* --- Label field ---------------------------------------------------------
+   Names and readings live in packed boxes below the graph, not at fixed
+   offsets beside each node. Three nodes share the `compute` zone; drawing
+   their labels near their dots is what made the text pile up. */
+
+.loom-box rect {
+  fill: var(--color-raised);
+  stroke: var(--color-line);
+  stroke-width: 1;
 }
 
-.node-label {
+.box-label {
   font: 600 12px var(--font-display);
   fill: var(--color-ink);
 }
 
-.node-meta {
-  font: 400 7px var(--font-mono);
+.box-sub {
+  font: 400 10px var(--font-mono);
   fill: var(--color-ink-faint);
+}
+
+.loom-leader {
+  fill: none;
+  stroke: var(--color-line-lit);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+/* Hovering anything highlights the node, its label and its edges together, and
+   fades the rest. It is the only way to follow one machine through a graph this
+   dense, and it is driven by the pointer rather than by a timer. */
+.loom-node.is-dim,
+.loom-box.is-dim,
+.loom-leader.is-dim,
+.loom-link.is-dim {
+  opacity: 0.18;
+}
+
+.loom-box.is-hot rect {
+  stroke: var(--color-sapphire);
+}
+
+.loom-node:focus,
+.loom-box:focus {
+  outline: none;
+}
+
+.loom-node:focus .node-halo,
+.loom-box:focus rect {
+  stroke: var(--color-sapphire);
+  stroke-width: 2;
+}
+
+.loom-node,
+.loom-box,
+.loom-leader,
+.loom-link {
+  transition: opacity 0.18s ease;
+}
+
+.loom-node,
+.loom-box {
+  cursor: default;
+}
+
+.legend-swatch {
+  width: 18px;
+  height: 4px;
+  overflow: visible;
+}
+
+.legend-swatch .link-current {
+  stroke-dasharray: none;
+  stroke-width: 3px;
 }
 
 #arrow path {
   fill: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-node,
+  .loom-box,
+  .loom-leader,
+  .loom-link {
+    transition: none;
+  }
 }
