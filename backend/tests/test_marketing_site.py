@@ -29,10 +29,12 @@ def web_out(tmp_path, monkeypatch):
     """A minimal stand-in for a real `next build --output export` tree."""
     out = tmp_path / "out"
     (out / "architecture").mkdir(parents=True)
+    (out / "proof").mkdir(parents=True)
     (out / "_next" / "static").mkdir(parents=True)
 
     (out / "index.html").write_text("<!doctype html><title>Sapphire Alpha</title>", encoding="utf-8")
     (out / "architecture" / "index.html").write_text("<!doctype html><title>Architecture</title>", encoding="utf-8")
+    (out / "proof" / "index.html").write_text("<!doctype html><title>Proof</title>", encoding="utf-8")
     (out / "404.html").write_text("<!doctype html><title>Not found</title>", encoding="utf-8")
     (out / "robots.txt").write_text("User-Agent: *\nAllow: /\n", encoding="utf-8")
     (out / "sitemap.xml").write_text("<urlset></urlset>", encoding="utf-8")
@@ -62,6 +64,14 @@ def test_marketing_route_resolves_directory_index(web_out, monkeypatch):
         response = client.get(path)
         assert response.status_code == 200, path
         assert "Architecture" in response.text
+
+
+def test_proof_ledger_is_a_public_marketing_route(web_out, monkeypatch):
+    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
+    for path in ("/proof", "/proof/"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "Proof" in response.text
 
 
 def test_static_pages_and_dashboard_support_head_prefetches(web_out, monkeypatch):

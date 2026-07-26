@@ -4,6 +4,7 @@ export const ROUTES = [
   { href: '/architecture/', label: 'Architecture' },
   { href: '/trading/', label: 'Trading' },
   { href: '/security/', label: 'Security' },
+  { href: '/proof/', label: 'Proof' },
   { href: '/onchain/', label: 'On-Chain' },
   { href: '/research/', label: 'Research' },
   { href: '/about/', label: 'About' },
@@ -28,7 +29,7 @@ export default function Nav() {
           Sapphire<span className="text-sapphire">Alpha</span>
         </Link>
 
-        <div className="hidden items-center gap-7 lg:flex">
+        <div className="hidden items-center gap-6 lg:flex">
           {ROUTES.map((route) => (
             <Link
               key={route.href}
