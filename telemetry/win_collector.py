@@ -715,7 +715,9 @@ def build_snapshot(
             "active_agents": active_agents,
             "events_per_min": None,
             "verified_today": None,
-            "attention": None,
+            # The public narrator's "waiting on you" sentence must use the
+            # same authoritative review queue as the decision cockpit.
+            "attention": desk["decisions"]["pending_review"],
         },
         "nodes": nodes,
         "links": links,
