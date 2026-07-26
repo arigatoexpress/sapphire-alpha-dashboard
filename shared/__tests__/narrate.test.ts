@@ -135,6 +135,25 @@ describe('narrate — healthy', () => {
     expect(narrate(unknown).sentences).not.toContain('Nothing is waiting on you.')
   })
 
+  it('uses the classified active-agent count instead of counting service rows', () => {
+    const servicesOnly = snapshot({
+      summary: {
+        state: 'observing',
+        active_agents: 0,
+        events_per_min: null,
+        verified_today: null,
+        attention: null,
+      },
+      nodes: [node({ id: 'intelligence', zone: 'intelligence' })],
+      agents: [
+        { id: 'telegram-command-bot', role: 'service', state: 'working', activity: 'polling', verification: 'verified', provider_class: 'local CPU', updated_at: '2026-07-25T22:00:00+00:00' },
+        { id: 'ollama-inference-host', role: 'service', state: 'working', activity: 'serving', verification: 'verified', provider_class: 'local GPU', updated_at: '2026-07-25T22:00:00+00:00' },
+      ],
+    })
+    expect(narrate(servicesOnly).sentences).toContain('No agents are working right now.')
+    expect(narrate(servicesOnly).text).not.toContain('Two agents are working.')
+  })
+
   it('uses a plural verb for plural node names', () => {
     const plural = snapshot({
       nodes: [node({ id: 'intelligence', zone: 'intelligence' }), node({ id: 'markets', zone: 'markets' })],
