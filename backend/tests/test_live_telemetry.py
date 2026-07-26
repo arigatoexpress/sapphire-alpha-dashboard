@@ -94,7 +94,21 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             "updated_at": now,
             "posture": "capital_preservation",
             "leader": "none",
-            "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
+            "validation": {
+                "oos_pass": 0,
+                "oos_total": 7,
+                "conflicts": 1,
+                "conflict_details": [
+                    {
+                        "strategy": "sniper",
+                        "live_return_pct": 176.01,
+                        "replay_return_pct": -7.82,
+                        "gap_pp": 183.83,
+                    }
+                ],
+                "replay_span_hours": 245.3,
+                "replay_data_through": "2026-07-22",
+            },
             "decisions": {
                 "pending": 3,
                 "pending_review": 2,
@@ -182,6 +196,16 @@ def test_signed_ingest_and_operator_projection():
         "oos_pass": 0,
         "oos_total": 7,
         "conflicts": 1,
+        "conflict_details": [
+            {
+                "strategy": "sniper",
+                "live_return_pct": 176.01,
+                "replay_return_pct": -7.82,
+                "gap_pp": 183.83,
+            }
+        ],
+        "replay_span_hours": 245.3,
+        "replay_data_through": "2026-07-22",
     }
     assert live["desk"]["decisions"] == {
         "pending": 3,
@@ -238,6 +262,35 @@ def test_desk_projection_rejects_private_or_unbounded_detail():
     raw, headers = _signed(payload, nonce="nonce-private-desk-01")
     response = client.post("/api/v1/telemetry", content=raw, headers=headers)
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "validation",
+    [
+        {
+            "oos_pass": 0,
+            "oos_total": 7,
+            "conflicts": 1,
+            "conflict_details": [],
+        },
+        {
+            "oos_pass": 0,
+            "oos_total": 7,
+            "conflicts": 1,
+            "conflict_details": [{
+                "strategy": "private-model",
+                "live_return_pct": 1.0,
+                "replay_return_pct": -5.0,
+                "gap_pp": 6.0,
+            }],
+        },
+    ],
+)
+def test_desk_projection_rejects_incomplete_or_unbounded_conflict_evidence(validation):
+    payload = _sample()
+    payload["desk"]["validation"] = validation
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
 
 
 @pytest.mark.parametrize(

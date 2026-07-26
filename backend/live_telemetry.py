@@ -79,6 +79,10 @@ _EXPERIMENT_STATES = {
     "collecting", "ready_for_terminal_evaluation", "complete", "invalidated", "unknown",
 }
 _COLLECTOR_STATES = {"current", "stale", "missing", "unknown"}
+_PUBLIC_STRATEGIES = {
+    "flow-follow", "sniper", "equity", "rotation",
+    "mean-rev", "smart-money", "breakout",
+}
 
 
 class TelemetryValidationError(ValueError):
@@ -256,10 +260,91 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             raise TelemetryValidationError("unsupported desk projection version")
         validation_raw = _keys(
             desk_obj["validation"],
-            allowed={"oos_pass", "oos_total", "conflicts"},
+            allowed={
+                "oos_pass", "oos_total", "conflicts", "conflict_details",
+                "replay_span_hours", "replay_data_through",
+            },
             required={"oos_pass", "oos_total", "conflicts"},
             where="desk.validation",
         )
+        conflict_details_raw = validation_raw.get("conflict_details", [])
+        if not isinstance(conflict_details_raw, list) or len(conflict_details_raw) > 7:
+            raise TelemetryValidationError(
+                "desk.validation.conflict_details must be a bounded list"
+            )
+        conflict_details = []
+        seen_conflict_strategies = set()
+        for index, conflict_raw in enumerate(conflict_details_raw):
+            conflict = _keys(
+                conflict_raw,
+                allowed={
+                    "strategy", "live_return_pct", "replay_return_pct", "gap_pp",
+                },
+                required={
+                    "strategy", "live_return_pct", "replay_return_pct", "gap_pp",
+                },
+                where=f"desk.validation.conflict_details[{index}]",
+            )
+            strategy = _enum(
+                conflict["strategy"],
+                _PUBLIC_STRATEGIES,
+                where=f"desk.validation.conflict_details[{index}].strategy",
+            )
+            if strategy in seen_conflict_strategies:
+                raise TelemetryValidationError(
+                    "desk.validation.conflict_details repeats a strategy"
+                )
+            seen_conflict_strategies.add(strategy)
+            conflict_details.append({
+                "strategy": strategy,
+                "live_return_pct": _number(
+                    conflict["live_return_pct"],
+                    where=f"desk.validation.conflict_details[{index}].live_return_pct",
+                    low=-1_000,
+                    high=10_000,
+                ),
+                "replay_return_pct": _number(
+                    conflict["replay_return_pct"],
+                    where=f"desk.validation.conflict_details[{index}].replay_return_pct",
+                    low=-1_000,
+                    high=10_000,
+                ),
+                "gap_pp": _number(
+                    conflict["gap_pp"],
+                    where=f"desk.validation.conflict_details[{index}].gap_pp",
+                    low=0,
+                    high=10_000,
+                ),
+            })
+        conflicts = _integer(
+            validation_raw["conflicts"],
+            where="desk.validation.conflicts",
+            high=100,
+        )
+        if (
+            "conflict_details" in validation_raw
+            and len(conflict_details) != conflicts
+        ):
+            raise TelemetryValidationError(
+                "desk.validation.conflict_details must explain every conflict"
+            )
+        replay_data_through = validation_raw.get("replay_data_through")
+        if replay_data_through is not None:
+            replay_data_through = _text(
+                replay_data_through,
+                where="desk.validation.replay_data_through",
+                limit=10,
+            )
+            try:
+                if (
+                    datetime.fromisoformat(replay_data_through).date().isoformat()
+                    != replay_data_through
+                ):
+                    raise ValueError
+            except ValueError as exc:
+                raise TelemetryValidationError(
+                    "desk.validation.replay_data_through must be an ISO date"
+                ) from exc
         decisions_raw = _keys(
             desk_obj["decisions"],
             allowed={
@@ -343,7 +428,14 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             "validation": {
                 "oos_pass": _integer(validation_raw["oos_pass"], where="desk.validation.oos_pass", high=100),
                 "oos_total": _integer(validation_raw["oos_total"], where="desk.validation.oos_total", high=100),
-                "conflicts": _integer(validation_raw["conflicts"], where="desk.validation.conflicts", high=100),
+                "conflicts": conflicts,
+                "conflict_details": conflict_details,
+                "replay_span_hours": _nullable_number(
+                    validation_raw.get("replay_span_hours"),
+                    where="desk.validation.replay_span_hours",
+                    high=100_000,
+                ),
+                "replay_data_through": replay_data_through,
             },
             "decisions": {
                 "pending": _nullable_integer(
@@ -702,7 +794,14 @@ def _empty_desk() -> dict[str, Any]:
         "updated_at": None,
         "posture": "unknown",
         "leader": "unknown",
-        "validation": {"oos_pass": None, "oos_total": None, "conflicts": None},
+        "validation": {
+            "oos_pass": None,
+            "oos_total": None,
+            "conflicts": None,
+            "conflict_details": [],
+            "replay_span_hours": None,
+            "replay_data_through": None,
+        },
         "decisions": {
             "pending": None,
             "pending_review": None,

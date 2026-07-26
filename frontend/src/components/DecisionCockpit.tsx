@@ -19,6 +19,30 @@ function percent(value: number | null | undefined) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
 }
 
+function signedPercent(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  })}%`
+}
+
+function signedPoints(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  })}pp`
+}
+
+function displayDate(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
 function remainingDays(desk: LiveDesk | null) {
   const qualified = desk?.experiment?.qualified_days
   const required = desk?.experiment?.required_days
@@ -133,6 +157,8 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
     },
   ] as const
   const blockers = releaseBlockers(desk)
+  const conflictDetails = desk?.validation.conflict_details ?? []
+  const maxConflictGap = Math.max(1, ...conflictDetails.map((item) => item.gap_pp))
   const queue = [
     { label: 'Awaiting review', value: desk?.decisions.pending_review ?? NOT_OBSERVED },
     { label: 'Blocked before review', value: desk?.decisions.pending_policy_blocked ?? NOT_OBSERVED },
@@ -205,6 +231,46 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
           </p>
         </div>
       </div>
+      {conflictDetails.length > 0 ? (
+        <div className="validation-ledger" aria-label="Live and replay validation conflicts">
+          <div className="validation-ledger-head">
+            <div>
+              <span>Live / replay audit</span>
+              <strong>
+                {conflictDetails.length} material
+                {' '}
+                {conflictDetails.length === 1 ? 'contradiction' : 'contradictions'}
+              </strong>
+            </div>
+            <p>
+              Live paper is materially hotter than replay. These results remain untrusted.
+              {desk?.validation.replay_span_hours !== null
+                && desk?.validation.replay_span_hours !== undefined
+                ? ` Replay: ${desk.validation.replay_span_hours.toLocaleString(undefined, {
+                    maximumFractionDigits: 1,
+                  })} hours`
+                : ''}
+              {displayDate(desk?.validation.replay_data_through)
+                ? ` · through ${displayDate(desk?.validation.replay_data_through)}`
+                : ''}
+            </p>
+          </div>
+          <ol>
+            {conflictDetails.map((item, index) => (
+              <li key={item.strategy}>
+                <span className="validation-rank">{String(index + 1).padStart(2, '0')}</span>
+                <strong>{item.strategy}</strong>
+                <div className="validation-gap" aria-hidden="true">
+                  <i style={{ width: `${Math.max(4, item.gap_pp * 100 / maxConflictGap)}%` }} />
+                </div>
+                <span>{signedPercent(item.live_return_pct)} live</span>
+                <span>{signedPercent(item.replay_return_pct)} replay</span>
+                <b>{signedPoints(item.gap_pp)}</b>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
       <ol className="readiness-gates" aria-label="Promotion gates">
         {gates.map((gate) => (
           <li key={gate.label} className={`gate-${gate.state}`}>

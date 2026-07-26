@@ -45,6 +45,10 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 
 # Semantic limits mirror backend.live_telemetry validators.
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+_PUBLIC_STRATEGIES = {
+    "flow-follow", "sniper", "equity", "rotation",
+    "mean-rev", "smart-money", "breakout",
+}
 
 # This file is deployed standalone to the Windows box and run there over SSH, so
 # it cannot import telemetry/probes.py. The few measurement helpers it needs are
@@ -147,7 +151,11 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             }
             or value["leader"] not in {"credible", "none"}
             or value["execution"] not in {"halted", "off", "gated"}
-            or set(validation) != {"oos_pass", "oos_total", "conflicts"}
+            or not {"oos_pass", "oos_total", "conflicts"} <= set(validation)
+            or not set(validation) <= {
+                "oos_pass", "oos_total", "conflicts", "conflict_details",
+                "replay_span_hours", "replay_data_through",
+            }
             or "pending" not in decisions
             or not set(decisions).issubset({
                 "pending",
@@ -171,6 +179,65 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             return _unknown_desk()
         if validation["oos_pass"] > validation["oos_total"] or feeds["fresh"] > feeds["total"]:
             return _unknown_desk()
+        conflict_details = validation.get("conflict_details", [])
+        replay_span_hours = validation.get("replay_span_hours")
+        replay_data_through = validation.get("replay_data_through")
+        if (
+            not isinstance(conflict_details, list)
+            or len(conflict_details) > 7
+            or (
+                "conflict_details" in validation
+                and len(conflict_details) != validation["conflicts"]
+            )
+            or replay_span_hours is not None
+            and (
+                isinstance(replay_span_hours, bool)
+                or not isinstance(replay_span_hours, (int, float))
+                or not math.isfinite(float(replay_span_hours))
+                or not 0 <= float(replay_span_hours) <= 100_000
+            )
+        ):
+            return _unknown_desk()
+        seen_strategies = set()
+        normalized_conflicts = []
+        for index, conflict in enumerate(conflict_details):
+            if not isinstance(conflict, dict) or set(conflict) != {
+                "strategy", "live_return_pct", "replay_return_pct", "gap_pp",
+            }:
+                return _unknown_desk()
+            strategy = conflict["strategy"]
+            values = (
+                conflict["live_return_pct"],
+                conflict["replay_return_pct"],
+                conflict["gap_pp"],
+            )
+            if (
+                strategy not in _PUBLIC_STRATEGIES
+                or strategy in seen_strategies
+                or any(
+                    isinstance(item, bool)
+                    or not isinstance(item, (int, float))
+                    or not math.isfinite(float(item))
+                    for item in values
+                )
+                or not -1_000 <= float(values[0]) <= 10_000
+                or not -1_000 <= float(values[1]) <= 10_000
+                or not 0 <= float(values[2]) <= 10_000
+            ):
+                return _unknown_desk()
+            seen_strategies.add(strategy)
+            normalized_conflicts.append(dict(conflict))
+        if replay_data_through is not None:
+            if not isinstance(replay_data_through, str):
+                return _unknown_desk()
+            try:
+                if (
+                    datetime.fromisoformat(replay_data_through).date().isoformat()
+                    != replay_data_through
+                ):
+                    return _unknown_desk()
+            except ValueError:
+                return _unknown_desk()
         decision_counts = {
             "pending": decisions["pending"],
             "pending_review": decisions.get("pending_review"),
@@ -316,12 +383,25 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         datetime.fromisoformat(str(value["updated_at"]).replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError):
         return _unknown_desk()
+    projected_validation = {
+        "oos_pass": validation["oos_pass"],
+        "oos_total": validation["oos_total"],
+        "conflicts": validation["conflicts"],
+    }
+    if "conflict_details" in validation:
+        projected_validation.update({
+            "conflict_details": normalized_conflicts,
+            "replay_span_hours": (
+                None if replay_span_hours is None else float(replay_span_hours)
+            ),
+            "replay_data_through": replay_data_through,
+        })
     return {
         "version": 1,
         "updated_at": value["updated_at"],
         "posture": value["posture"],
         "leader": value["leader"],
-        "validation": dict(validation),
+        "validation": projected_validation,
         "decisions": decision_counts,
         "execution": value["execution"],
         "feeds": dict(feeds),

@@ -301,6 +301,34 @@ describe('the schema boundary — bands never become measurements', () => {
     ).toBeNull()
   })
 
+  it('preserves bounded public evidence for live-vs-replay conflicts', () => {
+    const parsed = normalizeLivePayload({
+      ...snapshot,
+      desk: {
+        ...snapshot.desk,
+        validation: {
+          ...snapshot.desk.validation,
+          conflicts: 1,
+          conflict_details: [{
+            strategy: 'sniper',
+            live_return_pct: 176.01,
+            replay_return_pct: -7.82,
+            gap_pp: 183.83,
+          }],
+          replay_span_hours: 245.3,
+          replay_data_through: '2026-07-22',
+        },
+      },
+    })
+    expect(parsed?.snapshot.desk.validation.conflict_details).toEqual([{
+      strategy: 'sniper',
+      live_return_pct: 176.01,
+      replay_return_pct: -7.82,
+      gap_pp: 183.83,
+    }])
+    expect(parsed?.snapshot.desk.validation.replay_data_through).toBe('2026-07-22')
+  })
+
   it('accepts honest null rates in the exact contract and leaves them still', () => {
     const honest = {
       ...snapshot,
