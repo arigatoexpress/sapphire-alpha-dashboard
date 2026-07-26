@@ -20,6 +20,8 @@ export interface VocabularyEntry {
   oneLiner: string
   /** True when `plainName` is a proper noun and must not be lowercased mid-sentence. */
   proper?: boolean
+  /** The visible noun phrase is grammatically plural. */
+  plural?: boolean
 }
 
 export interface Described extends VocabularyEntry {
@@ -51,6 +53,7 @@ export const NODE_VOCABULARY: Record<string, VocabularyEntry> = {
   intelligence: {
     plainName: 'Thinking agents',
     oneLiner: 'The pool of AI helpers that read, write, check and decide things.',
+    plural: true,
   },
   markets: {
     plainName: 'Trading desk',

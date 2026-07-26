@@ -19,6 +19,205 @@
    Edit ../../shared/theme.css, never here. */
 @import '../../shared/theme.css';
 
+.decision-cockpit {
+  margin-top: 24px;
+  border: 1px solid var(--color-line-lit);
+  background:
+    linear-gradient(102deg, rgba(13, 18, 33, 0.98), rgba(5, 6, 11, 0.96) 58%),
+    var(--color-void);
+}
+
+.decision-head {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(320px, 1.1fr);
+  gap: clamp(32px, 7vw, 120px);
+  align-items: end;
+  padding: clamp(28px, 4vw, 56px);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.decision-index {
+  color: var(--color-ice);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+}
+
+.decision-head h2 {
+  max-width: 13ch;
+  margin-top: 14px;
+  color: var(--color-ink);
+  font-family: var(--font-conviction);
+  font-size: clamp(2.5rem, 4.8vw, 5.4rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.94;
+}
+
+.decision-head p {
+  max-width: 50rem;
+  padding-left: 22px;
+  border-left: 1px solid var(--color-sapphire);
+  color: var(--color-ink-dim);
+  font-size: clamp(0.95rem, 1.25vw, 1.12rem);
+  line-height: 1.7;
+}
+
+.decision-tape {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--color-line);
+  gap: 1px;
+}
+
+.decision-tape > div {
+  min-width: 0;
+  min-height: 112px;
+  padding: 20px 18px;
+  background: rgba(5, 6, 11, 0.96);
+}
+
+.decision-tape span {
+  display: block;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.decision-tape strong {
+  display: block;
+  margin-top: 16px;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: clamp(0.86rem, 1.15vw, 1.08rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.decision-tape .is-protected {
+  box-shadow: inset 0 3px var(--color-ice);
+}
+
+.decision-tape .is-protected strong {
+  color: var(--color-ice);
+}
+
+.decision-boundary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.decision-boundary i {
+  height: 1px;
+  background: linear-gradient(90deg, var(--color-line-lit), var(--color-sapphire));
+}
+
+.decision-boundary strong {
+  color: var(--color-ice);
+  font-weight: 500;
+}
+
+.system-disclosure {
+  border: 1px solid var(--color-line);
+  background: rgba(5, 6, 11, 0.64);
+}
+
+.system-disclosure > summary {
+  display: flex;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 26px;
+}
+
+.system-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.system-disclosure > summary b,
+.system-disclosure > summary small {
+  display: block;
+}
+
+.system-disclosure > summary b {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.system-disclosure > summary small,
+.system-disclosure > summary em {
+  margin-top: 4px;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.system-disclosure > summary::after {
+  color: var(--color-sapphire);
+  content: '+';
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+}
+
+.system-disclosure[open] > summary::after {
+  content: '−';
+}
+
+.system-disclosure-body {
+  padding: 0 24px 24px;
+  border-top: 1px solid var(--color-line);
+}
+
+.system-disclosure-body > :first-child {
+  margin-top: 24px;
+}
+
+@media (max-width: 1050px) {
+  .decision-tape {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .decision-head {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .decision-tape {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .decision-boundary {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-boundary i {
+    display: none;
+  }
+
+  .system-disclosure > summary em {
+    display: none;
+  }
+}
+
 /* Signal paths are rows, not a free-form graph. Every route gets its own
    reading lane, so labels and connections cannot collide at any viewport. */
 

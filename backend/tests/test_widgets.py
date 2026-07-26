@@ -95,15 +95,44 @@ def test_wallet_status_env(monkeypatch):
     assert wallet["skin_in_game"] is True
 
 
-def test_telegram_queue_env(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "false")
-    monkeypatch.setenv(
-        "DASHBOARD_SIGNALS_JSON", json.dumps([])
-    )  # avoid unrelated signal file reads
+def test_telegram_queue_missing_source_is_unknown_not_zero(tmp_path, monkeypatch):
+    import main
+
+    monkeypatch.setattr(main, "_TELEGRAM_DIR", tmp_path / "missing-telegram-dir")
+    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
     queue = _telegram_queue()
-    assert queue["pending"] == 0
-    assert queue["status"] == "paused"
+    assert queue["pending"] is None
+    assert queue["recent_count"] is None
+    assert queue["status"] == "not_observed"
     assert queue["proposals"] == []
+
+
+def test_telegram_queue_observed_empty_is_zero(tmp_path, monkeypatch):
+    import main
+
+    telegram_dir = tmp_path / "telegram-bot"
+    telegram_dir.mkdir()
+    (telegram_dir / "pending_queue.json").write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(main, "_TELEGRAM_DIR", telegram_dir)
+    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
+
+    queue = _telegram_queue()
+
+    assert queue["pending"] == 0
+    assert queue["recent_count"] == 0
+    assert queue["status"] == "polling"
+
+
+def test_telegram_queue_observed_pause(tmp_path, monkeypatch):
+    import main
+
+    telegram_dir = tmp_path / "telegram-bot"
+    telegram_dir.mkdir()
+    (telegram_dir / "pending_queue.json").write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(main, "_TELEGRAM_DIR", telegram_dir)
+    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "false")
+
+    assert _telegram_queue()["status"] == "paused"
 
 
 def test_recent_signals_env(monkeypatch):
@@ -243,11 +272,27 @@ def test_status_returns_wallet():
     assert data["gate"]["state"] in {"killswitch", "armed", "disarmed"}
 
 
-def test_widgets_no_pii_in_telegram(monkeypatch):
+def test_widgets_no_pii_in_telegram(tmp_path, monkeypatch):
+    import main
+
+    telegram_dir = tmp_path / "telegram-bot"
+    telegram_dir.mkdir()
+    (telegram_dir / "pending_queue.json").write_text(
+        json.dumps(
+            [
+                {
+                    "instrument": "RICH",
+                    "side": "BUY",
+                    "chat_id": 123456,
+                    "user_id": 789,
+                    "username": "ari",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(main, "_TELEGRAM_DIR", telegram_dir)
     monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
-    monkeypatch.setenv("DASHBOARD_SIGNALS_JSON", json.dumps([]))
-    # Simulate a pending queue via env by creating a temp file is hard because path is
-    # hardcoded; instead verify the sanitizer behavior is used in _telegram_queue.
     queue = _telegram_queue()
     for prop in queue["proposals"]:
         assert "chat_id" not in prop

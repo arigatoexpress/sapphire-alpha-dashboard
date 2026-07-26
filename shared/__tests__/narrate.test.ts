@@ -54,6 +54,16 @@ function snapshot(partial: Partial<LiveSnapshot> = {}): LiveSnapshot {
       execution: 'off',
     },
     events: [],
+    desk: {
+      version: 1,
+      updated_at: '2026-07-25T22:00:00+00:00',
+      posture: 'capital_preservation',
+      leader: 'none',
+      validation: { oos_pass: 0, oos_total: 7, conflicts: 1 },
+      decisions: { pending: 0 },
+      execution: 'halted',
+      feeds: { fresh: 7, total: 7 },
+    },
     status: 'live',
     freshness_s: 4,
     served_at: '2026-07-25T22:00:04+00:00',
@@ -123,6 +133,16 @@ describe('narrate — healthy', () => {
       'The report did not include a count of decisions waiting for a person.',
     )
     expect(narrate(unknown).sentences).not.toContain('Nothing is waiting on you.')
+  })
+
+  it('uses a plural verb for plural node names', () => {
+    const plural = snapshot({
+      nodes: [node({ id: 'intelligence', zone: 'intelligence' }), node({ id: 'markets', zone: 'markets' })],
+      links: [link({ source: 'intelligence', target: 'markets', event_rate: 5 })],
+    })
+    expect(narrate(plural).sentences[0]).toBe(
+      'The thinking agents are sending work to the trading desk, about 5 times a minute.',
+    )
   })
 })
 

@@ -30,7 +30,9 @@ except ImportError:  # running the file directly, as the LaunchAgent does
 
 # The public edge answers this from anywhere, so the round trip the orchestration
 # host measures against it is the real network leg between those two components.
-PUBLIC_EDGE_HEALTH_URL = "https://sapphirealpha.xyz/healthz/"
+# Use the API alias because Google Front End may intercept /healthz on Cloud Run,
+# while /api/health is an application route on both the service and custom domain.
+PUBLIC_EDGE_HEALTH_URL = "https://sapphirealpha.xyz/api/health"
 # The GPU gateway publishes its tiers here and routes to the first healthy one.
 GPU_GATEWAY_HEALTH_URL = "http://127.0.0.1:8800/healthz"
 
@@ -285,6 +287,12 @@ def _presence_health(agents: list[dict[str, Any]], *, source_errors: int | None 
     return "healthy"
 
 
+def _worst_health(*statuses: str) -> str:
+    """Return the least healthy independently observed component status."""
+    severity = {"healthy": 0, "unknown": 1, "degraded": 2, "down": 3}
+    return max(statuses, key=lambda status: severity.get(status, 1))
+
+
 def _desk_insert_rate(desk: dict[str, Any], *, desk_age: float) -> float | None:
     """Rows per minute the last desk cycle actually wrote, while it still counts.
 
@@ -390,7 +398,21 @@ def build_snapshot(
         and not isinstance(presence.get("source_errors"), bool)
         else None
     )
-    rh_status = _presence_health(presence_agents, source_errors=source_errors) if presence_agents else _health(rh_health.get("overall"), age_s=rh_age)
+    rh_service_status = _health(rh_health.get("overall"), age_s=rh_age)
+    if presence_agents:
+        presence_status = _presence_health(
+            presence_agents,
+            source_errors=source_errors,
+        )
+        # Presence describes agent work; RH health describes the services that
+        # work depends on. Neither source may erase degradation in the other.
+        rh_status = (
+            _worst_health(presence_status, rh_service_status)
+            if rh_health
+            else presence_status
+        )
+    else:
+        rh_status = rh_service_status
     intelligence_age = _age(now, *(agent["updated_at"] for agent in presence_agents)) if presence_agents else rh_age
     # Measured agent-event rate, or None. The old fallback here was
     # `len(agents) * 4` — an agent head-count multiplied by a magic number and
@@ -462,9 +484,11 @@ def build_snapshot(
         events.append({"id": f"archive-{int(now)}", "observed_at": observed_at, "event_class": "archive", "source": "intelligence", "target": "archive", "label": "Knowledge cycle recorded", "status": "verified"})
 
     degraded = any(node["status"] in {"degraded", "down"} for node in nodes)
-    # A count is only a count of the fleet when every expected source supplied a
-    # complete, untruncated agent list. Otherwise the visible agents remain
-    # useful individually but the aggregate is unknown.
+    # Only the presence source describes task-executing agents. RH's historical
+    # `agents` field contains monitored daemons and GPU services are processes;
+    # both remain useful diagnostics above, but neither is active agent work.
+    # The fleet count remains unknown unless every expected inventory source
+    # arrived complete and the presence projection itself is error-free.
     active_agents_complete = (
         raw_presence_agents is not None
         and len(raw_presence_agents) <= 24
@@ -475,7 +499,11 @@ def build_snapshot(
         and len(agents) <= 32
     )
     active_agents = (
-        sum(1 for agent in agents if agent["state"] in {"working", "verifying"})
+        sum(
+            1
+            for agent in presence_agents
+            if agent["state"] in {"working", "verifying"}
+        )
         if active_agents_complete
         else None
     )

@@ -951,3 +951,21 @@ def test_merged_collector_falls_back_to_mac_when_windows_ssh_fails(
     captured = capsys.readouterr()
     assert json.loads(captured.out) == mac
     assert "publishing Mac-only" in captured.err
+def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
+    path = tmp_path / "desk-summary.json"
+    expected = {
+        "version": 1,
+        "updated_at": "2026-07-26T08:00:00+00:00",
+        "posture": "capital_preservation",
+        "leader": "none",
+        "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
+        "decisions": {"pending": 0},
+        "execution": "halted",
+        "feeds": {"fresh": 7, "total": 7},
+    }
+    path.write_text(json.dumps(expected), encoding="utf-8")
+    assert win_collector._desk_projection(path) == expected
+
+    expected["source"] = "private analyst"
+    path.write_text(json.dumps(expected), encoding="utf-8")
+    assert win_collector._desk_projection(path)["posture"] == "unknown"

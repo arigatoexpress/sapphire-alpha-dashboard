@@ -98,7 +98,8 @@ function flowSentence(snapshot: LiveSnapshot): string {
   const rate = Math.round(busiest.event_rate)
   const pace =
     rate === 0 ? 'less than once a minute' : rate === 1 ? 'about once a minute' : `about ${rate} times a minute`
-  return `The ${phrase(describeNode(busiest.source))} is sending work to ${nodePhrase(busiest.target)}, ${pace}.`
+  const source = describeNode(busiest.source)
+  return `The ${phrase(source)} ${source.plural ? 'are' : 'is'} sending work to ${nodePhrase(busiest.target)}, ${pace}.`
 }
 
 function agentSentence(snapshot: LiveSnapshot): string {

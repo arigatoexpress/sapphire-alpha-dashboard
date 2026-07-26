@@ -32,6 +32,7 @@ import {
   type Execution,
   type Health,
   type LiveAgent,
+  type LiveDesk,
   type LiveEvent,
   type LiveLink,
   type LiveMarkets,
@@ -117,6 +118,9 @@ const GATES = ['telegram', 'manual', 'off'] as const
 const EXECUTIONS = ['off', 'paper', 'gated'] as const
 const EVENT_STATES = ['observed', 'verified', 'pending', 'degraded', 'failed', 'recovered'] as const
 const SERVING_STATES = ['live', 'stale', 'warming', 'offline'] as const
+const DESK_POSTURES = ['capital_preservation', 'selective_risk', 'risk_seeking', 'neutral', 'unknown'] as const
+const DESK_LEADERS = ['credible', 'none', 'unknown'] as const
+const DESK_EXECUTIONS = ['halted', 'off', 'gated', 'unknown'] as const
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/
 
 function object(value: unknown): JsonObject | null {
@@ -172,6 +176,53 @@ function nullableText(value: unknown): string | null | undefined {
   if (value === null) return null
   const parsed = text(value)
   return parsed === null ? undefined : parsed
+}
+
+function unknownDesk(): LiveDesk {
+  return {
+    version: 1,
+    updated_at: null,
+    posture: 'unknown',
+    leader: 'unknown',
+    validation: { oos_pass: null, oos_total: null, conflicts: null },
+    decisions: { pending: null },
+    execution: 'unknown',
+    feeds: { fresh: null, total: null },
+  }
+}
+
+function parseDesk(value: unknown): LiveDesk | null {
+  if (value === undefined) return unknownDesk()
+  const input = object(value)
+  const validation = object(input?.validation)
+  const decisions = object(input?.decisions)
+  const feeds = object(input?.feeds)
+  if (!input || input.version !== 1 || !validation || !decisions || !feeds) return null
+  const updatedAt = nullableText(input.updated_at)
+  const posture = member(input.posture, DESK_POSTURES)
+  const leader = member(input.leader, DESK_LEADERS)
+  const execution = member(input.execution, DESK_EXECUTIONS)
+  const oosPass = nullableInteger(validation.oos_pass)
+  const oosTotal = nullableInteger(validation.oos_total)
+  const conflicts = nullableInteger(validation.conflicts)
+  const pending = nullableInteger(decisions.pending)
+  const fresh = nullableInteger(feeds.fresh)
+  const total = nullableInteger(feeds.total)
+  if (
+    updatedAt === undefined || posture === null || leader === null || execution === null ||
+    oosPass === undefined || oosTotal === undefined || conflicts === undefined ||
+    pending === undefined || fresh === undefined || total === undefined
+  ) return null
+  return {
+    version: 1,
+    updated_at: updatedAt,
+    posture,
+    leader,
+    validation: { oos_pass: oosPass, oos_total: oosTotal, conflicts },
+    decisions: { pending },
+    execution,
+    feeds: { fresh, total },
+  }
 }
 
 function collect<T>(value: unknown, parse: (item: JsonObject, index: number) => T | null): T[] | null {
@@ -431,6 +482,7 @@ export function normalizeLivePayload(value: unknown): MachineReading | null {
   const links = parseLinks(input.links, precision)
   const markets = parseMarkets(input.markets, precision)
   const events = parseEvents(input.events)
+  const desk = parseDesk(input.desk)
   const servingStatus = member(input.status, SERVING_STATES) as ServingStatus | null
   const freshness = nullableNumber(input.freshness_s)
   const servedAt = text(input.served_at)
@@ -443,6 +495,7 @@ export function normalizeLivePayload(value: unknown): MachineReading | null {
     links === null ||
     markets === null ||
     events === null ||
+    desk === null ||
     servingStatus === null ||
     freshness === undefined ||
     servedAt === null
@@ -470,6 +523,7 @@ export function normalizeLivePayload(value: unknown): MachineReading | null {
       agents,
       markets,
       events,
+      desk,
       status: servingStatus,
       freshness_s: freshness,
       served_at: servedAt,
@@ -1024,6 +1078,7 @@ export function machineView(
               execution: 'off',
             },
             events: [],
+            desk: unknownDesk(),
             status: 'warming',
             freshness_s: null,
             served_at: '',

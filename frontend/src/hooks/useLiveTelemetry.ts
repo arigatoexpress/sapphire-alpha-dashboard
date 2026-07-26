@@ -16,7 +16,7 @@ export function useLiveTelemetry() {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/live')
+      const response = await fetch('/api/v1/live', { cache: 'no-store' })
       if (!response.ok) throw new Error(`Telemetry unavailable (${response.status})`)
       setSnapshot((await response.json()) as LiveSnapshot)
       setError('')
