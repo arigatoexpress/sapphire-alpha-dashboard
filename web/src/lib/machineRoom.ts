@@ -185,7 +185,13 @@ function unknownDesk(): LiveDesk {
     posture: 'unknown',
     leader: 'unknown',
     validation: { oos_pass: null, oos_total: null, conflicts: null },
-    decisions: { pending: null },
+    decisions: {
+      pending: null,
+      pending_review: null,
+      approved_awaiting_execution: null,
+      eligible_execution: null,
+      blocked: null,
+    },
     execution: 'unknown',
     feeds: { fresh: null, total: null },
   }
@@ -206,12 +212,33 @@ function parseDesk(value: unknown): LiveDesk | null {
   const oosTotal = nullableInteger(validation.oos_total)
   const conflicts = nullableInteger(validation.conflicts)
   const pending = nullableInteger(decisions.pending)
+  const pendingReview =
+    decisions.pending_review === undefined ? null : nullableInteger(decisions.pending_review)
+  const approvedAwaiting =
+    decisions.approved_awaiting_execution === undefined
+      ? null
+      : nullableInteger(decisions.approved_awaiting_execution)
+  const eligibleExecution =
+    decisions.eligible_execution === undefined
+      ? null
+      : nullableInteger(decisions.eligible_execution)
+  const blocked =
+    decisions.blocked === undefined ? null : nullableInteger(decisions.blocked)
   const fresh = nullableInteger(feeds.fresh)
   const total = nullableInteger(feeds.total)
   if (
     updatedAt === undefined || posture === null || leader === null || execution === null ||
     oosPass === undefined || oosTotal === undefined || conflicts === undefined ||
-    pending === undefined || fresh === undefined || total === undefined
+    pending === undefined || pendingReview === undefined || approvedAwaiting === undefined ||
+    eligibleExecution === undefined || blocked === undefined ||
+    fresh === undefined || total === undefined
+  ) return null
+  if (pendingReview !== null && pending !== pendingReview) return null
+  if (
+    approvedAwaiting !== null &&
+    eligibleExecution !== null &&
+    blocked !== null &&
+    eligibleExecution + blocked !== approvedAwaiting
   ) return null
   return {
     version: 1,
@@ -219,7 +246,13 @@ function parseDesk(value: unknown): LiveDesk | null {
     posture,
     leader,
     validation: { oos_pass: oosPass, oos_total: oosTotal, conflicts },
-    decisions: { pending },
+    decisions: {
+      pending,
+      pending_review: pendingReview,
+      approved_awaiting_execution: approvedAwaiting,
+      eligible_execution: eligibleExecution,
+      blocked,
+    },
     execution,
     feeds: { fresh, total },
   }

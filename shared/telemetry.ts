@@ -170,7 +170,14 @@ export interface LiveDesk {
     oos_total: number | null
     conflicts: number | null
   }
-  decisions: { pending: number | null }
+  decisions: {
+    /** Compatibility alias for pending_review. */
+    pending: number | null
+    pending_review: number | null
+    approved_awaiting_execution: number | null
+    eligible_execution: number | null
+    blocked: number | null
+  }
   execution: DeskExecution
   feeds: { fresh: number | null; total: number | null }
 }

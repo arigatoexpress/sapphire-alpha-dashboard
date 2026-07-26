@@ -422,7 +422,11 @@
       "conflicts": 1
     },
     "decisions": {
-      "pending": 4
+      "pending": 4,
+      "pending_review": 4,
+      "approved_awaiting_execution": 14,
+      "eligible_execution": 0,
+      "blocked": 14
     },
     "execution": "halted",
     "feeds": {

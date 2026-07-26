@@ -100,7 +100,13 @@ def _unknown_desk() -> dict[str, Any]:
         "posture": "unknown",
         "leader": "unknown",
         "validation": {"oos_pass": None, "oos_total": None, "conflicts": None},
-        "decisions": {"pending": None},
+        "decisions": {
+            "pending": None,
+            "pending_review": None,
+            "approved_awaiting_execution": None,
+            "eligible_execution": None,
+            "blocked": None,
+        },
         "execution": "unknown",
         "feeds": {"fresh": None, "total": None},
     }
@@ -126,13 +132,20 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             or value["leader"] not in {"credible", "none"}
             or value["execution"] not in {"halted", "off", "gated"}
             or set(validation) != {"oos_pass", "oos_total", "conflicts"}
-            or set(decisions) != {"pending"}
+            or "pending" not in decisions
+            or not set(decisions).issubset({
+                "pending",
+                "pending_review",
+                "approved_awaiting_execution",
+                "eligible_execution",
+                "blocked",
+            })
             or set(feeds) != {"fresh", "total"}
         ):
             return _unknown_desk()
         counts = [
             validation["oos_pass"], validation["oos_total"], validation["conflicts"],
-            decisions["pending"], feeds["fresh"], feeds["total"],
+            feeds["fresh"], feeds["total"],
         ]
         if any(
             isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000
@@ -140,6 +153,40 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         ):
             return _unknown_desk()
         if validation["oos_pass"] > validation["oos_total"] or feeds["fresh"] > feeds["total"]:
+            return _unknown_desk()
+        decision_counts = {
+            "pending": decisions["pending"],
+            "pending_review": decisions.get("pending_review"),
+            "approved_awaiting_execution": decisions.get("approved_awaiting_execution"),
+            "eligible_execution": decisions.get("eligible_execution"),
+            "blocked": decisions.get("blocked"),
+        }
+        if any(
+            count is not None
+            and (
+                isinstance(count, bool)
+                or not isinstance(count, int)
+                or not 0 <= count <= 1_000
+            )
+            for count in decision_counts.values()
+        ):
+            return _unknown_desk()
+        if (
+            decision_counts["pending_review"] is not None
+            and decision_counts["pending"] != decision_counts["pending_review"]
+        ):
+            return _unknown_desk()
+        if all(
+            decision_counts[key] is not None
+            for key in (
+                "approved_awaiting_execution",
+                "eligible_execution",
+                "blocked",
+            )
+        ) and (
+            decision_counts["eligible_execution"] + decision_counts["blocked"]
+            != decision_counts["approved_awaiting_execution"]
+        ):
             return _unknown_desk()
         datetime.fromisoformat(str(value["updated_at"]).replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError):
@@ -150,7 +197,7 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         "posture": value["posture"],
         "leader": value["leader"],
         "validation": dict(validation),
-        "decisions": dict(decisions),
+        "decisions": decision_counts,
         "execution": value["execution"],
         "feeds": dict(feeds),
     }

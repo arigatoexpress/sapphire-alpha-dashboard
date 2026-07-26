@@ -16,8 +16,17 @@ function ratio(part: number | null, total: number | null, suffix = '') {
 
 function headline(desk: LiveDesk | null) {
   if (!desk || desk.execution === 'unknown') return 'Waiting for desk state.'
+  const blocked = desk.decisions.blocked ?? 0
+  if (blocked > 0) {
+    return `${blocked} approved ${blocked === 1 ? 'decision is' : 'decisions are'} blocked.`
+  }
+  if ((desk.decisions.pending_review ?? desk.decisions.pending ?? 0) > 0) {
+    return 'A decision needs review.'
+  }
+  if ((desk.decisions.approved_awaiting_execution ?? 0) > 0) {
+    return 'Approved decisions are unresolved.'
+  }
   if (desk.execution === 'halted') return 'The desk is protected.'
-  if ((desk.decisions.pending ?? 0) > 0) return 'A decision needs review.'
   if (desk.leader === 'none') return 'No result has earned authority.'
   return 'Evidence is aligned.'
 }
@@ -38,8 +47,21 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
       value: desk?.validation.conflicts ?? NOT_OBSERVED,
     },
     {
-      label: 'Decisions waiting',
-      value: desk?.decisions.pending ?? NOT_OBSERVED,
+      label: 'Awaiting review',
+      value: desk?.decisions.pending_review ?? desk?.decisions.pending ?? NOT_OBSERVED,
+    },
+    {
+      label: 'Approved unresolved',
+      value: desk?.decisions.approved_awaiting_execution ?? NOT_OBSERVED,
+    },
+    {
+      label: 'Execution eligible',
+      value: desk?.decisions.eligible_execution ?? NOT_OBSERVED,
+    },
+    {
+      label: 'Blocked by policy',
+      value: desk?.decisions.blocked ?? NOT_OBSERVED,
+      blocked: (desk?.decisions.blocked ?? 0) > 0,
     },
     {
       label: 'Execution',
@@ -70,7 +92,16 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
       </div>
       <div className="decision-tape" aria-label="Current desk conclusions">
         {cells.map((cell, index) => (
-          <div key={cell.label} className={cell.critical ? 'is-protected' : undefined}>
+          <div
+            key={cell.label}
+            className={
+              cell.blocked
+                ? 'is-blocked'
+                : cell.critical
+                  ? 'is-protected'
+                  : undefined
+            }
+          >
             <span>{String(index + 1).padStart(2, '0')} · {cell.label}</span>
             <strong>{cell.value}</strong>
           </div>

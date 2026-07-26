@@ -33,7 +33,11 @@
       "conflicts": null
     },
     "decisions": {
-      "pending": null
+      "pending": null,
+      "pending_review": null,
+      "approved_awaiting_execution": null,
+      "eligible_execution": null,
+      "blocked": null
     },
     "execution": "unknown",
     "feeds": {

@@ -959,12 +959,34 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
         "posture": "capital_preservation",
         "leader": "none",
         "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
-        "decisions": {"pending": 0},
+        "decisions": {
+            "pending": 0,
+            "pending_review": 0,
+            "approved_awaiting_execution": 14,
+            "eligible_execution": 0,
+            "blocked": 14,
+        },
         "execution": "halted",
         "feeds": {"fresh": 7, "total": 7},
     }
     path.write_text(json.dumps(expected), encoding="utf-8")
     assert win_collector._desk_projection(path) == expected
+
+    legacy = dict(expected)
+    legacy["decisions"] = {"pending": 0}
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    assert win_collector._desk_projection(path)["decisions"] == {
+        "pending": 0,
+        "pending_review": None,
+        "approved_awaiting_execution": None,
+        "eligible_execution": None,
+        "blocked": None,
+    }
+
+    contradictory = dict(expected)
+    contradictory["decisions"] = dict(expected["decisions"], blocked=13)
+    path.write_text(json.dumps(contradictory), encoding="utf-8")
+    assert win_collector._desk_projection(path)["posture"] == "unknown"
 
     expected["source"] = "private analyst"
     path.write_text(json.dumps(expected), encoding="utf-8")
