@@ -121,6 +121,50 @@ def test_projector_uses_reduced_agent_presence_as_live_activity(tmp_path):
     assert intelligence["activity_rate"] > 0
 
 
+def test_current_service_health_keeps_idle_intelligence_fresh(tmp_path):
+    """Freshness is the latest health observation, not time since last task."""
+    missing = tmp_path / "missing.json"
+    stale_time = datetime.fromtimestamp(NOW - 86_400, UTC).isoformat()
+    presence = _write(
+        tmp_path / "agent-presence.json",
+        {
+            "version": 1,
+            "observed_at": stale_time,
+            "summary": {"active": 0, "blocked": 0, "verified": 0},
+            "agents": [
+                {
+                    "role": "Local build agent",
+                    "state": "offline",
+                    "activity": "No task assigned",
+                    "verification": "not_applicable",
+                    "provider_class": "local GPU",
+                    "updated_at": stale_time,
+                }
+            ],
+            "events": [],
+            "source_errors": 0,
+        },
+    )
+    health = _write(
+        tmp_path / "health.json",
+        {"generated_ts": NOW - 4, "overall": "healthy", "agents": []},
+    )
+
+    snapshot = validate_snapshot(
+        build_snapshot(
+            Sources(
+                health, missing, missing, missing, missing, missing, presence),
+            now=NOW,
+        )
+    )
+    intelligence = next(
+        node for node in snapshot["nodes"] if node["id"] == "intelligence")
+
+    assert intelligence["status"] == "healthy"
+    assert intelligence["freshness_s"] == 4
+    assert intelligence["activity_rate"] == 0.0
+
+
 def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
     missing = tmp_path / "missing.json"
     fresh_snapshot_time = datetime.fromtimestamp(NOW, UTC).isoformat()
@@ -151,7 +195,10 @@ def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
     )
     intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
     assert intelligence["status"] == "degraded"
-    assert intelligence["freshness_s"] == 1_000
+    # The projector observed the blocked state now. The old behavior reported
+    # time since the blocked task ran, which made freshness describe activity
+    # in one case and health sampling in another.
+    assert intelligence["freshness_s"] == 0
     # Only the presence source exists in this fixture; a fleet-wide count is
     # unknown even though the one observed agent is blocked.
     assert snapshot["summary"]["active_agents"] is None

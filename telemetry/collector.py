@@ -275,9 +275,9 @@ def _presence_health(agents: list[dict[str, Any]], *, source_errors: int | None 
     unable to distinguish idle from dead.
 
     What genuinely indicates trouble: the projector reporting source errors, or a
-    role reporting `blocked`. Idle is reported honestly through the node's
-    `freshness_s` and its measured event rate, both of which say "nothing for a
-    day" without claiming an outage.
+    role reporting `blocked`. Idleness is reported through the measured event
+    rate. Node freshness means freshness of the health observation, not time
+    since a task last ran.
     """
     if not agents:
         return "unknown"
@@ -419,7 +419,26 @@ def build_snapshot(
         )
     else:
         rh_status = rh_service_status
-    intelligence_age = _age(now, *(agent["updated_at"] for agent in presence_agents)) if presence_agents else rh_age
+    presence_age = (
+        _age(
+            now,
+            presence.get("observed_at"),
+            *(agent["updated_at"] for agent in presence_agents),
+        )
+        if presence_agents
+        else 86_400.0
+    )
+    if presence_agents and rh_health:
+        if rh_service_status != presence_status and rh_status == rh_service_status:
+            intelligence_age = rh_age
+        elif rh_service_status != presence_status and rh_status == presence_status:
+            intelligence_age = presence_age
+        else:
+            intelligence_age = min(presence_age, rh_age)
+    elif presence_agents:
+        intelligence_age = presence_age
+    else:
+        intelligence_age = rh_age
     # Measured agent-event rate, or None. The old fallback here was
     # `len(agents) * 4` — an agent head-count multiplied by a magic number and
     # published as events per minute. That is the kind of number this whole
