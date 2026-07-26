@@ -1,5 +1,5 @@
 import type { LiveDesk } from '../types'
-import { NOT_OBSERVED } from '../desk/format'
+import { formatAge, NOT_OBSERVED } from '../desk/format'
 
 const POSTURES: Record<LiveDesk['posture'], string> = {
   capital_preservation: 'Capital preservation',
@@ -248,7 +248,7 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
             </p>
           </div>
           <ol>
-            {paperTracks.map((track, index) => {
+            {paperTracks.map((track) => {
               const conflict = conflictByStrategy.get(track.strategy)
               const progress = Math.min(
                 100,
@@ -265,7 +265,10 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
                       : 'Paper only'
               return (
                 <li key={track.strategy}>
-                  <span className="strategy-rank">{String(index + 1).padStart(2, '0')}</span>
+                  <span
+                    className={`strategy-status strategy-status-${track.status}`}
+                    aria-label={`${track.status}, observed ${formatAge(track.freshness_s)}`}
+                  />
                   <strong>{track.strategy}</strong>
                   <span className={
                     track.live_return_pct > 0
@@ -283,7 +286,8 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
                   </div>
                   <span>{track.open_count} open</span>
                   <b className={conflict || track.data_flags > 0 || track.status === 'stale' ? 'is-warning' : ''}>
-                    {quality}
+                    <span>{quality}</span>
+                    <small>{formatAge(track.freshness_s)}</small>
                   </b>
                 </li>
               )

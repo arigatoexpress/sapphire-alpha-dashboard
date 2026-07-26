@@ -129,6 +129,11 @@ describe('decision cockpit', () => {
     expect(markup).toContain('4 / 14')
     expect(markup).toContain('Replay conflict')
     expect(markup).toContain('Flat / inactive')
+    expect(markup).toContain('4s ago')
+    expect(markup).toContain('2m ago')
+    expect(markup).toContain('strategy-status-current')
+    expect(markup).toContain('strategy-status-inactive')
+    expect(markup).not.toContain('strategy-rank')
   })
 
   it('keeps private and named-source detail out of the decision surface', () => {
