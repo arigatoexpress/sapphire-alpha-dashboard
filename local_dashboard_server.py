@@ -29,7 +29,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from live_telemetry import public_projection, validate_snapshot  # type: ignore[import]
+from live_telemetry import validate_snapshot  # type: ignore[import]
 from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]
 
 
@@ -44,8 +44,10 @@ def _utc_now() -> str:
 def _build_live_snapshot() -> dict[str, Any]:
     """Run the local collector and return a public-safe projection."""
     raw = build_snapshot(Sources.defaults(), link_latencies=configured_latencies())
-    validated = validate_snapshot(raw)
-    projected = public_projection(validated)
+    # The general live contract has one already-public view. The old
+    # ``public_projection`` redaction tier was deliberately deleted; keeping
+    # that stale import made the documented offline fallback crash at startup.
+    projected = validate_snapshot(raw)
     now = time.time()
     observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
     freshness_s = round(max(0.0, now - observed), 1)

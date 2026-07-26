@@ -40,7 +40,13 @@ describe('decision cockpit', () => {
 
   it('answers the desk questions before exposing machine plumbing', () => {
     expect(markup).toContain('Trading stays off.')
-    expect(markup).toContain('13 more qualified days')
+    expect(markup).toContain('Release conditions')
+    expect(markup).toContain('13 evidence days')
+    expect(markup).toContain('Positive OOS')
+    expect(markup).toContain('1 conflict')
+    expect(markup).toContain('Order runway')
+    expect(markup).toContain('Restricted')
+    expect(markup).toContain('until every release condition')
     expect(markup).toContain('Capital preservation')
     expect(markup).toContain('0 / 7 pass')
     expect(markup).toContain('7 / 7 current')
