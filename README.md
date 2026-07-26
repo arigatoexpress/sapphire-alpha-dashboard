@@ -74,9 +74,10 @@ present/empty, and exposes freshness rather than exact block height.
 - `GET /api/v1/moss` — banded anonymous asset state or exact authenticated operator view
 - `GET /api/v1/vault-map` — fixed public topic taxonomy; no titles, paths, counts, mount state, or note content
 - `GET /api/health` — public service liveness
-- Raw `GET /vault/rag-map` remains authenticated. Legacy `/api/v1/widgets` and
-  `/api/fleet` remain during migration with anonymous sanitizers, but the
-  observatory does not treat their deploy-time state as live truth.
+- Raw `GET /vault/rag-map` remains authenticated. `/api/v1/widgets` supplies
+  the observatory's anonymous evidence and system watchboard; it remains
+  advisory and cannot grant execution authority. `/api/fleet` remains a
+  sanitized coordination view.
 
 ## Local development
 
@@ -120,6 +121,17 @@ cd frontend
 npm ci
 npm run build
 ```
+
+For the fully local, fail-closed fallback:
+
+```bash
+python local_dashboard_server.py --port 8080
+open http://127.0.0.1:8080/dashboard
+```
+
+The fallback runs the local telemetry collector and serves explicit offline
+projections for assets, evidence/system watch, and fleet coordination. It never
+turns an unavailable upstream into an observed zero or an executable state.
 
 ## Verification
 

@@ -88,6 +88,65 @@ def _empty_fleet_counts() -> dict[str, Any]:
     }
 
 
+def _empty_widgets() -> dict[str, Any]:
+    """Return the complete, fail-closed watchboard contract while offline."""
+    rendered_at = _utc_now()
+    return {
+        "gate": {
+            "state": "killswitch",
+            "label": "Local fallback stopped",
+            "armed": False,
+            "killswitch": True,
+            "mode": "offline",
+            "executor_alive": False,
+            "updated_at": rendered_at,
+        },
+        "wallet": {"disclosure": "withheld"},
+        "telegram_queue": {
+            "pending": None,
+            "gate": "telegram",
+            "status": "not_observed",
+            "recent_count": None,
+            "proposals": [],
+        },
+        "recent_signals": [],
+        "research": {
+            "clips": [],
+            "live": False,
+            "policy": {
+                "research_role": "evidence_not_authority",
+                "single_input_cap": 0.25,
+                "minimum_independent_checks": 2,
+                "can_set_conviction": False,
+                "can_authorize_execution": False,
+            },
+        },
+        "tradingview": {
+            "status": "not_observed",
+            "last_ping": "",
+            "pending_alerts": None,
+        },
+        "business_health": {
+            "services": [
+                {"name": "gpu_gateway", "status": "not_observed"},
+                {"name": "remote_gpu_gateway", "status": "not_observed"},
+                {"name": "ops_server", "status": "not_observed"},
+            ],
+            "ok_count": 0,
+            "total": 3,
+            "timestamp": rendered_at,
+        },
+        "system_health": {
+            "dashboard": "ok",
+            "gate": "killswitch",
+            "telegram": "not_observed",
+            "tradingview": "not_observed",
+            "timestamp": rendered_at,
+        },
+        "rendered_at": rendered_at,
+    }
+
+
 class DashboardHandler(SimpleHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         # Quiet logs; stderr stays clean for demo use.
@@ -143,6 +202,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         if self.path == "/api/fleet":
             self._send_json(200, _empty_fleet_counts())
+            return
+
+        if self.path == "/api/v1/widgets":
+            self._send_json(200, _empty_widgets())
             return
 
         # Static asset routes.

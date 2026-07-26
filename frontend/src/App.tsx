@@ -5,6 +5,7 @@ import { describeAgent, describeNode } from '@shared/vocabulary'
 import { SignalRoutes } from './components/SignalRoutes'
 import { MarketAperture } from './components/MarketAperture'
 import { DecisionCockpit } from './components/DecisionCockpit'
+import { EvidenceWatch } from './components/EvidenceWatch'
 import { LiveClock } from './components/LiveClock'
 import { ShieldIcon } from './components/icons'
 import {
@@ -23,6 +24,7 @@ import {
 import { useLiveTelemetry } from './hooks/useLiveTelemetry'
 import { useMossSnapshot } from './hooks/useMossSnapshot'
 import { useFleet } from './hooks/useFleet'
+import { usePublicWidgets } from './hooks/usePublicWidgets'
 import {
   formatAge,
   formatClockTime,
@@ -42,6 +44,7 @@ import type {
 const SECTIONS = [
   { href: '#doctrine', label: 'Outlook' },
   { href: '#decisions', label: 'Decisions' },
+  { href: '#evidence', label: 'Evidence' },
   { href: '#assets', label: 'Assets' },
   { href: '#system', label: 'System' },
 ]
@@ -50,6 +53,7 @@ export default function App() {
   const { snapshot, error, loading } = useLiveTelemetry()
   const { snapshot: mossSnapshot, error: mossError } = useMossSnapshot()
   const { fleet, error: fleetError } = useFleet()
+  const { widgets, error: widgetsError } = usePublicWidgets()
 
   const status = snapshot?.status ?? (loading ? 'warming' : 'offline')
   const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
@@ -120,6 +124,8 @@ export default function App() {
         )}
 
         <SafetyRail snapshot={snapshot} />
+
+        <EvidenceWatch widgets={widgets} error={widgetsError} />
 
         <div id="assets" className="mt-6 scroll-mt-24">
           <MossPanel snapshot={mossSnapshot} error={mossError} />

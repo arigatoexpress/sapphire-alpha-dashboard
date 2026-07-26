@@ -56,7 +56,10 @@ If `sapphirealpha.xyz` is unreachable from the current network/client, run the l
 python local_dashboard_server.py --port 8080
 open http://127.0.0.1:8080
 ```
-It serves the existing `frontend/dist` bundle and mirrors `/api/v1/live` by running the local telemetry collector directly. `/api/v1/moss` and `/api/fleet` return safe offline stubs so the UI renders cleanly without operator auth.
+It serves the existing `frontend/dist` bundle and mirrors `/api/v1/live` by
+running the local telemetry collector directly. `/api/v1/moss`,
+`/api/v1/widgets`, and `/api/fleet` return complete fail-closed offline stubs
+so the UI renders cleanly without operator auth or invented observations.
 
 ## Deploy
 Preferred: Cloud Build with explicit env substitution.
