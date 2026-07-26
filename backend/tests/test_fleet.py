@@ -83,7 +83,7 @@ def test_fleet_missing_file_returns_empty_shape(fleet_file):
     data = r.json()
     assert data["leases"] == []
     assert data["gates"] == []
-    assert data["counts"] == {"leases": 0, "gates_open": 0}
+    assert data["counts"] == {"leases": None, "gates_open": None}
     assert data["generated_at"] is None
     assert data["snapshot_age_s"] is None
 
@@ -92,7 +92,7 @@ def test_fleet_invalid_json_returns_empty_shape(fleet_file):
     fleet_file.write_text("{not json", encoding="utf-8")
     r = client.get("/api/fleet", auth=AUTH)
     assert r.status_code == 200
-    assert r.json()["counts"] == {"leases": 0, "gates_open": 0}
+    assert r.json()["counts"] == {"leases": None, "gates_open": None}
 
 
 # --- authed happy path -----------------------------------------------------------
@@ -179,8 +179,8 @@ def test_fleet_anonymous_missing_file(monkeypatch, fleet_file):
     assert r.status_code == 200
     assert r.json() == {
         "public_view": True,
-        "leases": 0,
-        "gates_open": 0,
+        "leases": None,
+        "gates_open": None,
         "snapshot_age_s": None,
     }
 

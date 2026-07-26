@@ -64,6 +64,15 @@ def test_marketing_route_resolves_directory_index(web_out, monkeypatch):
         assert "Architecture" in response.text
 
 
+def test_static_pages_and_dashboard_support_head_prefetches(web_out, monkeypatch):
+    """Next link prefetch and crawlers issue HEAD before navigation."""
+    monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
+    for path in ("/", "/architecture/", "/dashboard/"):
+        response = client.head(path)
+        assert response.status_code in {200, 503}, path
+        assert response.content == b""
+
+
 def test_robots_and_sitemap_are_public(web_out, monkeypatch):
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
     robots = client.get("/robots.txt")

@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from collector import build_snapshot as build_mac_snapshot
 from collector import Sources as MacSources
 from collector import configured_latencies as mac_configured_latencies
+from collector import public_semantic_text
 from collector import push
 
 
@@ -37,15 +38,106 @@ def _ssh_win_snapshot(win_home: str = "C:\\Users\\aribs") -> dict:
     return json.loads(result.stdout)
 
 
+def _sanitize_windows_snapshot(snapshot: dict) -> dict:
+    """Quarantine unproven numeric rates from the deployed Windows collector.
+
+    The Windows copy currently reached over SSH predates measured-rate
+    instrumentation. Its node/link rates are deterministic multipliers of GPU
+    utilization, model count, queue depth, and cumulative task count. The wire
+    has no provenance/version flag that can distinguish those proxies from a
+    later measured implementation, so the safe merged view withdraws every
+    remote activity/event rate until that contract is versioned.
+
+    Latency is deliberately preserved: the Windows inference latency is a
+    timed request round trip, not one of the proxy values. Arbitrary remote prose
+    is also bounded before it can enter the public snapshot.
+    """
+    sanitized = copy.deepcopy(snapshot)
+
+    for node in sanitized.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        node["activity_rate"] = None
+        node["label"] = public_semantic_text(
+            node.get("label"),
+            fallback="Windows component",
+            limit=64,
+        )
+
+    for link in sanitized.get("links", []):
+        if isinstance(link, dict):
+            link["event_rate"] = None
+
+    agents = sanitized.get("agents")
+    if isinstance(agents, list):
+        for index, agent in enumerate(agents):
+            if not isinstance(agent, dict):
+                continue
+            original_role = agent.get("role")
+            safe_role = public_semantic_text(
+                original_role,
+                fallback="Windows agent",
+                limit=64,
+            )
+            agent["role"] = safe_role
+            if safe_role != original_role:
+                agent["id"] = f"windows-agent-{index + 1}"
+            agent["activity"] = public_semantic_text(
+                agent.get("activity"),
+                fallback="Windows agent state observed",
+                limit=120,
+            )
+
+    events = sanitized.get("events")
+    if isinstance(events, list):
+        for event in events:
+            if isinstance(event, dict):
+                event["label"] = public_semantic_text(
+                    event.get("label"),
+                    fallback="Windows activity observed",
+                    limit=120,
+                )
+
+    summary = sanitized.get("summary")
+    if isinstance(summary, dict):
+        summary["events_per_min"] = None
+        summary["verified_today"] = None
+        summary["attention"] = None
+        summary["active_agents"] = (
+            sum(
+                1
+                for agent in agents
+                if isinstance(agent, dict) and agent.get("state") in {"working", "verifying"}
+            )
+            if isinstance(agents, list) and len(agents) <= 32
+            else None
+        )
+
+    markets = sanitized.get("markets")
+    if isinstance(markets, dict):
+        markets["feed_age_s"] = None
+        markets["events_per_min"] = None
+        markets["paper_strategies"] = None
+
+    return sanitized
+
+
+def _sequence(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
 def _merge_snapshots(mac: dict, win: dict) -> dict:
     """Merge two schema-v1 snapshots. Mac is authoritative for markets/summary base."""
     merged = copy.deepcopy(mac)
+    win = _sanitize_windows_snapshot(win)
 
     # Merge agents by id
     agent_by_id = {agent["id"]: agent for agent in mac.get("agents", [])}
     for agent in win.get("agents", []):
         agent_by_id[agent["id"]] = agent
-    merged["agents"] = list(agent_by_id.values())[:32]
+    merged_agents = list(agent_by_id.values())
+    agents_complete = len(merged_agents) <= 32
+    merged["agents"] = merged_agents[:32]
 
     # Merge nodes by id
     node_by_id = {node["id"]: node for node in mac.get("nodes", [])}
@@ -69,24 +161,47 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
         reverse=True,
     )[:100]
 
-    # Summary: sum active agents, max attention, keep Mac state as baseline
+    # Active agent count is derived from the complete merged agent list. The
+    # other fleet-wide quantities have no complete source, so they stay unknown;
+    # summing partial node/link rates would double-count work and fabricate a
+    # system total.
     mac_summary = mac.get("summary", {})
     win_summary = win.get("summary", {})
-    active = mac_summary.get("active_agents", 0) + win_summary.get("active_agents", 0)
-    attention = mac_summary.get("attention", 0) + win_summary.get("attention", 0)
-    verified = mac_summary.get("verified_today", 0) + win_summary.get("verified_today", 0)
-    events_per_min = mac_summary.get("events_per_min", 0) + win_summary.get("events_per_min", 0)
+    active = (
+        sum(
+            1
+            for agent in merged_agents
+            if isinstance(agent, dict) and agent.get("state") in {"working", "verifying"}
+        )
+        if (
+            agents_complete
+            and isinstance(mac_summary.get("active_agents"), int)
+            and not isinstance(mac_summary.get("active_agents"), bool)
+            and isinstance(win_summary.get("active_agents"), int)
+            and not isinstance(win_summary.get("active_agents"), bool)
+        )
+        else None
+    )
     merged["summary"] = {
-        "state": mac_summary.get("state", "observing"),
-        "active_agents": min(active, 100),
-        "events_per_min": events_per_min,
-        "verified_today": verified,
-        "attention": min(attention, 100),
+        "state": (
+            "degraded"
+            if "degraded" in {mac_summary.get("state"), win_summary.get("state")}
+            else mac_summary.get("state", "observing")
+        ),
+        "active_agents": None if active is None else min(active, 100),
+        "events_per_min": None,
+        "verified_today": None,
+        "attention": None,
     }
 
     # Sequence must increase across pushes
-    merged["sequence"] = max(mac.get("sequence", 0), win.get("sequence", 0)) + 1
-    merged["observed_at"] = max(mac.get("observed_at", ""), win.get("observed_at", ""))
+    merged["sequence"] = max(_sequence(mac.get("sequence")), _sequence(win.get("sequence"))) + 1
+    observations = [
+        observed
+        for observed in (mac.get("observed_at"), win.get("observed_at"))
+        if isinstance(observed, str)
+    ]
+    merged["observed_at"] = max(observations) if observations else mac.get("observed_at")
     return merged
 
 
@@ -101,8 +216,17 @@ def main() -> int:
         MacSources.defaults(),
         link_latencies=mac_configured_latencies(),
     )
-    win_snapshot = _ssh_win_snapshot()
-    snapshot = _merge_snapshots(mac_snapshot, win_snapshot)
+    # The Windows leg goes over SSH to a box that sleeps. run_publisher.sh has
+    # always claimed this degrades to Mac-only, but the call was unguarded and
+    # RuntimeError from an unreachable host propagated straight out of main():
+    # box asleep -> publisher exits non-zero -> nothing is published -> the live
+    # feed goes stale, from a machine being off. Half a snapshot beats none.
+    try:
+        win_snapshot = _ssh_win_snapshot()
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+        print(f"WARN windows telemetry leg unavailable, publishing Mac-only: {exc}", file=sys.stderr)
+        win_snapshot = None
+    snapshot = _merge_snapshots(mac_snapshot, win_snapshot) if win_snapshot else mac_snapshot
 
     if args.validate_only:
         print(json.dumps(snapshot, indent=None if args.compact else 2, sort_keys=True))

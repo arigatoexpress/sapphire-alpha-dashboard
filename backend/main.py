@@ -19,7 +19,7 @@ Anonymous read access:
   limits/caps and file paths for anonymous callers, and /api/v1/moss keeps
   capital in bands (Ari, 2026-07-25). Authenticated users get the full payload.
 
-  Reads being public does not make writes public: non-GET methods require auth,
+  Reads being public does not make writes public: methods other than GET/HEAD require auth,
   signed ingest keeps its HMAC, and /vault/rag-map always requires auth.
 """
 
@@ -48,10 +48,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 try:
-    from . import telegram_miniapp, transparency
+    from . import public_vault_map, telegram_miniapp, transparency
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
+    import public_vault_map
     import telegram_miniapp
     import transparency
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
@@ -118,6 +119,7 @@ async def _security_headers(request: Request, call_next: Any) -> Response:
 
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+_KNOWLEDGE_ROOT = Path(_env("KNOWLEDGE_ROOT", str(Path.home() / "Knowledge")))
 
 # Statically exported Next.js marketing site (`web/`). Served from this same
 # container so the public site, the operator dashboard, and the API share one
@@ -280,12 +282,12 @@ def auth_or_public(
     request: Request,
     credentials: HTTPBasicCredentials | None = Depends(security_optional),
 ) -> str:
-    """Anonymous GETs are allowed; every other method requires auth.
+    """Anonymous GET/HEAD reads are allowed; every mutating method requires auth.
 
     Reads are public because the system is meant to be watched — that is the
     whole point of the machine room. Writes are a different question and the
     answer did not change: un-redacting reads must not un-protect writes, so
-    non-GET methods still require credentials, and signed ingest keeps its HMAC
+    mutating methods still require credentials, and signed ingest keeps its HMAC
     regardless of this dependency.
 
     Presented credentials are always validated, so bad credentials never fall
@@ -293,7 +295,7 @@ def auth_or_public(
     """
     if credentials is not None:
         return require_auth(credentials)
-    if request.method == "GET":
+    if request.method in {"GET", "HEAD"}:
         return PUBLIC_USER
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1123,7 +1125,7 @@ _EMPTY_FLEET = {
     "generated_at": None,
     "leases": [],
     "gates": [],
-    "counts": {"leases": 0, "gates_open": 0},
+    "counts": {"leases": None, "gates_open": None},
 }
 
 
@@ -1142,6 +1144,9 @@ def _no_paths(value: Any) -> str:
 def _whitelist_fleet(raw: Any) -> dict[str, Any]:
     """Reduce an untrusted fleet.json to the exact serving shape."""
     if not isinstance(raw, dict):
+        return dict(_EMPTY_FLEET)
+    generated_at = raw.get("generated_at")
+    if not isinstance(generated_at, str) or _fleet_age_seconds(generated_at) is None:
         return dict(_EMPTY_FLEET)
     leases = [
         {
@@ -1163,9 +1168,8 @@ def _whitelist_fleet(raw: Any) -> dict[str, Any]:
         for gate in raw.get("gates", [])
         if isinstance(gate, dict)
     ]
-    generated_at = raw.get("generated_at")
     return {
-        "generated_at": str(generated_at) if isinstance(generated_at, str) else None,
+        "generated_at": generated_at,
         "leases": leases,
         "gates": gates,
         "counts": {"leases": len(leases), "gates_open": len(gates)},
@@ -1198,6 +1202,15 @@ async def api_fleet(request: Request, user: str = Depends(auth_or_public)) -> di
             "snapshot_age_s": age_s,
         }
     return dict(snapshot, snapshot_age_s=age_s)
+
+
+@app.get("/api/v1/vault-map")
+@limiter.limit(_api_rate_limit)
+async def api_public_vault_map(
+    request: Request, _user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
+    """Fixed public topic graph with aggregate counts and no vault-derived text."""
+    return public_vault_map.generate(_KNOWLEDGE_ROOT)
 
 
 @app.get("/vault/rag-map", response_class=FileResponse)
@@ -1307,6 +1320,12 @@ async def web_next_assets(path: str, request: Request) -> Response:
     return _static_file_response(resolved, _IMMUTABLE_CACHE)
 
 
+@app.head("/_next/{path:path}", response_class=FileResponse)
+@limiter.limit("240/minute")
+async def web_next_assets_head(path: str, request: Request) -> Response:
+    return await web_next_assets(path, request)
+
+
 def _dashboard_index() -> Response:
     """Serve the operator SPA shell.
 
@@ -1331,10 +1350,24 @@ async def dashboard_spa(path: str, request: Request, user: str = Depends(auth_or
     return _dashboard_index()
 
 
-@app.get("/{catchall:path}", response_class=FileResponse)
+@app.head("/dashboard", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def frontend_root(catchall: str, request: Request) -> Response:
-    """Serve the public marketing site.
+async def dashboard_root_head(
+    request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return _dashboard_index()
+
+
+@app.head("/dashboard/{path:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def dashboard_spa_head(
+    path: str, request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return _dashboard_index()
+
+
+def _marketing_response(catchall: str) -> Response:
+    """Resolve one statically exported marketing path.
 
     Anonymous by design: this is the front door, and gating it behind Basic auth
     would make the site unreachable whenever PUBLIC_READ_ONLY is off. It serves
@@ -1360,6 +1393,19 @@ async def frontend_root(catchall: str, request: Request) -> Response:
             headers={"Cache-Control": _MARKETING_CACHE},
         )
     raise HTTPException(status_code=404, detail="not found")
+
+
+@app.get("/{catchall:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def frontend_root(catchall: str, request: Request) -> Response:
+    return _marketing_response(catchall)
+
+
+@app.head("/{catchall:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def frontend_head(catchall: str, request: Request) -> Response:
+    """Let static-export prefetchers and crawlers verify pages without 405s."""
+    return _marketing_response(catchall)
 
 
 @app.exception_handler(Exception)

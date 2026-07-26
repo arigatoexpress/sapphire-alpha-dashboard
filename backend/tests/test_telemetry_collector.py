@@ -104,10 +104,12 @@ def test_projector_uses_reduced_agent_presence_as_live_activity(tmp_path):
 
     assert snapshot["agents"][0]["role"] == "Local build agent"
     assert snapshot["agents"][0]["state"] == "verifying"
-    assert snapshot["agents"][0]["activity"] == "Golden evals and scope verified"
-    assert snapshot["events"][0]["label"] == "Golden evals and scope verified"
+    assert snapshot["agents"][0]["activity"] == "Capability result under verification"
+    assert snapshot["events"][0]["label"] == "Agent result verified"
     assert snapshot["events"][0]["status"] == "verified"
-    assert snapshot["summary"]["active_agents"] == 1
+    # The observed presence list contains one active role, but the other fleet
+    # sources are absent, so this cannot claim to be a complete fleet count.
+    assert snapshot["summary"]["active_agents"] is None
     intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
     assert intelligence["status"] == "healthy"
     assert intelligence["activity_rate"] > 0
@@ -144,5 +146,8 @@ def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
     intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
     assert intelligence["status"] == "degraded"
     assert intelligence["freshness_s"] == 1_000
-    assert snapshot["summary"]["active_agents"] == 0
-    assert snapshot["summary"]["attention"] >= 1
+    # Only the presence source exists in this fixture; a fleet-wide count is
+    # unknown even though the one observed agent is blocked.
+    assert snapshot["summary"]["active_agents"] is None
+    # A blocked component is not evidence that a human decision is queued.
+    assert snapshot["summary"]["attention"] is None

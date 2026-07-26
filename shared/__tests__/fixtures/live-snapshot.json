@@ -4,10 +4,10 @@
   "sequence": 1785018376689960201,
   "summary": {
     "state": "degraded",
-    "active_agents": 10,
-    "events_per_min": 611.0,
-    "verified_today": 11,
-    "attention": 3
+    "active_agents": 9,
+    "events_per_min": null,
+    "verified_today": null,
+    "attention": null
   },
   "nodes": [
     {
@@ -16,7 +16,7 @@
       "label": "Public edge",
       "status": "healthy",
       "load": "low",
-      "activity_rate": 29.95,
+      "activity_rate": null,
       "freshness_s": 0.0
     },
     {
@@ -25,7 +25,7 @@
       "label": "Orchestration",
       "status": "down",
       "load": "medium",
-      "activity_rate": 63.6,
+      "activity_rate": null,
       "freshness_s": 9262.541
     },
     {
@@ -34,7 +34,7 @@
       "label": "GPU compute",
       "status": "healthy",
       "load": "medium",
-      "activity_rate": 24.0,
+      "activity_rate": null,
       "freshness_s": 99.541
     },
     {
@@ -61,7 +61,7 @@
       "label": "Knowledge archive",
       "status": "down",
       "load": "medium",
-      "activity_rate": 63.6,
+      "activity_rate": null,
       "freshness_s": 9262.541
     },
     {
@@ -70,7 +70,7 @@
       "label": "Windows workhorse",
       "status": "healthy",
       "load": "idle",
-      "activity_rate": 8.0,
+      "activity_rate": null,
       "freshness_s": 0.0
     },
     {
@@ -79,7 +79,7 @@
       "label": "Agent worker",
       "status": "healthy",
       "load": "idle",
-      "activity_rate": 8.0,
+      "activity_rate": null,
       "freshness_s": 58.581
     },
     {
@@ -88,7 +88,7 @@
       "label": "Telegram command bot",
       "status": "healthy",
       "load": "medium",
-      "activity_rate": 17.0,
+      "activity_rate": null,
       "freshness_s": 134.581
     },
     {
@@ -97,7 +97,7 @@
       "label": "Ollama inference",
       "status": "healthy",
       "load": "medium",
-      "activity_rate": 8.0,
+      "activity_rate": null,
       "freshness_s": 0.0
     },
     {
@@ -106,7 +106,7 @@
       "label": "Knowledge archive",
       "status": "healthy",
       "load": "medium",
-      "activity_rate": 32.0,
+      "activity_rate": null,
       "freshness_s": 58.581
     }
   ],
@@ -116,7 +116,7 @@
       "target": "orchestration",
       "status": "down",
       "latency_ms": null,
-      "event_rate": 21.0,
+      "event_rate": null,
       "signal_class": "network"
     },
     {
@@ -124,7 +124,7 @@
       "target": "gpu-compute",
       "status": "healthy",
       "latency_ms": null,
-      "event_rate": 24.0,
+      "event_rate": null,
       "signal_class": "agent"
     },
     {
@@ -148,7 +148,7 @@
       "target": "archive",
       "status": "down",
       "latency_ms": null,
-      "event_rate": 63.6,
+      "event_rate": null,
       "signal_class": "archive"
     },
     {
@@ -156,7 +156,7 @@
       "target": "agent-worker",
       "status": "healthy",
       "latency_ms": null,
-      "event_rate": 17.0,
+      "event_rate": null,
       "signal_class": "agent"
     },
     {
@@ -164,7 +164,7 @@
       "target": "ollama-inference",
       "status": "healthy",
       "latency_ms": null,
-      "event_rate": 8.0,
+      "event_rate": null,
       "signal_class": "agent"
     },
     {
@@ -172,7 +172,7 @@
       "target": "win-workhorse",
       "status": "healthy",
       "latency_ms": null,
-      "event_rate": 8.0,
+      "event_rate": null,
       "signal_class": "network"
     },
     {
@@ -180,7 +180,7 @@
       "target": "knowledge-archive",
       "status": "healthy",
       "latency_ms": null,
-      "event_rate": 16.0,
+      "event_rate": null,
       "signal_class": "archive"
     }
   ],
@@ -407,7 +407,7 @@
     "status": "current",
     "feed_age_s": 1.541,
     "events_per_min": 599.0,
-    "paper_strategies": 7,
+    "paper_strategies": null,
     "decision_gate": "telegram",
     "execution": "off"
   },

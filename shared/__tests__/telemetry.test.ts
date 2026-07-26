@@ -33,22 +33,55 @@ describe('telemetry — the captured payloads match the type', () => {
     }
   })
 
-  it('gives every node the fields the type promises', () => {
+  it('gives every node the fields the type promises, with activity nullable', () => {
     expect(snapshot.nodes.length).toBeGreaterThan(0)
     for (const node of snapshot.nodes) {
       expect(typeof node.id).toBe('string')
       expect(typeof node.label).toBe('string')
       expect(['idle', 'low', 'medium', 'high']).toContain(node.load)
-      expect(typeof node.activity_rate).toBe('number')
+      expect(node.activity_rate === null || typeof node.activity_rate === 'number').toBe(true)
       expect(typeof node.freshness_s).toBe('number')
     }
+    expect(snapshot.nodes.some((node) => node.activity_rate === null)).toBe(true)
+    expect(snapshot.nodes.some((node) => typeof node.activity_rate === 'number')).toBe(true)
   })
 
-  it('gives every link real numbers, with latency nullable', () => {
+  it('keeps both link measurements nullable', () => {
     for (const link of snapshot.links) {
-      expect(typeof link.event_rate).toBe('number')
+      expect(link.event_rate === null || typeof link.event_rate === 'number').toBe(true)
       expect(link.latency_ms === null || typeof link.latency_ms === 'number').toBe(true)
     }
+    expect(snapshot.links.some((link) => link.event_rate === null)).toBe(true)
+    expect(snapshot.links.some((link) => typeof link.event_rate === 'number')).toBe(true)
+  })
+
+  it('does not preserve the captured proxy rates as measurements', () => {
+    const windowsNodeIds = new Set([
+      'win-workhorse',
+      'agent-worker',
+      'telegram-bot',
+      'ollama-inference',
+      'knowledge-archive',
+    ])
+    const windowsNodes = snapshot.nodes.filter((node) => windowsNodeIds.has(node.id))
+    const windowsLinks = snapshot.links.filter(
+      (link) => windowsNodeIds.has(link.source) || windowsNodeIds.has(link.target),
+    )
+    expect(windowsNodes.length).toBeGreaterThan(0)
+    expect(windowsLinks.length).toBeGreaterThan(0)
+    expect(windowsNodes.every((node) => node.activity_rate === null)).toBe(true)
+    expect(windowsLinks.every((link) => link.event_rate === null)).toBe(true)
+    expect(snapshot.summary.events_per_min).toBeNull()
+    expect(snapshot.summary.verified_today).toBeNull()
+    expect(snapshot.summary.attention).toBeNull()
+    expect(snapshot.markets.paper_strategies).toBeNull()
+  })
+
+  it('derives the available active-agent count from the agent list', () => {
+    const active = snapshot.agents.filter(
+      (agent) => agent.state === 'working' || agent.state === 'verifying',
+    ).length
+    expect(snapshot.summary.active_agents).toBe(active)
   })
 
   it('only links declared nodes, in one direction', () => {
@@ -71,6 +104,12 @@ describe('telemetry — the captured payloads match the type', () => {
     expect(empty.observed_at).toBeNull()
     expect(empty.freshness_s).toBeNull()
     expect(empty.markets.feed_age_s).toBeNull()
+    expect(empty.markets.events_per_min).toBeNull()
+    expect(empty.markets.paper_strategies).toBeNull()
+    expect(empty.summary.active_agents).toBeNull()
+    expect(empty.summary.events_per_min).toBeNull()
+    expect(empty.summary.verified_today).toBeNull()
+    expect(empty.summary.attention).toBeNull()
     expect(empty.summary.state).toBe('not observed')
     expect(empty).not.toHaveProperty('received_at')
   })

@@ -95,7 +95,34 @@ describe('narrate — healthy', () => {
 
   it('says so plainly when nothing is moving', () => {
     const quiet = snapshot({ nodes: healthy.nodes, links: [link({ source: 'gpu-compute', target: 'markets', event_rate: 0 })] })
-    expect(narrate(quiet).sentences[0]).toBe('Nothing is moving between the parts of the system right now.')
+    expect(narrate(quiet).sentences[0]).toBe('No measured connection is moving right now.')
+  })
+
+  it('does not turn an unmeasured rate into a quiet-system claim', () => {
+    const unknown = snapshot({
+      nodes: healthy.nodes,
+      links: [link({ source: 'gpu-compute', target: 'markets', event_rate: null })],
+    })
+    expect(narrate(unknown).sentences[0]).toBe(
+      'No connection supplied a traffic measurement in this report.',
+    )
+  })
+
+  it('does not turn a missing attention count into nothing waiting', () => {
+    const unknown = snapshot({
+      summary: {
+        state: 'observing',
+        active_agents: null,
+        events_per_min: null,
+        verified_today: null,
+        attention: null,
+      },
+      nodes: [node({ id: 'gpu-compute' })],
+    })
+    expect(narrate(unknown).sentences).toContain(
+      'The report did not include a count of decisions waiting for a person.',
+    )
+    expect(narrate(unknown).sentences).not.toContain('Nothing is waiting on you.')
   })
 })
 

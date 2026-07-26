@@ -73,12 +73,12 @@ export type ServingStatus = 'live' | 'stale' | 'warming' | 'offline'
 
 export interface LiveSummary {
   state: SummaryState
-  active_agents: number
-  /** Events per minute across the whole system. A rate, not a count. */
-  events_per_min: number
-  verified_today: number
+  active_agents: number | null
+  /** Events per minute across the whole system, or null without a complete event log. */
+  events_per_min: number | null
+  verified_today: number | null
   /** How many things are waiting for a person. */
-  attention: number
+  attention: number | null
 }
 
 export interface LiveNode {
@@ -88,8 +88,8 @@ export interface LiveNode {
   label: string
   status: Health
   load: NodeLoad
-  /** Events per minute attributed to this node. */
-  activity_rate: number
+  /** Events per minute attributed to this node, or null when no event source observes it. */
+  activity_rate: number | null
   /** Age of this node's own reading, in seconds. */
   freshness_s: number
 }
@@ -102,13 +102,14 @@ export interface LiveLink {
   status: Health
   /**
    * Round-trip time in milliseconds, or `null` when nothing measured it.
-   * `null` is the common case today: no link probes are configured, so both
-   * prod and a local collector run report `null` for every link. Treat a
-   * number as the exception and never render a placeholder as if it were one.
+   * The Mac publisher times the public edge and the routed compute tier; the
+   * Windows inference collector times its request round trip. Semantic paths
+   * without an addressable RTT source remain null. A feed timestamp lag is
+   * freshness, not latency.
    */
   latency_ms: number | null
-  /** Events per minute across this edge. */
-  event_rate: number
+  /** Events per minute across this edge, or null when no event source observes it. */
+  event_rate: number | null
   signal_class: SignalClass
 }
 
@@ -127,8 +128,8 @@ export interface LiveMarkets {
   status: MarketStatus
   /** `null` only on the empty snapshot. */
   feed_age_s: number | null
-  events_per_min: number
-  paper_strategies: number
+  events_per_min: number | null
+  paper_strategies: number | null
   decision_gate: DecisionGate
   execution: Execution
 }

@@ -34,6 +34,12 @@ _NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
 _HEX_RE = re.compile(r"^[a-f0-9]{64}$")
 _IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 _WALLET_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_PHONE_RE = re.compile(
+    r"(?<!\w)(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}(?!\w)"
+)
+_HANDLE_RE = re.compile(r"(?<![\w@])@[A-Za-z0-9_]{2,32}\b")
+_SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
 
 _FORBIDDEN_KEYS = re.compile(
     r"(?:host(?:name)?|endpoint|url|uri|path|port|pid|ip|token|secret|password|"
@@ -97,6 +103,13 @@ def _scan_forbidden(value: Any, *, where: str = "payload") -> None:
             raise TelemetryValidationError(f"{where} contains an internal identifier")
         if _IPV4_RE.search(value) or _WALLET_RE.search(value):
             raise TelemetryValidationError(f"{where} contains an internal identifier")
+        if (
+            _EMAIL_RE.search(value)
+            or _PHONE_RE.search(value)
+            or _HANDLE_RE.search(value)
+            or _SSN_RE.search(value)
+        ):
+            raise TelemetryValidationError(f"{where} contains a personal identifier")
 
 
 def _text(value: Any, *, where: str, limit: int = 120) -> str:
@@ -197,10 +210,18 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     )
     summary = {
         "state": _enum(summary_raw["state"], _SUMMARY_STATES, where="summary.state"),
-        "active_agents": _integer(summary_raw["active_agents"], where="summary.active_agents", high=100),
-        "events_per_min": _number(summary_raw["events_per_min"], where="summary.events_per_min"),
-        "verified_today": _integer(summary_raw["verified_today"], where="summary.verified_today"),
-        "attention": _integer(summary_raw["attention"], where="summary.attention", high=100),
+        "active_agents": None
+        if summary_raw["active_agents"] is None
+        else _integer(summary_raw["active_agents"], where="summary.active_agents", high=100),
+        "events_per_min": None
+        if summary_raw["events_per_min"] is None
+        else _number(summary_raw["events_per_min"], where="summary.events_per_min"),
+        "verified_today": None
+        if summary_raw["verified_today"] is None
+        else _integer(summary_raw["verified_today"], where="summary.verified_today"),
+        "attention": None
+        if summary_raw["attention"] is None
+        else _integer(summary_raw["attention"], where="summary.attention", high=100),
     }
 
     if not isinstance(obj["nodes"], list) or len(obj["nodes"]) > 24:
@@ -240,7 +261,9 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "label": _text(node["label"], where=f"nodes[{index}].label", limit=64),
                 "status": _enum(node["status"], _HEALTH, where=f"nodes[{index}].status"),
                 "load": _enum(node["load"], _LOAD, where=f"nodes[{index}].load"),
-                "activity_rate": _number(node["activity_rate"], where=f"nodes[{index}].activity_rate"),
+                "activity_rate": None
+                if node["activity_rate"] is None
+                else _number(node["activity_rate"], where=f"nodes[{index}].activity_rate"),
                 "freshness_s": _number(node["freshness_s"], where=f"nodes[{index}].freshness_s", high=86_400),
             }
         )
@@ -267,7 +290,15 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "latency_ms": None
                 if link["latency_ms"] is None
                 else _number(link["latency_ms"], where=f"links[{index}].latency_ms", high=60_000),
-                "event_rate": _number(link["event_rate"], where=f"links[{index}].event_rate"),
+                # None means "not measured", exactly as it does for latency_ms
+                # above, and it must survive to the client unchanged. Coercing it
+                # to 0 here would publish "no traffic on this edge" as a
+                # measurement, which is the one failure mode a transparency site
+                # cannot afford: a fabricated number is indistinguishable from an
+                # observed one once it is on the wire.
+                "event_rate": None
+                if link["event_rate"] is None
+                else _number(link["event_rate"], where=f"links[{index}].event_rate"),
                 "signal_class": _enum(
                     link["signal_class"], _SIGNAL_CLASSES, where=f"links[{index}].signal_class"
                 ),
@@ -325,9 +356,15 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     markets = {
         "network": _text(market["network"], where="markets.network", limit=48),
         "status": _enum(market["status"], _MARKET_STATES, where="markets.status"),
-        "feed_age_s": _number(market["feed_age_s"], where="markets.feed_age_s", high=86_400),
-        "events_per_min": _number(market["events_per_min"], where="markets.events_per_min"),
-        "paper_strategies": _integer(market["paper_strategies"], where="markets.paper_strategies", high=100),
+        "feed_age_s": None
+        if market["feed_age_s"] is None
+        else _number(market["feed_age_s"], where="markets.feed_age_s", high=86_400),
+        "events_per_min": None
+        if market["events_per_min"] is None
+        else _number(market["events_per_min"], where="markets.events_per_min"),
+        "paper_strategies": None
+        if market["paper_strategies"] is None
+        else _integer(market["paper_strategies"], where="markets.paper_strategies", high=100),
         "decision_gate": _enum(market["decision_gate"], _GATES, where="markets.decision_gate"),
         "execution": _enum(market["execution"], _EXECUTION, where="markets.execution"),
     }
@@ -392,10 +429,10 @@ def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
         "sequence": None,
         "summary": {
             "state": "not observed",
-            "active_agents": 0,
-            "events_per_min": 0,
-            "verified_today": 0,
-            "attention": 0,
+            "active_agents": None,
+            "events_per_min": None,
+            "verified_today": None,
+            "attention": None,
         },
         "nodes": [],
         "links": [],
@@ -404,8 +441,8 @@ def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
             "network": "Robinhood Chain",
             "status": "offline",
             "feed_age_s": None,
-            "events_per_min": 0,
-            "paper_strategies": 0,
+            "events_per_min": None,
+            "paper_strategies": None,
             "decision_gate": "off",
             "execution": "off",
         },

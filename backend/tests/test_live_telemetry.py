@@ -200,6 +200,61 @@ def test_attack_useful_or_secret_fields_are_rejected(poison):
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("field_path", "value"),
+    [
+        (("agents", 0, "role"), "owner@example.com"),
+        (("agents", 0, "activity"), "Call 303-555-0199"),
+        (("events", 0, "label"), "Ask @private_handle"),
+        (("events", 0, "label"), "Reference 123-45-6789"),
+    ],
+)
+def test_public_prose_rejects_common_personal_identifiers(field_path, value):
+    """Role/activity/event prose is public and producer-controlled. Bounded
+    length alone is not a privacy boundary, so common direct identifiers fail
+    closed before storage."""
+    payload = _sample()
+    collection, index, field = field_path
+    payload[collection][index][field] = value
+    raw, headers = _signed(payload, nonce=f"nonce-pii-{field}-{index}-{len(value)}")
+    response = client.post("/api/v1/telemetry", content=raw, headers=headers)
+    assert response.status_code == 422
+    assert "personal identifier" in response.json()["detail"]
+
+
+def test_nullable_activity_summary_and_market_measurements_survive_ingest():
+    payload = _sample()
+    payload["summary"].update(
+        {
+            "active_agents": None,
+            "events_per_min": None,
+            "verified_today": None,
+            "attention": None,
+        }
+    )
+    payload["nodes"][0]["activity_rate"] = None
+    payload["links"][0]["event_rate"] = None
+    payload["markets"].update(
+        {
+            "feed_age_s": None,
+            "events_per_min": None,
+            "paper_strategies": None,
+        }
+    )
+    raw, headers = _signed(payload, nonce="nonce-nullable-001")
+    assert client.post("/api/v1/telemetry", content=raw, headers=headers).status_code == 202
+    live = client.get("/api/v1/live").json()
+    assert live["summary"]["active_agents"] is None
+    assert live["summary"]["events_per_min"] is None
+    assert live["summary"]["verified_today"] is None
+    assert live["summary"]["attention"] is None
+    assert live["nodes"][0]["activity_rate"] is None
+    assert live["links"][0]["event_rate"] is None
+    assert live["markets"]["feed_age_s"] is None
+    assert live["markets"]["events_per_min"] is None
+    assert live["markets"]["paper_strategies"] is None
+
+
 def test_anonymous_view_is_unredacted_but_still_leaks_no_internal_identifiers():
     """The redaction tier is gone; the ingest contract is what keeps this safe.
 

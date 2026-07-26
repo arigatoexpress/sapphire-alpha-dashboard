@@ -4,10 +4,10 @@
   "sequence": null,
   "summary": {
     "state": "not observed",
-    "active_agents": 0,
-    "events_per_min": 0,
-    "verified_today": 0,
-    "attention": 0
+    "active_agents": null,
+    "events_per_min": null,
+    "verified_today": null,
+    "attention": null
   },
   "nodes": [],
   "links": [],
@@ -16,8 +16,8 @@
     "network": "Robinhood Chain",
     "status": "offline",
     "feed_age_s": null,
-    "events_per_min": 0,
-    "paper_strategies": 0,
+    "events_per_min": null,
+    "paper_strategies": null,
     "decision_gate": "off",
     "execution": "off"
   },

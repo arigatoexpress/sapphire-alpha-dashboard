@@ -2,7 +2,8 @@
 
 ## `live-snapshot.json`
 
-A **real** un-redacted `/api/v1/live` snapshot, captured 2026-07-25.
+A sanitized historical `/api/v1/live` snapshot based on a real producer capture
+from 2026-07-25.
 
 Anonymous `GET https://sapphirealpha.xyz/api/v1/live` could not be used directly: at capture
 time the public tier was still redacted (`live_telemetry.public_projection` replaces every
@@ -19,17 +20,31 @@ PYTHONPATH=telemetry:backend:. backend/.venv/bin/python telemetry/merged_collect
 
 `merged_collector.py` runs the Mac collector plus the Windows collector over SSH — the same
 pair prod ingests from. The output was then passed through `live_telemetry.validate_snapshot()`,
-the function that defines the stored shape, and the four serving fields `get()` appends
-(`status`, `freshness_s`, `served_at`, `received_at`) were added.
+the function that defines the stored shape, and the serving fields `get()` appends were added.
 
-Verified against the live endpoint: the topology is identical to what prod was serving at the
-same moment — the same 11 node ids, zones and labels, and the same 9 links. Only the redacted
-numeric fields differ, which is the entire point of the fixture.
+The topology remains the captured topology: the same 11 node ids, zones and labels, and the
+same 9 links. It is not presented as a fresh live observation.
+
+The old producer used numeric proxies that looked like measurements: model/head counts
+multiplied by constants, cumulative task totals labeled as per-minute activity, a stale batch
+rate repeated as current, and a hard-coded paper-strategy count. Those values were deliberately
+removed during the telemetry-honesty migration:
+
+- all unversioned Windows `activity_rate` and `event_rate` values are `null`;
+- Mac rates without an actual current event source are `null`;
+- the two retained rates (`0.0` agent events and `599.0` market messages) came from complete,
+  append-only/current sources in the captured payload;
+- fleet-wide event, verification, and attention counts are `null`;
+- `active_agents` is derived from the agents actually present in this fixture; and
+- `paper_strategies` is `null` because the captured value came from a constant.
+
+Every retained numeric value therefore has a measurement source; every removed proxy is an
+explicit `null`, never a replacement zero.
 
 `validate_snapshot()` runs `_scan_forbidden()` over the whole payload, so this file provably
 contains no hostname, URL, IP address, filesystem path or wallet address.
 
-Regenerated the same day against commit `bf76b82`, which renamed the served node field
+The consumer shape was regenerated the same day against commit `bf76b82`, which renamed the served node field
 `load_band` to `load`. Producers still send `load_band` on the wire and the backend renames it
 on ingest, so the fixture is what a *consumer* sees, which is what these tests are about.
 

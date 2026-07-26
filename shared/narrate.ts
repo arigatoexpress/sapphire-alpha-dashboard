@@ -71,12 +71,29 @@ function ageSentence(freshnessS: number | null): string {
 function flowSentence(snapshot: LiveSnapshot): string {
   let busiest = null as LiveSnapshot['links'][number] | null
   for (const link of snapshot.links) {
-    if (link.event_rate > 0 && (busiest === null || link.event_rate > busiest.event_rate)) {
+    if (
+      link.event_rate !== null &&
+      link.event_rate > 0 &&
+      (
+        busiest === null ||
+        busiest.event_rate === null ||
+        link.event_rate > busiest.event_rate
+      )
+    ) {
       busiest = link
     }
   }
   if (busiest === null) {
-    return 'Nothing is moving between the parts of the system right now.'
+    const measured = snapshot.links.some((link) => link.event_rate !== null)
+    return measured
+      ? 'No measured connection is moving right now.'
+      : 'No connection supplied a traffic measurement in this report.'
+  }
+  // The selection above proves this is a measured positive number. Keep that
+  // proof explicit: a null-coalescing zero here would make a future control-flow
+  // regression read "unknown" as "quiet".
+  if (busiest.event_rate === null) {
+    return 'No connection supplied a traffic measurement in this report.'
   }
   const rate = Math.round(busiest.event_rate)
   const pace =
@@ -113,6 +130,7 @@ function troubleSentences(snapshot: LiveSnapshot): string[] {
 
 function attentionSentence(snapshot: LiveSnapshot): string {
   const waiting = snapshot.summary.attention
+  if (waiting === null) return 'The report did not include a count of decisions waiting for a person.'
   if (waiting <= 0) return 'Nothing is waiting on you.'
   return `${count(waiting)} ${waiting === 1 ? 'thing is' : 'things are'} waiting for a person to decide.`
 }
