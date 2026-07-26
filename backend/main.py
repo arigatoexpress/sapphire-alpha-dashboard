@@ -1270,6 +1270,62 @@ async def frontend_assets(filename: str, request: Request, user: str = Depends(a
 # ---------------------------------------------------------------------------
 
 _MINIAPP_HTML = Path(__file__).resolve().parent / "static" / "miniapp.html"
+_DEFAULT_DECISION_BOT_URL = "https://t.me/sapphirerelaybot"
+
+
+def _observed_file_at(path: Path) -> str | None:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
+    except OSError:
+        return None
+
+
+def _miniapp_inbox() -> dict[str, Any]:
+    """Project the pending queue as a file-backed snapshot, never as liveness."""
+    path = _TELEGRAM_DIR / "pending_queue.json"
+    if not path.is_file():
+        return {
+            "status": "not_observed",
+            "pending": None,
+            "items": [],
+            "observed_at": None,
+        }
+
+    raw = _read_json(path)
+    observed_at = _observed_file_at(path)
+    if not isinstance(raw, list):
+        return {
+            "status": "unavailable",
+            "pending": None,
+            "items": [],
+            "observed_at": observed_at,
+        }
+
+    items = [
+        telegram_miniapp.sanitize_proposal(item, index + 1)
+        for index, item in enumerate(raw[:50])
+        if isinstance(item, dict)
+    ]
+    urgency_rank = {"critical": 0, "high": 1, "normal": 2, "low": 3}
+    items.sort(
+        key=lambda item: (
+            urgency_rank.get(str(item.get("urgency")), 4),
+            str(item.get("expires_at") or "9999"),
+        )
+    )
+    return {
+        "status": "snapshot",
+        "pending": len(raw),
+        "items": items,
+        "observed_at": observed_at,
+    }
+
+
+def _decision_bot_url() -> str:
+    configured = _env("TG_MINIAPP_DECISION_URL", "").strip()
+    if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]{5,64}", configured):
+        return configured
+    return _DEFAULT_DECISION_BOT_URL
 
 
 def tg_auth(request: Request) -> telegram_miniapp.TelegramUser:
@@ -1298,19 +1354,12 @@ async def miniapp_page(request: Request) -> Response:
 @app.get("/api/tg/summary")
 @limiter.limit("60/minute")
 async def api_tg_summary(
-    request: Request, user: telegram_miniapp.TelegramUser = Depends(tg_auth)
+    request: Request, _user: telegram_miniapp.TelegramUser = Depends(tg_auth)
 ) -> dict[str, Any]:
-    """Operator-grade, PII-scrubbed snapshot for the Mini App (read-only)."""
-    fleet = _whitelist_fleet(_read_json(_fleet_snapshot_path()))
+    """Private decision inbox projection for the read-only Mini App."""
     return {
-        "viewer": {"first_name": user.first_name},
-        "chain": telegram_miniapp.tag_chain({}),
-        "desk": _gate_status(),
-        "wallet": _wallet_status(),
-        "magnum": _magnum_status(),
-        "queue": _telegram_queue(),
-        "signals": _recent_signals(),
-        "fleet": dict(fleet, snapshot_age_s=_fleet_age_seconds(fleet["generated_at"])),
+        "inbox": _miniapp_inbox(),
+        "decision_url": _decision_bot_url(),
         "updated_at": datetime.now(UTC).isoformat(),
     }
 
@@ -1318,13 +1367,36 @@ async def api_tg_summary(
 @app.get("/api/tg/decisions")
 @limiter.limit("60/minute")
 async def api_tg_decisions(
-    request: Request, user: telegram_miniapp.TelegramUser = Depends(tg_auth)
+    request: Request, _user: telegram_miniapp.TelegramUser = Depends(tg_auth)
 ) -> dict[str, Any]:
-    """Read-only decision history from decisions.jsonl (sanitized, chain-tagged)."""
-    rows = _read_jsonl(_TELEGRAM_DIR / "decisions.jsonl", limit=50)
+    """Read-only outcome history with honest file-observation semantics."""
+    path = _TELEGRAM_DIR / "decisions.jsonl"
+    if not path.is_file():
+        return {
+            "status": "not_observed",
+            "decisions": [],
+            "count": None,
+            "observed_at": None,
+        }
+
+    rows = list(reversed(_read_jsonl(path, limit=50)))
+    if not rows:
+        try:
+            has_unreadable_content = bool(path.read_text(encoding="utf-8").strip())
+        except OSError:
+            has_unreadable_content = True
+        if has_unreadable_content:
+            return {
+                "status": "unavailable",
+                "decisions": [],
+                "count": None,
+                "observed_at": _observed_file_at(path),
+            }
     return {
+        "status": "snapshot",
         "decisions": [telegram_miniapp.sanitize_decision(r, i + 1) for i, r in enumerate(rows)],
         "count": len(rows),
+        "observed_at": _observed_file_at(path),
     }
 
 

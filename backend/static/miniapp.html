@@ -3,158 +3,589 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Magnum Opus · Sapphire Command</title>
+<meta name="color-scheme" content="dark light">
+<title>Decision inbox · Sapphire</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
-    --bg: var(--tg-theme-bg-color, #0d1117);
-    --fg: var(--tg-theme-text-color, #e6edf3);
-    --hint: var(--tg-theme-hint-color, #8b949e);
-    --link: var(--tg-theme-link-color, #58a6ff);
-    --card: var(--tg-theme-secondary-bg-color, #161b22);
-    --accent: var(--tg-theme-button-color, #2ea6ff);
-    --accent-fg: var(--tg-theme-button-text-color, #ffffff);
-    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    --midnight: var(--tg-theme-bg-color, #0b1324);
+    --slate: var(--tg-theme-secondary-bg-color, #17233a);
+    --powder: var(--tg-theme-text-color, #dce7f7);
+    --quiet: var(--tg-theme-hint-color, #86a9d7);
+    --amber: #f0b75a;
+    --coral: #ef756d;
+    --line: rgba(134, 169, 215, .24);
+    --action: var(--tg-theme-button-color, #4d77ad);
+    --action-ink: var(--tg-theme-button-text-color, #ffffff);
+    --display: "Avenir Next Condensed", "Arial Narrow", ui-sans-serif, sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --utility: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   }
-  * { box-sizing: border-box; margin: 0; }
-  body { background: var(--bg); color: var(--fg); font: 15px/1.45 -apple-system, system-ui, sans-serif;
-         padding: 12px 12px calc(16px + env(safe-area-inset-bottom)); }
-  h1 { font-size: 17px; margin: 4px 0 2px; }
-  .sub { color: var(--hint); font-size: 12px; margin-bottom: 10px; }
-  nav { display: flex; gap: 6px; margin: 8px 0 12px; overflow-x: auto; }
-  nav button { flex: 0 0 auto; border: 0; border-radius: 16px; padding: 6px 12px; font-size: 13px;
-               background: var(--card); color: var(--fg); }
-  nav button.on { background: var(--accent); color: var(--accent-fg); }
-  .card { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-  .row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 14px; }
-  .row .k { color: var(--hint); }
-  .pill { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
-  .pill.ok { background: rgba(63,185,80,.15); color: var(--ok); }
-  .pill.warn { background: rgba(210,153,34,.15); color: var(--warn); }
-  .pill.bad { background: rgba(248,81,73,.15); color: var(--bad); }
-  .chain { font-size: 11px; color: var(--hint); border: 1px solid var(--hint); border-radius: 8px;
-           padding: 0 6px; margin-left: 6px; }
-  .muted { color: var(--hint); font-size: 13px; }
-  .err { color: var(--bad); }
-  a.deep { display: block; text-align: center; background: var(--accent); color: var(--accent-fg);
-           border-radius: 10px; padding: 10px; text-decoration: none; font-weight: 600; margin-top: 8px; }
-  .note { font-size: 12px; color: var(--hint); text-align: center; margin-top: 6px; }
+
+  * { box-sizing: border-box; }
+
+  html { background: var(--midnight); }
+
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    background: var(--midnight);
+    color: var(--powder);
+    font: 15px/1.5 var(--body);
+    padding: max(18px, env(safe-area-inset-top)) 16px
+      calc(24px + env(safe-area-inset-bottom));
+  }
+
+  button { font: inherit; }
+
+  .masthead {
+    padding: 4px 2px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow,
+  .utility {
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+
+  .eyebrow { color: var(--quiet); }
+
+  h1 {
+    margin: 7px 0 4px;
+    font: 700 clamp(31px, 10vw, 44px)/.95 var(--display);
+    letter-spacing: -.025em;
+  }
+
+  .status-line {
+    min-height: 21px;
+    margin: 0;
+    color: var(--quiet);
+    font-size: 13px;
+  }
+
+  .workflow-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr 38px;
+    gap: 4px;
+    margin: 14px 0 20px;
+    padding: 3px;
+    border: 1px solid var(--line);
+    background: rgba(23, 35, 58, .78);
+  }
+
+  .workflow-switch button {
+    min-height: 40px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--quiet);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .workflow-switch button[aria-selected="true"] {
+    background: var(--powder);
+    color: var(--midnight);
+  }
+
+  .workflow-switch .refresh {
+    border-left: 1px solid var(--line);
+    color: var(--powder);
+    font: 18px/1 var(--utility);
+  }
+
+  button:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+
+  .brief {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 16px;
+  }
+
+  .brief h2 {
+    max-width: 270px;
+    margin: 0;
+    font: 650 24px/1.05 var(--display);
+    letter-spacing: -.015em;
+  }
+
+  .brief p {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--quiet);
+    text-align: right;
+  }
+
+  .docket {
+    position: relative;
+    padding-left: 23px;
+  }
+
+  .docket::before {
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 6px;
+    width: 1px;
+    background: var(--line);
+    content: "";
+  }
+
+  .decision-card {
+    --urgency-color: var(--quiet);
+    position: relative;
+    margin: 0 0 12px;
+    padding: 14px 14px 13px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--urgency-color);
+    border-radius: 3px 14px 3px 3px;
+    background: var(--slate);
+    animation: docket-in .28s ease-out both;
+    animation-delay: calc(var(--order, 0) * 45ms);
+  }
+
+  .decision-card::before {
+    position: absolute;
+    top: 20px;
+    left: -23px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--midnight);
+    border-radius: 50%;
+    background: var(--urgency-color);
+    content: "";
+  }
+
+  .decision-card.critical { --urgency-color: var(--coral); }
+  .decision-card.high { --urgency-color: var(--amber); }
+
+  .card-top,
+  .outcome-top,
+  .decision-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .urgency {
+    color: var(--urgency-color);
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+  }
+
+  .expiry {
+    color: var(--quiet);
+    font-family: var(--utility);
+    font-size: 11px;
+  }
+
+  .decision-card h3,
+  .outcome-card h3 {
+    margin: 11px 0 3px;
+    font: 700 21px/1.1 var(--display);
+    letter-spacing: -.01em;
+    text-transform: capitalize;
+  }
+
+  .decision-meta {
+    justify-content: flex-start;
+    color: var(--quiet);
+    font-size: 12px;
+  }
+
+  .chain {
+    padding-left: 9px;
+    border-left: 1px solid var(--line);
+    font-family: var(--utility);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .impact {
+    margin: 14px 0 0;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .impact dt {
+    margin-bottom: 3px;
+    color: var(--quiet);
+    font-family: var(--utility);
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .impact dd { margin: 0; }
+
+  .bot-action {
+    width: 100%;
+    min-height: 44px;
+    margin-top: 14px;
+    border: 0;
+    border-radius: 3px 11px 3px 3px;
+    background: var(--action);
+    color: var(--action-ink);
+    cursor: pointer;
+    font-weight: 750;
+  }
+
+  .source-state,
+  .error-state {
+    padding: 20px 18px;
+    border: 1px solid var(--line);
+    border-radius: 3px 14px 3px 3px;
+    background: var(--slate);
+  }
+
+  .source-state h2,
+  .error-state h2 {
+    margin: 8px 0 6px;
+    font: 700 24px/1.05 var(--display);
+  }
+
+  .source-state p,
+  .error-state p {
+    margin: 0;
+    color: var(--quiet);
+  }
+
+  .source-state .bot-action,
+  .error-state .bot-action { margin-top: 18px; }
+
+  .outcomes { display: grid; gap: 8px; }
+
+  .outcome-card {
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 3px 11px 3px 3px;
+    background: var(--slate);
+  }
+
+  .outcome-card h3 { font-size: 18px; }
+
+  .outcome-decision {
+    color: var(--quiet);
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .outcome-copy {
+    margin: 9px 0 0;
+    color: var(--powder);
+    font-size: 13px;
+  }
+
+  .read-only {
+    margin: 20px 5px 0;
+    color: var(--quiet);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  @keyframes docket-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      scroll-behavior: auto !important;
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
 </style>
 </head>
 <body>
-<h1>Magnum Opus</h1>
-<div class="sub" id="who">Connecting… · local 24/7 harness</div>
-<nav id="tabs"></nav>
-<main id="view"><div class="card muted">Loading…</div></main>
+<header class="masthead">
+  <div class="eyebrow">Private decision rail</div>
+  <h1>Decision inbox</h1>
+  <p class="status-line" id="status-line">Connecting to the read-only snapshot…</p>
+</header>
+
+<section class="workflow-switch" role="tablist" aria-label="Decision workflow">
+  <button type="button" role="tab" data-view="inbox" aria-selected="true">
+    Inbox <span id="inbox-count">—</span>
+  </button>
+  <button type="button" role="tab" data-view="outcomes" aria-selected="false">
+    Recent outcomes
+  </button>
+  <button class="refresh" type="button" id="refresh" aria-label="Refresh snapshot">↻</button>
+</section>
+
+<main id="view" aria-live="polite">
+  <section class="source-state">
+    <span class="utility">Connecting</span>
+    <h2>Reading the decision snapshot.</h2>
+    <p>This view does not infer state before the authenticated response arrives.</p>
+  </section>
+</main>
+
+<p class="read-only">Read-only here. Approval, rejection, and arming stay on the bot rail.</p>
 
 <script>
 "use strict";
+
 const tg = window.Telegram && window.Telegram.WebApp;
-if (tg) { tg.ready(); tg.expand(); }
-const initData = tg ? tg.initData : "";
-const H = { "Authorization": "tma " + initData };
-const esc = s => String(s ?? "—").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-
-const TABS = ["Magnum", "Desk", "Proposals", "Decisions", "Fleet", "Markets"];
-let tab = "Magnum", summary = null, decisions = null;
-
-function pill(state) {
-  const cls = /armed|open|alive|approved|polling|true/i.test(state) ? "ok"
-            : /kill|halt|denied|down|stale/i.test(state) ? "bad" : "warn";
-  return `<span class="pill ${cls}">${esc(state)}</span>`;
+if (tg) {
+  tg.ready();
+  tg.expand();
 }
-const chainTag = o => o && o.chain ? `<span class="chain">${esc(o.chain)}</span>` : "";
-const rows = pairs => pairs.map(([k, v]) => `<div class="row"><span class="k">${esc(k)}</span><span>${v}</span></div>`).join("");
-const deepLink = `<a class="deep" href="#" onclick="if(tg)tg.openTelegramLink('https://t.me/sapphirerelaybot');return false;">Open bot to decide (✅/❌)</a>
-<div class="note">Approvals happen only on the bot's button rail — this app is read-only.</div>`;
+
+const initData = tg ? tg.initData : "";
+const headers = { "Authorization": "tma " + initData };
+const viewNode = document.getElementById("view");
+const statusNode = document.getElementById("status-line");
+const countNode = document.getElementById("inbox-count");
+const refreshNode = document.getElementById("refresh");
+let view = "inbox";
+let summary = null;
+let outcomes = null;
+
+const esc = value => String(value ?? "—").replace(
+  /[&<>"']/g,
+  character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[character])
+);
+
+function formatMoment(value) {
+  if (!value) return "time not supplied";
+  const moment = new Date(value);
+  if (Number.isNaN(moment.getTime())) return "time not supplied";
+  return moment.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function expiryLabel(value) {
+  if (!value) return "No expiry supplied";
+  const expiry = new Date(value);
+  if (Number.isNaN(expiry.getTime())) return "Expiry unreadable";
+  const minutes = Math.round((expiry.getTime() - Date.now()) / 60000);
+  if (minutes < -1) return `Expired ${Math.abs(minutes)}m ago`;
+  if (minutes <= 1) return "Expires now";
+  if (minutes < 60) return `Expires in ${minutes}m`;
+  if (minutes < 1440) return `Expires in ${Math.round(minutes / 60)}h`;
+  return `Expires ${formatMoment(value)}`;
+}
+
+function urgencyFor(item) {
+  if (item.expires_at) {
+    const minutes = (new Date(item.expires_at).getTime() - Date.now()) / 60000;
+    if (Number.isFinite(minutes) && minutes <= 15) return "critical";
+    if (Number.isFinite(minutes) && minutes <= 120) return "high";
+  }
+  const explicit = String(item.urgency || "").toLowerCase();
+  if (["critical", "high", "normal", "low"].includes(explicit)) return explicit;
+  return "unspecified";
+}
+
+function chainTag(item) {
+  return item && item.chain
+    ? `<span class="chain">${esc(item.chain)}</span>`
+    : "";
+}
+
+function botButton() {
+  return `<button class="bot-action" type="button" data-action="bot-deep-link">Open bot to decide</button>`;
+}
+
+function renderUnavailable(kind, status) {
+  const label = status === "unavailable" ? "Snapshot unreadable" : "Not observed";
+  const title = kind === "inbox"
+    ? "This host has no inbox snapshot."
+    : "This host has no outcome snapshot.";
+  const copy = "Cloud Run cannot see files on the operator machines. Open the bot for current decision state.";
+  return `<section class="source-state">
+    <span class="utility">${esc(label)}</span>
+    <h2>${title}</h2>
+    <p>${copy}</p>
+    ${botButton()}
+  </section>`;
+}
+
+function renderInbox() {
+  const inbox = summary && summary.inbox;
+  if (!inbox || inbox.status !== "snapshot") {
+    viewNode.innerHTML = renderUnavailable("inbox", inbox && inbox.status);
+    return;
+  }
+
+  const items = Array.isArray(inbox.items) ? inbox.items : [];
+  const observed = `Snapshot ${formatMoment(inbox.observed_at)}`;
+  if (!items.length) {
+    viewNode.innerHTML = `<section class="source-state">
+      <span class="utility">${esc(observed)}</span>
+      <h2>Inbox clear at this snapshot.</h2>
+      <p>An observed empty queue is a real zero. Refresh or open the bot for current state.</p>
+      ${botButton()}
+    </section>`;
+    return;
+  }
+
+  const urgencyRank = { critical: 0, high: 1, normal: 2, low: 3, unspecified: 4 };
+  const orderedItems = [...items].sort((left, right) => {
+    const urgencyDelta = urgencyRank[urgencyFor(left)] - urgencyRank[urgencyFor(right)];
+    if (urgencyDelta) return urgencyDelta;
+    return String(left.expires_at || "9999").localeCompare(String(right.expires_at || "9999"));
+  });
+  const cards = orderedItems.map((item, index) => {
+    const urgency = urgencyFor(item);
+    const impact = item.impact || "Impact not supplied";
+    return `<article class="decision-card ${esc(urgency)}" style="--order:${index}">
+      <div class="card-top">
+        <span class="urgency">Urgency · ${esc(urgency)}</span>
+        <span class="expiry">${esc(expiryLabel(item.expires_at))}</span>
+      </div>
+      <h3>${esc(item.action)} · ${esc(item.instrument)}</h3>
+      <div class="decision-meta">
+        <span>${esc(item.side)}</span>
+        ${chainTag(item)}
+      </div>
+      <dl class="impact">
+        <dt>Impact</dt>
+        <dd>${esc(impact)}</dd>
+      </dl>
+      ${botButton()}
+    </article>`;
+  }).join("");
+
+  viewNode.innerHTML = `<section class="brief">
+    <h2>${orderedItems.length === 1 ? "One decision needs you." : `${orderedItems.length} decisions need you.`}</h2>
+    <p class="utility">${esc(observed)}</p>
+  </section>
+  <section class="docket" aria-label="Pending decisions">${cards}</section>`;
+}
+
+function renderOutcomes() {
+  if (!outcomes || outcomes.status !== "snapshot") {
+    viewNode.innerHTML = renderUnavailable("outcomes", outcomes && outcomes.status);
+    return;
+  }
+
+  const items = Array.isArray(outcomes.decisions) ? outcomes.decisions : [];
+  if (!items.length) {
+    viewNode.innerHTML = `<section class="source-state">
+      <span class="utility">Snapshot ${esc(formatMoment(outcomes.observed_at))}</span>
+      <h2>No recent outcomes in this snapshot.</h2>
+      <p>The observed history file is empty.</p>
+    </section>`;
+    return;
+  }
+
+  viewNode.innerHTML = `<section class="brief">
+    <h2>Recent outcomes</h2>
+    <p class="utility">Snapshot ${esc(formatMoment(outcomes.observed_at))}</p>
+  </section>
+  <section class="outcomes" aria-label="Recent outcomes">${items.map(item => `
+    <article class="outcome-card">
+      <div class="outcome-top">
+        <span class="outcome-decision">${esc(item.decision)}</span>
+        <span class="expiry">${esc(formatMoment(item.timestamp))}</span>
+      </div>
+      <h3>${esc(item.action)} · ${esc(item.instrument)}</h3>
+      <p class="outcome-copy">${esc(item.outcome || "No outcome note supplied")}</p>
+    </article>
+  `).join("")}</section>`;
+}
 
 function render() {
-  document.getElementById("tabs").innerHTML = TABS.map(t =>
-    `<button class="${t === tab ? "on" : ""}" onclick="setTab('${t}')">${t}</button>`).join("");
-  const v = document.getElementById("view");
-  if (!summary) { v.innerHTML = `<div class="card muted">Loading…</div>`; return; }
-  const s = summary;
-  if (tab === "Magnum") {
-    const m = s.magnum || {};
-    const issues = (m.night_issues || []).length
-      ? (m.night_issues || []).map(i => `<div class="muted">• ${esc(i)}</div>`).join("")
-      : `<div class="muted">No night-watch issues.</div>`;
-    const cands = (m.candidates || []).length
-      ? esc((m.candidates || []).join(", "))
-      : "—";
-    v.innerHTML = `<div class="card"><b>🌌 Magnum Opus</b>${rows([
-      ["Product", esc(m.product || "magnum-opus")],
-      ["Gate", pill(m.gate_armed ? "ARMED" : "DISARMED")],
-      ["Mode", esc(m.mode)],
-      ["FREE-REIGN", pill(m.free_reign ? "ON" : "off")],
-      ["Daily cap", m.daily_cap_usd != null ? "$" + esc(m.daily_cap_usd) : "—"],
-      ["Trade V/T", "$" + esc(m.per_trade_verified_usd) + " / $" + esc(m.per_trade_thesis_usd)],
-      ["L2 ETH", esc(m.l2_eth)],
-      ["L2 wallet", esc(m.l2_address_masked)],
-      ["Health", pill(m.health || "—")],
-      ["Night", pill(m.night_severity || "—")],
-      ["MOSS session", pill(m.moss_ok ? "live" : "off")],
-      ["Candidates", cands],
-    ])}</div>
-    <div class="card"><b>Night watch</b>${issues}</div>` + deepLink;
-  } else if (tab === "Desk") {
-    const d = s.desk || {}, w = s.wallet || {};
-    v.innerHTML = `<div class="card"><b>Desk ${chainTag(s.chain)}</b>${rows([
-      ["State", pill(d.label || d.state)], ["Mode", esc(d.mode)],
-      ["Executor", pill(d.executor_alive ? "alive" : "down")],
-      ["Order cap", "$" + esc(d.cap_usd)], ["Wallet", esc(w.address)],
-      ["Deployed", "$" + esc(w.deployed_usd)], ["Open positions", esc(w.n_open)],
-    ])}</div>`;
-  } else if (tab === "Proposals") {
-    const q = s.queue || {}; const items = q.proposals || [];
-    v.innerHTML = `<div class="card"><b>Inbox</b>${rows([["Pending", esc(q.pending)], ["Gate", pill(q.gate || "telegram")], ["Bot", pill(q.status)]])}</div>` +
-      (items.length ? items.map(p => `<div class="card">${rows([
-        ["Action", esc(p.action)], ["Instrument", esc(p.instrument) + chainTag(p)],
-        ["Side", esc(p.side)], ["Confidence", esc(p.confidence)], ["Status", pill(p.status)],
-        ["When", esc(p.timestamp)]])}</div>`).join("")
-      : `<div class="card muted">No proposals in view.</div>`) + deepLink;
-  } else if (tab === "Decisions") {
-    const items = (decisions && decisions.decisions) || [];
-    v.innerHTML = (items.length ? items.map(d => `<div class="card">${rows([
-        ["Action", esc(d.action)], ["Instrument", esc(d.instrument) + chainTag(d)],
-        ["Decision", pill(d.decision)], ["Reason", esc(d.reason)], ["When", esc(d.timestamp)]])}</div>`).join("")
-      : `<div class="card muted">No decision history readable.</div>`);
-  } else if (tab === "Fleet") {
-    const f = s.fleet || {}, c = f.counts || {};
-    v.innerHTML = `<div class="card"><b>Fleet</b>${rows([
-      ["Leases", esc(c.leases)], ["Gates open", esc(c.gates_open)],
-      ["Snapshot age", f.snapshot_age_s == null ? "—" : Math.round(f.snapshot_age_s) + "s"]])}</div>` +
-      ((f.leases || []).map(l => `<div class="card">${rows([["Agent", esc(l.agent || l.name)], ["Scope", esc(l.scope)], ["State", pill(l.state || "active")]])}</div>`).join(""));
-  } else if (tab === "Markets") {
-    const sig = s.signals || [];
-    v.innerHTML = (sig.length ? sig.map(x => `<div class="card">${rows([
-        ["Signal", esc(x.name || x.id)], ["Instrument", esc(x.instrument || x.symbol) + chainTag(x)],
-        ["Side", esc(x.side)], ["Strength", esc(x.strength || x.confidence)]])}</div>`).join("")
-      : `<div class="card muted">No recent signals.</div>`);
-  }
+  document.querySelectorAll("[data-view]").forEach(button => {
+    button.setAttribute("aria-selected", String(button.dataset.view === view));
+  });
+  countNode.textContent = summary && summary.inbox && summary.inbox.pending !== null
+    ? String(summary.inbox.pending)
+    : "—";
+  if (view === "outcomes") renderOutcomes();
+  else renderInbox();
 }
-function setTab(t) { tab = t; if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); render(); }
-window.setTab = setTab;
+
+function openBot() {
+  const url = summary && summary.decision_url;
+  if (!url || !/^https:\/\/t\.me\/[A-Za-z0-9_]{5,64}$/.test(url)) {
+    statusNode.textContent = "Decision link is not configured.";
+    return;
+  }
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+  else window.location.assign(url);
+}
 
 async function load() {
+  refreshNode.disabled = true;
+  statusNode.textContent = "Refreshing the read-only snapshot…";
   try {
-    const r = await fetch("/api/tg/summary", { headers: H });
-    if (r.status === 401) throw new Error("Not authorized for this desk (Telegram identity not on the allowlist).");
-    if (r.status === 503) throw new Error("Mini App backend not configured yet.");
-    if (!r.ok) throw new Error("Backend error " + r.status);
-    summary = await r.json();
-    document.getElementById("who").textContent =
-      `Hi ${summary.viewer.first_name || "operator"} · ${summary.chain.chain} · updated ${new Date(summary.updated_at).toLocaleTimeString()}`;
-    const rd = await fetch("/api/tg/decisions", { headers: H });
-    decisions = rd.ok ? await rd.json() : null;
+    const [summaryResponse, outcomesResponse] = await Promise.all([
+      fetch("/api/tg/summary", { headers }),
+      fetch("/api/tg/decisions", { headers })
+    ]);
+    if (summaryResponse.status === 401) {
+      throw new Error("This Telegram identity is not allowed into the decision rail.");
+    }
+    if (summaryResponse.status === 503) {
+      throw new Error("The decision rail is not configured on this host.");
+    }
+    if (!summaryResponse.ok) {
+      throw new Error(`Decision snapshot failed with ${summaryResponse.status}.`);
+    }
+    summary = await summaryResponse.json();
+    outcomes = outcomesResponse.ok ? await outcomesResponse.json() : null;
+    statusNode.textContent = `Read-only view refreshed ${new Date(summary.updated_at).toLocaleTimeString()}.`;
     render();
-  } catch (e) {
-    document.getElementById("who").textContent = "";
-    document.getElementById("view").innerHTML = `<div class="card err">${esc(e.message)}</div>` + deepLink;
+  } catch (error) {
+    statusNode.textContent = "Decision snapshot unavailable.";
+    viewNode.innerHTML = `<section class="error-state">
+      <span class="utility">Could not load</span>
+      <h2>${esc(error.message)}</h2>
+      <p>No queue or outcome state is inferred from this failure.</p>
+      ${botButton()}
+    </section>`;
+  } finally {
+    refreshNode.disabled = false;
   }
 }
-render(); load(); setInterval(load, 30000);
+
+document.querySelector(".workflow-switch").addEventListener("click", event => {
+  const target = event.target.closest("[data-view]");
+  if (!target) return;
+  view = target.dataset.view;
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+  render();
+});
+
+viewNode.addEventListener("click", event => {
+  if (event.target.closest('[data-action="bot-deep-link"]')) openBot();
+});
+
+refreshNode.addEventListener("click", load);
 if (tg) tg.onEvent("themeChanged", render);
+load();
 </script>
 </body>
 </html>
