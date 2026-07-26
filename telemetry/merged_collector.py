@@ -119,6 +119,10 @@ def _sanitize_windows_snapshot(snapshot: dict) -> dict:
         markets["events_per_min"] = None
         markets["paper_strategies"] = None
 
+    desk = sanitized.get("desk")
+    if not isinstance(desk, dict):
+        sanitized.pop("desk", None)
+
     return sanitized
 
 
@@ -136,7 +140,6 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
     for agent in win.get("agents", []):
         agent_by_id[agent["id"]] = agent
     merged_agents = list(agent_by_id.values())
-    agents_complete = len(merged_agents) <= 32
     merged["agents"] = merged_agents[:32]
 
     # Merge nodes by id
@@ -161,27 +164,16 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
         reverse=True,
     )[:100]
 
-    # Active agent count is derived from the complete merged agent list. The
-    # other fleet-wide quantities have no complete source, so they stay unknown;
-    # summing partial node/link rates would double-count work and fabricate a
-    # system total.
+    # Mac presence is the only source that classifies actual task agents.
+    # Windows currently reports services (bot, model host, GPU, task runner) in
+    # the same collection, so counting merged rows would turn daemons into
+    # "active agents." Preserve the classified presence count until Windows
+    # publishes a service-vs-agent discriminator.
     mac_summary = mac.get("summary", {})
     win_summary = win.get("summary", {})
-    active = (
-        sum(
-            1
-            for agent in merged_agents
-            if isinstance(agent, dict) and agent.get("state") in {"working", "verifying"}
-        )
-        if (
-            agents_complete
-            and isinstance(mac_summary.get("active_agents"), int)
-            and not isinstance(mac_summary.get("active_agents"), bool)
-            and isinstance(win_summary.get("active_agents"), int)
-            and not isinstance(win_summary.get("active_agents"), bool)
-        )
-        else None
-    )
+    active = mac_summary.get("active_agents")
+    if not isinstance(active, int) or isinstance(active, bool):
+        active = None
     merged["summary"] = {
         "state": (
             "degraded"
@@ -202,6 +194,8 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
         if isinstance(observed, str)
     ]
     merged["observed_at"] = max(observations) if observations else mac.get("observed_at")
+    if isinstance(win.get("desk"), dict):
+        merged["desk"] = copy.deepcopy(win["desk"])
     return merged
 
 

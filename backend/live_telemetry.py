@@ -70,6 +70,9 @@ _MARKET_STATES = {"current", "delayed", "stale", "offline"}
 _GATES = {"telegram", "manual", "off"}
 _EXECUTION = {"off", "paper", "gated"}
 _EVENT_STATES = {"observed", "verified", "pending", "degraded", "failed", "recovered"}
+_POSTURES = {"capital_preservation", "selective_risk", "risk_seeking", "neutral", "unknown"}
+_LEADER_STATES = {"credible", "none", "unknown"}
+_DESK_EXECUTION = {"halted", "off", "gated", "unknown"}
 
 
 class TelemetryValidationError(ValueError):
@@ -183,6 +186,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             "agents",
             "markets",
             "events",
+            "desk",
         },
         required={
             "version",
@@ -201,6 +205,66 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
         raise TelemetryValidationError("unsupported telemetry version")
     observed_at = _timestamp(obj["observed_at"], where="observed_at")
     sequence = _integer(obj["sequence"], where="sequence", high=2**63 - 1)
+
+    desk_raw = obj.get("desk")
+    if desk_raw is None:
+        desk = _empty_desk()
+    else:
+        desk_obj = _keys(
+            desk_raw,
+            allowed={
+                "version", "updated_at", "posture", "leader", "validation",
+                "decisions", "execution", "feeds",
+            },
+            required={
+                "version", "updated_at", "posture", "leader", "validation",
+                "decisions", "execution", "feeds",
+            },
+            where="desk",
+        )
+        if desk_obj["version"] != 1:
+            raise TelemetryValidationError("unsupported desk projection version")
+        validation_raw = _keys(
+            desk_obj["validation"],
+            allowed={"oos_pass", "oos_total", "conflicts"},
+            required={"oos_pass", "oos_total", "conflicts"},
+            where="desk.validation",
+        )
+        decisions_raw = _keys(
+            desk_obj["decisions"],
+            allowed={"pending"},
+            required={"pending"},
+            where="desk.decisions",
+        )
+        feeds_raw = _keys(
+            desk_obj["feeds"],
+            allowed={"fresh", "total"},
+            required={"fresh", "total"},
+            where="desk.feeds",
+        )
+        desk = {
+            "version": 1,
+            "updated_at": _timestamp(desk_obj["updated_at"], where="desk.updated_at"),
+            "posture": _enum(desk_obj["posture"], _POSTURES, where="desk.posture"),
+            "leader": _enum(desk_obj["leader"], _LEADER_STATES, where="desk.leader"),
+            "validation": {
+                "oos_pass": _integer(validation_raw["oos_pass"], where="desk.validation.oos_pass", high=100),
+                "oos_total": _integer(validation_raw["oos_total"], where="desk.validation.oos_total", high=100),
+                "conflicts": _integer(validation_raw["conflicts"], where="desk.validation.conflicts", high=100),
+            },
+            "decisions": {
+                "pending": _integer(decisions_raw["pending"], where="desk.decisions.pending", high=1_000),
+            },
+            "execution": _enum(desk_obj["execution"], _DESK_EXECUTION, where="desk.execution"),
+            "feeds": {
+                "fresh": _integer(feeds_raw["fresh"], where="desk.feeds.fresh", high=100),
+                "total": _integer(feeds_raw["total"], where="desk.feeds.total", high=100),
+            },
+        }
+        if desk["validation"]["oos_pass"] > desk["validation"]["oos_total"]:
+            raise TelemetryValidationError("desk OOS passing count exceeds total")
+        if desk["feeds"]["fresh"] > desk["feeds"]["total"]:
+            raise TelemetryValidationError("desk fresh feed count exceeds total")
 
     summary_raw = _keys(
         obj["summary"],
@@ -403,6 +467,20 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
         "agents": agents,
         "markets": markets,
         "events": events,
+        "desk": desk,
+    }
+
+
+def _empty_desk() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": None,
+        "posture": "unknown",
+        "leader": "unknown",
+        "validation": {"oos_pass": None, "oos_total": None, "conflicts": None},
+        "decisions": {"pending": None},
+        "execution": "unknown",
+        "feeds": {"fresh": None, "total": None},
     }
 
 
@@ -418,6 +496,7 @@ def _normalize_stored(snapshot: dict[str, Any]) -> dict[str, Any]:
         if isinstance(node, dict) and "load_band" in node:
             node.setdefault("load", node.pop("load_band"))
             node.pop("load_band", None)
+    snapshot.setdefault("desk", _empty_desk())
     return snapshot
 
 
@@ -447,6 +526,7 @@ def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
             "execution": "off",
         },
         "events": [],
+        "desk": _empty_desk(),
         "status": status,
         "freshness_s": None,
         "served_at": datetime.now(UTC).isoformat(),

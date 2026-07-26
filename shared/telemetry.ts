@@ -146,6 +146,35 @@ export interface LiveEvent {
   status: EventStatus
 }
 
+export type DeskPosture =
+  | 'capital_preservation'
+  | 'selective_risk'
+  | 'risk_seeking'
+  | 'neutral'
+  | 'unknown'
+
+export type DeskLeader = 'credible' | 'none' | 'unknown'
+export type DeskExecution = 'halted' | 'off' | 'gated' | 'unknown'
+
+/**
+ * Public-safe desk conclusions. This intentionally excludes instruments,
+ * positions, balances, proposal ids, people, and named research sources.
+ */
+export interface LiveDesk {
+  version: 1
+  updated_at: string | null
+  posture: DeskPosture
+  leader: DeskLeader
+  validation: {
+    oos_pass: number | null
+    oos_total: number | null
+    conflicts: number | null
+  }
+  decisions: { pending: number | null }
+  execution: DeskExecution
+  feeds: { fresh: number | null; total: number | null }
+}
+
 export interface LiveSnapshot {
   version: 1
   /** ISO-8601 with a timezone, or `null` when nothing has been ingested. */
@@ -157,6 +186,7 @@ export interface LiveSnapshot {
   agents: LiveAgent[]
   markets: LiveMarkets
   events: LiveEvent[]
+  desk: LiveDesk
 
   /* Serving fields, added by LiveStore.get(). */
   status: ServingStatus

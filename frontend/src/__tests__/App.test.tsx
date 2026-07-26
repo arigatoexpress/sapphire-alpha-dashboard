@@ -55,6 +55,18 @@ describe('the market aperture', () => {
   })
 })
 
+describe('decision-first hierarchy', () => {
+  it('puts the desk conclusion ahead of system routes', () => {
+    expect(markup.indexOf('01 / DECISION STATE')).toBeLessThan(markup.indexOf('System detail'))
+    expect(markup).toContain('Waiting for desk state.')
+  })
+
+  it('keeps machine plumbing collapsed by default', () => {
+    expect(markup).toContain('<details id="system"')
+    expect(markup).not.toContain('<details id="system" class="system-disclosure mt-6 scroll-mt-24" open')
+  })
+})
+
 describe('no second tier is described', () => {
   it.each([
     /aggregated \+ delayed/,

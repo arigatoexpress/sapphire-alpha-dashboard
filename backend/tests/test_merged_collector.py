@@ -53,6 +53,16 @@ def _sample_snapshot(agent_id: str, node_id: str, sequence: int) -> dict:
             "execution": "off",
         },
         "events": [],
+        "desk": {
+            "version": 1,
+            "updated_at": "2026-07-23T00:00:00+00:00",
+            "posture": "unknown",
+            "leader": "unknown",
+            "validation": {"oos_pass": 0, "oos_total": 0, "conflicts": 0},
+            "decisions": {"pending": 0},
+            "execution": "unknown",
+            "feeds": {"fresh": 0, "total": 0},
+        },
     }
 
 
@@ -64,7 +74,7 @@ def test_merge_unions_agents_nodes_and_links():
     assert {a["id"] for a in merged["agents"]} == {"mac-agent", "win-agent"}
     assert {n["id"] for n in merged["nodes"]} == {"mac-node", "win-node"}
     assert merged["sequence"] == 201
-    assert merged["summary"]["active_agents"] == 2
+    assert merged["summary"]["active_agents"] == 1
     assert merged["summary"]["events_per_min"] is None
     assert merged["summary"]["verified_today"] is None
     assert merged["summary"]["attention"] is None
@@ -86,3 +96,26 @@ def test_merge_respects_bounds():
     merged = _merge_snapshots(mac, win)
     assert len(merged["agents"]) <= 32
     assert len(merged["nodes"]) <= 24
+
+
+def test_merge_uses_windows_decision_projection():
+    mac = _sample_snapshot("mac-agent", "mac-node", 100)
+    win = _sample_snapshot("win-agent", "win-node", 200)
+    win["desk"].update({
+        "posture": "capital_preservation",
+        "leader": "none",
+        "execution": "halted",
+        "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
+        "feeds": {"fresh": 7, "total": 7},
+    })
+    merged = _merge_snapshots(mac, win)
+    assert merged["desk"] == win["desk"]
+
+
+def test_merge_does_not_count_windows_services_as_active_agents():
+    mac = _sample_snapshot("mac-agent", "mac-node", 100)
+    mac["summary"]["active_agents"] = 0
+    win = _sample_snapshot("telegram-service", "win-node", 200)
+    win["agents"][0]["state"] = "working"
+    merged = _merge_snapshots(mac, win)
+    assert merged["summary"]["active_agents"] == 0

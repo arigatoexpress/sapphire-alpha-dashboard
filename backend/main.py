@@ -362,8 +362,13 @@ async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
 
 @app.get("/api/v1/live")
 @limiter.limit(_api_rate_limit)
-async def api_live(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+async def api_live(
+    request: Request,
+    response: Response,
+    user: str = Depends(auth_or_public),
+) -> dict[str, Any]:
     """Serve the current snapshot — the same one, undelayed, to every reader."""
+    response.headers["Cache-Control"] = "no-store"
     return live_telemetry_store.get(public=user == PUBLIC_USER)
 
 
@@ -634,12 +639,13 @@ def _magnum_status() -> dict[str, Any]:
 
 
 def _telegram_queue() -> dict[str, Any]:
-    """Surface Telegram approval queue length and recent proposals without exposing chat IDs."""
+    """Surface observed Telegram state without inventing Cloud Run-local liveness."""
     queue_path = _TELEGRAM_DIR / "pending_queue.json"
     decisions_path = _TELEGRAM_DIR / "decisions.jsonl"
 
     data = _read_json(queue_path)
-    pending = len(data) if isinstance(data, list) else 0
+    queue_observed = isinstance(data, list)
+    pending = len(data) if queue_observed else None
 
     decisions = _read_jsonl(decisions_path, limit=10)
     proposals = [_sanitize_proposal(d, i + 1) for i, d in enumerate(decisions)]
@@ -650,11 +656,17 @@ def _telegram_queue() -> dict[str, Any]:
             if isinstance(item, dict):
                 proposals.insert(0, _sanitize_proposal(item, len(proposals) + 1))
 
+    polling_config = _env("TELEGRAM_BOT_POLLING", "").strip()
+    if not queue_observed or not polling_config:
+        status = "not_observed"
+    else:
+        status = "polling" if _safe_bool(polling_config) else "paused"
+
     return {
         "pending": pending,
         "gate": "telegram",
-        "status": "polling" if _safe_bool(_env("TELEGRAM_BOT_POLLING", "true")) else "paused",
-        "recent_count": min(pending, 5),
+        "status": status,
+        "recent_count": min(pending, 5) if pending is not None else None,
         "proposals": proposals[:8],
     }
 
@@ -947,11 +959,6 @@ async def _system_health() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _round_usd(value: Any) -> int:
-    """Generalize a USD amount to the nearest $10 for the public view."""
-    return int(round(_safe_float(value) / 10.0) * 10)
-
-
 def _public_gate(gate: dict[str, Any]) -> dict[str, Any]:
     return {
         "state": gate["state"],
@@ -964,15 +971,8 @@ def _public_gate(gate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _public_wallet(wallet: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "address": wallet["address"],  # already masked 0xabcd...1234
-        "funded": bool(wallet["skin_in_game"]),
-        "skin_in_game": bool(wallet["skin_in_game"]),
-        "deployed_usd_approx": _round_usd(wallet["deployed_usd"]),
-        "n_open": wallet["n_open"],
-        "updated_at": wallet["updated_at"],
-    }
+def _public_wallet(_wallet: dict[str, Any]) -> dict[str, Any]:
+    return {"disclosure": "withheld"}
 
 
 def _public_telegram(queue: dict[str, Any]) -> dict[str, Any]:
@@ -998,20 +998,24 @@ def _public_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _public_research(feed: dict[str, Any]) -> dict[str, Any]:
+    rules = _RESEARCH_POLICY["rules"]
     return {
         "clips": [
             {
                 "id": c.get("id", ""),
                 "title": c.get("title", ""),
-                "source": c.get("source", ""),
-                "path": "",
                 "observed_at": c.get("observed_at", ""),
             }
             for c in feed.get("clips", [])
         ],
-        "sources_observed": list(feed.get("sources_observed", [])),
         "live": bool(feed.get("live", False)),
-        "policy": feed.get("policy", _RESEARCH_POLICY),
+        "policy": {
+            "research_role": "evidence_not_authority",
+            "single_input_cap": rules["single_analyst_evidence_cap"],
+            "minimum_independent_checks": rules["minimum_independent_primary_sources"],
+            "can_set_conviction": rules["analyst_can_set_conviction"],
+            "can_authorize_execution": rules["analyst_can_authorize_execution"],
+        },
     }
 
 

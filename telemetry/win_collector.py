@@ -93,6 +93,69 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _unknown_desk() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": None,
+        "posture": "unknown",
+        "leader": "unknown",
+        "validation": {"oos_pass": None, "oos_total": None, "conflicts": None},
+        "decisions": {"pending": None},
+        "execution": "unknown",
+        "feeds": {"fresh": None, "total": None},
+    }
+
+
+def _desk_projection(path: Path) -> dict[str, Any]:
+    """Read only the bounded public contract emitted by the Telegram desk."""
+    value = _read_json(path)
+    try:
+        if set(value) != {
+            "version", "updated_at", "posture", "leader", "validation",
+            "decisions", "execution", "feeds",
+        }:
+            return _unknown_desk()
+        validation = value["validation"]
+        decisions = value["decisions"]
+        feeds = value["feeds"]
+        if (
+            value["version"] != 1
+            or value["posture"] not in {
+                "capital_preservation", "selective_risk", "risk_seeking", "neutral"
+            }
+            or value["leader"] not in {"credible", "none"}
+            or value["execution"] not in {"halted", "off", "gated"}
+            or set(validation) != {"oos_pass", "oos_total", "conflicts"}
+            or set(decisions) != {"pending"}
+            or set(feeds) != {"fresh", "total"}
+        ):
+            return _unknown_desk()
+        counts = [
+            validation["oos_pass"], validation["oos_total"], validation["conflicts"],
+            decisions["pending"], feeds["fresh"], feeds["total"],
+        ]
+        if any(
+            isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000
+            for count in counts
+        ):
+            return _unknown_desk()
+        if validation["oos_pass"] > validation["oos_total"] or feeds["fresh"] > feeds["total"]:
+            return _unknown_desk()
+        datetime.fromisoformat(str(value["updated_at"]).replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return _unknown_desk()
+    return {
+        "version": 1,
+        "updated_at": value["updated_at"],
+        "posture": value["posture"],
+        "leader": value["leader"],
+        "validation": dict(validation),
+        "decisions": dict(decisions),
+        "execution": value["execution"],
+        "feeds": dict(feeds),
+    }
+
+
 def _parse_bot_log_tail(path: Path) -> dict[str, Any]:
     """Parse the last 'alive' line from telegram-bot/bot.log."""
     out: dict[str, Any] = {"seen": False}
@@ -332,6 +395,7 @@ def build_snapshot(
     gpu = _nvidia_smi()
     disk_free = _disk_free_gb()
     pause_on = _pause_present(home)
+    desk = _desk_projection(telegram_bot_dir / "desk-summary.json")
 
     # Heartbeat freshness
     hb_ts = hb.get("ts") or metrics.get("last_sweep")
@@ -619,6 +683,7 @@ def build_snapshot(
             "execution": "off",
         },
         "events": events,
+        "desk": desk,
     }
 
 

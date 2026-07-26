@@ -89,6 +89,16 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             "decision_gate": "telegram",
             "execution": "off",
         },
+        "desk": {
+            "version": 1,
+            "updated_at": now,
+            "posture": "capital_preservation",
+            "leader": "none",
+            "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
+            "decisions": {"pending": 2},
+            "execution": "halted",
+            "feeds": {"fresh": 7, "total": 7},
+        },
         "events": [
             {
                 "id": "evt-42",
@@ -146,6 +156,28 @@ def test_signed_ingest_and_operator_projection():
     assert live["sequence"] == 42
     assert live["links"][0]["latency_ms"] == 7.4
     assert live["agents"][0]["activity"] == "Comparing market signals"
+    assert live["desk"]["leader"] == "none"
+    assert live["desk"]["validation"] == {
+        "oos_pass": 0,
+        "oos_total": 7,
+        "conflicts": 1,
+    }
+
+
+def test_legacy_producer_without_desk_gets_honest_unknown_projection():
+    payload = _sample()
+    payload.pop("desk")
+    normalized = live_telemetry.validate_snapshot(payload)
+    assert normalized["desk"]["posture"] == "unknown"
+    assert normalized["desk"]["decisions"]["pending"] is None
+
+
+def test_desk_projection_rejects_private_or_unbounded_detail():
+    payload = _sample()
+    payload["desk"]["source"] = "named analyst"
+    raw, headers = _signed(payload, nonce="nonce-private-desk-01")
+    response = client.post("/api/v1/telemetry", content=raw, headers=headers)
+    assert response.status_code == 422
 
 
 def test_bad_signature_and_stale_timestamp_fail_closed():

@@ -187,9 +187,11 @@ def test_full_wallet_address_never_in_public_payload(gate_env):
     for path in ("/api/v1/status", "/api/v1/widgets"):
         r = client.get(path)
         assert r.status_code == 200
-        body = json.dumps(r.json())
+        payload = r.json()
+        body = json.dumps(payload)
         assert full_addr not in body, f"full wallet address leaked in {path}"
-        assert "0x1234...5678" in body  # masked form is what's shown
+        assert "0x1234...5678" not in body
+        assert payload["wallet"] == {"disclosure": "withheld"}
 
 
 # ---------------------------------------------------------------------------

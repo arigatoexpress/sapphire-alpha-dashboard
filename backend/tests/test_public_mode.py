@@ -30,10 +30,16 @@ FORBIDDEN_SUBSTRINGS = [
 
 
 @pytest.fixture
-def public_mode(monkeypatch):
+def public_mode(monkeypatch, tmp_path):
     # Reset the TV probe cache so the fixture's URL never leaks into other tests.
     monkeypatch.setattr(main, "_tv_probe_cache", {"ts": 0.0, "result": None})
+    # A Cloud Run instance does not have the operator's local telegram queue.
+    monkeypatch.setattr(main, "_TELEGRAM_DIR", tmp_path / "telegram-bot")
     monkeypatch.setenv("PUBLIC_READ_ONLY", "1")
+    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
+    monkeypatch.setenv(
+        "WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678"
+    )
     # Realistic-looking sensitive state that sanitization must strip.
     monkeypatch.setenv(
         "TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090"
@@ -119,23 +125,46 @@ def test_anonymous_widgets_sanitized(public_mode):
     assert data["gate"]["state"] in {"killswitch", "armed", "disarmed"}
     assert "cap_usd" not in data["gate"]
     assert "wallet_address" not in data["gate"]
-    # Wallet: masked address + funded boolean, no exact capital, no limits.
-    assert data["wallet"]["funded"] is True
-    assert data["wallet"]["deployed_usd_approx"] % 10 == 0
-    assert "deployed_usd" not in data["wallet"]
-    assert "limits" not in data["wallet"]
-    # Telegram: count only, no proposal bodies.
-    assert isinstance(data["telegram_queue"]["pending"], int)
+    # Wallet: no identifier, capital, position count, or inferred funding state.
+    assert data["wallet"] == {"disclosure": "withheld"}
+    # Telegram: an absent Cloud Run-local file is unknown, not an observed zero,
+    # and an environment flag alone is not proof that polling is alive.
+    assert data["telegram_queue"]["pending"] is None
+    assert data["telegram_queue"]["recent_count"] is None
+    assert data["telegram_queue"]["status"] == "not_observed"
     assert data["telegram_queue"]["proposals"] == []
     # Signals: symbol/side/time only — no confidence/venue (strategy internals).
     for sig in data["recent_signals"]:
         assert set(sig) == {"id", "instrument", "side", "timestamp"}
-    # Research clips: balanced sources and titles only, no file paths.
+    # Research clips: titles may be public, but source identities and the
+    # operator's named thesis/analyst policy are private.
     for clip in data["research"]["clips"]:
-        assert clip["path"] == ""
+        assert set(clip) == {"id", "title", "observed_at"}
     assert data["research"]["clips"][0]["title"] == "Cycle evidence"
-    assert data["research"]["policy"]["owner"]["id"] == "ari"
-    assert data["research"]["policy"]["cycle_prior"]["primary_lens"] == "benjamin_cowen"
+    assert "sources_observed" not in data["research"]
+    assert data["research"]["policy"] == {
+        "research_role": "evidence_not_authority",
+        "single_input_cap": 0.25,
+        "minimum_independent_checks": 2,
+        "can_set_conviction": False,
+        "can_authorize_execution": False,
+    }
+    for needle in (
+        '"ari"',
+        "Ari's",
+        "benjamin_cowen",
+        "Benjamin Cowen",
+        "arthur_hayes",
+        "Arthur Hayes",
+        "bankless",
+        "Bankless",
+        "limitless",
+        "Limitless",
+        "michael_nadeau",
+        "Michael Nadeau",
+        "0x1234",
+    ):
+        assert needle not in body, f"private identity {needle!r} leaked into public payload"
     # TradingView: no endpoint URL, no log tail.
     assert "endpoint" not in data["tradingview"]
     assert "recent_log" not in data["tradingview"]
@@ -154,7 +183,7 @@ def test_anonymous_status_sanitized(public_mode):
         assert needle not in body
     assert data["public_view"] is True
     assert "authenticated_user" not in data
-    assert "limits" not in data["wallet"]
+    assert data["wallet"] == {"disclosure": "withheld"}
 
 
 def test_authed_widgets_full_payload(public_mode):
@@ -232,10 +261,3 @@ def test_rate_limit_is_unconditional(monkeypatch):
     """There is no private mode left in which the looser limit would apply."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
     assert main._api_rate_limit() == "20/minute"
-
-
-def test_round_usd():
-    assert main._round_usd(123.45) == 120
-    assert main._round_usd(0) == 0
-    assert main._round_usd(4.9) == 0
-    assert main._round_usd(5.1) == 10

@@ -8,7 +8,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from live_telemetry import validate_snapshot
-from telemetry.collector import Sources, build_snapshot, signed_headers
+from telemetry.collector import (
+    PUBLIC_EDGE_HEALTH_URL,
+    Sources,
+    build_snapshot,
+    configured_latencies,
+    signed_headers,
+)
 
 
 NOW = time.time() - 30
@@ -151,3 +157,98 @@ def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
     assert snapshot["summary"]["active_agents"] is None
     # A blocked component is not evidence that a human decision is queued.
     assert snapshot["summary"]["attention"] is None
+
+
+def test_service_daemons_do_not_count_as_active_agents_and_degradation_propagates(
+    tmp_path,
+):
+    """Service process liveness is not agent work, and it cannot mask a fault.
+
+    The RH health producer calls its monitored daemons ``agents`` for historical
+    reasons. The public aggregate must count only the real presence roles while
+    still carrying the worst daemon health into the intelligence node and the
+    system summary.
+    """
+    services = [
+        {"label": "Chain Poll", "status": "degraded"},
+        {"label": "Orderflow", "status": "degraded"},
+        *[
+            {"label": label, "status": "healthy"}
+            for label in (
+                "Feed Listen",
+                "Clean Watchlist",
+                "Fresh Decay",
+                "Metrics Advisory",
+                "Social Signal",
+                "Visualizer Serve",
+            )
+        ],
+    ]
+    presence = {
+        "version": 1,
+        "observed_at": datetime.fromtimestamp(NOW - 2, UTC).isoformat(),
+        "summary": {"active": 0, "blocked": 0, "verified": 0},
+        "agents": [
+            {
+                "role": "Local build agent",
+                "state": "idle",
+                "activity": "No task assigned",
+                "verification": "not_applicable",
+                "provider_class": "local GPU",
+                "updated_at": datetime.fromtimestamp(NOW - 3, UTC).isoformat(),
+            }
+        ],
+        "events": [],
+        "source_errors": 0,
+    }
+    sources = Sources(
+        rh_health=_write(
+            tmp_path / "health.json",
+            {"generated_ts": NOW - 4, "overall": "degraded", "agents": services},
+        ),
+        rh_feed=_write(
+            tmp_path / "feed.json",
+            {"updated": NOW - 2, "msgs_per_min": 88},
+        ),
+        memes=_write(tmp_path / "memes.json", {"updated": NOW - 1}),
+        paper=_write(tmp_path / "paper.json", {"updated": NOW - 3}),
+        gpu=_write(
+            tmp_path / "gpu.json",
+            {
+                "updated": NOW - 3,
+                "status": "up",
+                "services": {"ollama": 1, "worker": 1},
+            },
+        ),
+        desk_cycle=_write(
+            tmp_path / "desk.json",
+            {
+                "finished_at": datetime.fromtimestamp(NOW - 3, UTC).isoformat(),
+                "status": "ok",
+                "totals": {"inserted": 0},
+            },
+        ),
+        agent_presence=_write(tmp_path / "presence.json", presence),
+    )
+
+    snapshot = validate_snapshot(build_snapshot(sources, now=NOW))
+    intelligence = next(
+        node for node in snapshot["nodes"] if node["id"] == "intelligence"
+    )
+
+    assert snapshot["summary"]["active_agents"] == 0
+    assert intelligence["status"] == "degraded"
+    assert snapshot["summary"]["state"] == "degraded"
+
+
+def test_default_edge_probe_targets_the_public_api_health_route(monkeypatch):
+    monkeypatch.delenv("SAPPHIRE_EDGE_PROBE", raising=False)
+    seen: list[str] = []
+
+    configured_latencies(
+        http_probe=lambda url, **_kwargs: seen.append(url) or 1.0,
+        gateway_probe=lambda _url, **_kwargs: 2.0,
+    )
+
+    assert PUBLIC_EDGE_HEALTH_URL == "https://sapphirealpha.xyz/api/health"
+    assert seen == [PUBLIC_EDGE_HEALTH_URL]
