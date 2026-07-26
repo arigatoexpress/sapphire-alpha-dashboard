@@ -1053,6 +1053,16 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
         },
         "execution": "halted",
         "feeds": {"fresh": 7, "total": 7},
+        "tracks": [{
+            "strategy": "sniper",
+            "status": "current",
+            "live_return_pct": 176.01,
+            "green_days": 1,
+            "target_days": 14,
+            "open_count": 0,
+            "data_flags": 0,
+            "freshness_s": 4.0,
+        }],
         "risk": {
             "ledger_state": "reconciled",
             "realized_drawdown_pct": 24.0,
@@ -1074,6 +1084,7 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
     legacy = dict(expected)
     legacy.pop("risk")
     legacy.pop("experiment")
+    legacy.pop("tracks")
     legacy["validation"] = {"oos_pass": 0, "oos_total": 7, "conflicts": 1}
     legacy["decisions"] = {"pending": 0}
     path.write_text(json.dumps(legacy), encoding="utf-8")
@@ -1092,6 +1103,7 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
         "pending_policy_blocked": None,
     }
     assert win_collector._desk_projection(path)["risk"]["ledger_state"] == "unknown"
+    assert win_collector._desk_projection(path)["tracks"] == []
 
     contradictory = dict(expected)
     contradictory["decisions"] = dict(expected["decisions"], blocked=13)

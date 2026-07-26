@@ -158,6 +158,10 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
   ] as const
   const blockers = releaseBlockers(desk)
   const conflictDetails = desk?.validation.conflict_details ?? []
+  const conflictByStrategy = new Map(
+    conflictDetails.map((conflict) => [conflict.strategy, conflict]),
+  )
+  const paperTracks = desk?.tracks ?? []
   const maxConflictGap = Math.max(1, ...conflictDetails.map((item) => item.gap_pp))
   const queue = [
     { label: 'Awaiting review', value: desk?.decisions.pending_review ?? NOT_OBSERVED },
@@ -231,6 +235,62 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
           </p>
         </div>
       </div>
+      {paperTracks.length > 0 ? (
+        <div className="strategy-ledger" aria-label="Paper strategy evidence">
+          <div className="strategy-ledger-head">
+            <div>
+              <span>Paper strategy evidence</span>
+              <strong>{paperTracks.length} reporting tracks</strong>
+            </div>
+            <p>
+              Live return, evidence clock, open simulations, and data quality.
+              Paper performance never grants execution authority.
+            </p>
+          </div>
+          <ol>
+            {paperTracks.map((track, index) => {
+              const conflict = conflictByStrategy.get(track.strategy)
+              const progress = Math.min(
+                100,
+                Math.max(0, track.green_days * 100 / track.target_days),
+              )
+              const quality = conflict
+                ? 'Replay conflict'
+                : track.data_flags > 0
+                  ? `${track.data_flags} data ${track.data_flags === 1 ? 'flag' : 'flags'}`
+                  : track.status === 'inactive'
+                    ? 'Flat / inactive'
+                    : track.status === 'stale'
+                      ? 'Stale'
+                      : 'Paper only'
+              return (
+                <li key={track.strategy}>
+                  <span className="strategy-rank">{String(index + 1).padStart(2, '0')}</span>
+                  <strong>{track.strategy}</strong>
+                  <span className={
+                    track.live_return_pct > 0
+                      ? 'is-positive'
+                      : track.live_return_pct < 0
+                        ? 'is-negative'
+                        : undefined
+                  }>
+                    {signedPercent(track.live_return_pct)} live
+                  </span>
+                  <span>{conflict ? `${signedPercent(conflict.replay_return_pct)} replay` : 'Replay not matched'}</span>
+                  <div>
+                    <span>{track.green_days} / {track.target_days}</span>
+                    <i aria-hidden="true"><b style={{ width: `${progress}%` }} /></i>
+                  </div>
+                  <span>{track.open_count} open</span>
+                  <b className={conflict || track.data_flags > 0 || track.status === 'stale' ? 'is-warning' : ''}>
+                    {quality}
+                  </b>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      ) : null}
       {conflictDetails.length > 0 ? (
         <div className="validation-ledger" aria-label="Live and replay validation conflicts">
           <div className="validation-ledger-head">

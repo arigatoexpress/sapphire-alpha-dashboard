@@ -171,6 +171,17 @@ export interface ValidationConflict {
   gap_pp: number
 }
 
+export interface PublicTrack {
+  strategy: PublicStrategy
+  status: 'current' | 'stale' | 'inactive'
+  live_return_pct: number
+  green_days: number
+  target_days: number
+  open_count: number
+  data_flags: number
+  freshness_s: number
+}
+
 /**
  * Public-safe desk conclusions. This intentionally excludes instruments,
  * positions, balances, proposal ids, people, and named research sources.
@@ -203,6 +214,8 @@ export interface LiveDesk {
   }
   execution: DeskExecution
   feeds: { fresh: number | null; total: number | null }
+  /** Bounded paper-track evidence. No holdings, cash, instruments, or orders. */
+  tracks?: PublicTrack[]
   risk?: {
     ledger_state: 'reconciled' | 'unknown'
     realized_drawdown_pct: number | null

@@ -45,6 +45,28 @@ const desk: LiveDesk = {
   },
   execution: 'halted',
   feeds: { fresh: 7, total: 7 },
+  tracks: [
+    {
+      strategy: 'sniper',
+      status: 'current',
+      live_return_pct: 176.01,
+      green_days: 1,
+      target_days: 14,
+      open_count: 0,
+      data_flags: 0,
+      freshness_s: 4,
+    },
+    {
+      strategy: 'equity',
+      status: 'inactive',
+      live_return_pct: 0,
+      green_days: 4,
+      target_days: 14,
+      open_count: 0,
+      data_flags: 0,
+      freshness_s: 120,
+    },
+  ],
   risk: {
     ledger_state: 'reconciled',
     realized_drawdown_pct: 24,
@@ -98,6 +120,15 @@ describe('decision cockpit', () => {
     expect(markup).toContain('+176% live')
     expect(markup).toContain('-7.8% replay')
     expect(markup).toContain('+183.8pp')
+  })
+
+  it('shows paper-track evidence without exposing portfolio detail', () => {
+    expect(markup).toContain('Paper strategy evidence')
+    expect(markup).toContain('2 reporting tracks')
+    expect(markup).toContain('1 / 14')
+    expect(markup).toContain('4 / 14')
+    expect(markup).toContain('Replay conflict')
+    expect(markup).toContain('Flat / inactive')
   })
 
   it('keeps private and named-source detail out of the decision surface', () => {

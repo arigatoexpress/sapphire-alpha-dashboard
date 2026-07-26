@@ -68,6 +68,7 @@ def _sample_snapshot(agent_id: str, node_id: str, sequence: int) -> dict:
             },
             "execution": "unknown",
             "feeds": {"fresh": 0, "total": 0},
+            "tracks": [],
         },
     }
 
@@ -113,6 +114,16 @@ def test_merge_uses_windows_decision_projection():
         "execution": "halted",
         "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
         "feeds": {"fresh": 7, "total": 7},
+        "tracks": [{
+            "strategy": "sniper",
+            "status": "current",
+            "live_return_pct": 176.0,
+            "green_days": 1,
+            "target_days": 14,
+            "open_count": 0,
+            "data_flags": 0,
+            "freshness_s": 3.0,
+        }],
         "decisions": {
             "pending": 2,
             "pending_review": 2,

@@ -119,6 +119,28 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             },
             "execution": "halted",
             "feeds": {"fresh": 7, "total": 7},
+            "tracks": [
+                {
+                    "strategy": "sniper",
+                    "status": "current",
+                    "live_return_pct": 176.01,
+                    "green_days": 1,
+                    "target_days": 14,
+                    "open_count": 0,
+                    "data_flags": 0,
+                    "freshness_s": 4.0,
+                },
+                {
+                    "strategy": "equity",
+                    "status": "inactive",
+                    "live_return_pct": 0.0,
+                    "green_days": 4,
+                    "target_days": 14,
+                    "open_count": 0,
+                    "data_flags": 0,
+                    "freshness_s": 120.0,
+                },
+            ],
             "risk": {
                 "ledger_state": "reconciled",
                 "realized_drawdown_pct": 24.0,
@@ -216,6 +238,7 @@ def test_signed_ingest_and_operator_projection():
         "pending_policy_blocked": 1,
     }
     assert live["desk"]["risk"]["budget_remaining_pct"] == 4.0
+    assert live["desk"]["tracks"] == _sample()["desk"]["tracks"]
     assert live["desk"]["experiment"] == {
         "status": "collecting",
         "qualified_days": 1,
@@ -262,6 +285,42 @@ def test_desk_projection_rejects_private_or_unbounded_detail():
     raw, headers = _signed(payload, nonce="nonce-private-desk-01")
     response = client.post("/api/v1/telemetry", content=raw, headers=headers)
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "tracks",
+    [
+        [
+            {
+                "strategy": "sniper",
+                "status": "current",
+                "live_return_pct": 1.0,
+                "green_days": 15,
+                "target_days": 14,
+                "open_count": 0,
+                "data_flags": 0,
+                "freshness_s": 1.0,
+            }
+        ],
+        [
+            {
+                "strategy": "private-model",
+                "status": "current",
+                "live_return_pct": 1.0,
+                "green_days": 1,
+                "target_days": 14,
+                "open_count": 0,
+                "data_flags": 0,
+                "freshness_s": 1.0,
+            }
+        ],
+    ],
+)
+def test_desk_projection_rejects_invalid_public_track_evidence(tracks):
+    payload = _sample()
+    payload["desk"]["tracks"] = tracks
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
 
 
 @pytest.mark.parametrize(

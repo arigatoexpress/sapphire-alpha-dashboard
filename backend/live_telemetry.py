@@ -79,6 +79,7 @@ _EXPERIMENT_STATES = {
     "collecting", "ready_for_terminal_evaluation", "complete", "invalidated", "unknown",
 }
 _COLLECTOR_STATES = {"current", "stale", "missing", "unknown"}
+_TRACK_STATES = {"current", "stale", "inactive"}
 _PUBLIC_STRATEGIES = {
     "flow-follow", "sniper", "equity", "rotation",
     "mean-rev", "smart-money", "breakout",
@@ -248,7 +249,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             desk_raw,
             allowed={
                 "version", "updated_at", "posture", "leader", "validation",
-                "decisions", "execution", "feeds", "risk", "experiment",
+                "decisions", "execution", "feeds", "tracks", "risk", "experiment",
             },
             required={
                 "version", "updated_at", "posture", "leader", "validation",
@@ -364,6 +365,78 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             required={"fresh", "total"},
             where="desk.feeds",
         )
+        tracks_raw = desk_obj.get("tracks", [])
+        if not isinstance(tracks_raw, list) or len(tracks_raw) > 7:
+            raise TelemetryValidationError("desk.tracks must be a bounded list")
+        public_tracks = []
+        seen_tracks = set()
+        for index, raw_track in enumerate(tracks_raw):
+            track = _keys(
+                raw_track,
+                allowed={
+                    "strategy", "status", "live_return_pct", "green_days",
+                    "target_days", "open_count", "data_flags", "freshness_s",
+                },
+                required={
+                    "strategy", "status", "live_return_pct", "green_days",
+                    "target_days", "open_count", "data_flags", "freshness_s",
+                },
+                where=f"desk.tracks[{index}]",
+            )
+            strategy = _enum(
+                track["strategy"],
+                _PUBLIC_STRATEGIES,
+                where=f"desk.tracks[{index}].strategy",
+            )
+            if strategy in seen_tracks:
+                raise TelemetryValidationError("desk.tracks repeats a strategy")
+            seen_tracks.add(strategy)
+            green_days = _integer(
+                track["green_days"],
+                where=f"desk.tracks[{index}].green_days",
+                high=100,
+            )
+            target_days = _integer(
+                track["target_days"],
+                where=f"desk.tracks[{index}].target_days",
+                low=1,
+                high=100,
+            )
+            if green_days > target_days:
+                raise TelemetryValidationError(
+                    "desk track green days exceed its target"
+                )
+            public_tracks.append({
+                "strategy": strategy,
+                "status": _enum(
+                    track["status"],
+                    _TRACK_STATES,
+                    where=f"desk.tracks[{index}].status",
+                ),
+                "live_return_pct": _number(
+                    track["live_return_pct"],
+                    where=f"desk.tracks[{index}].live_return_pct",
+                    low=-1_000,
+                    high=10_000,
+                ),
+                "green_days": green_days,
+                "target_days": target_days,
+                "open_count": _integer(
+                    track["open_count"],
+                    where=f"desk.tracks[{index}].open_count",
+                    high=1_000,
+                ),
+                "data_flags": _integer(
+                    track["data_flags"],
+                    where=f"desk.tracks[{index}].data_flags",
+                    high=1_000,
+                ),
+                "freshness_s": _number(
+                    track["freshness_s"],
+                    where=f"desk.tracks[{index}].freshness_s",
+                    high=31_536_000,
+                ),
+            })
         risk_raw = desk_obj.get("risk")
         if risk_raw is None:
             risk_raw = {
@@ -474,6 +547,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "fresh": _integer(feeds_raw["fresh"], where="desk.feeds.fresh", high=100),
                 "total": _integer(feeds_raw["total"], where="desk.feeds.total", high=100),
             },
+            "tracks": public_tracks,
             "risk": {
                 "ledger_state": _enum(
                     risk_raw["ledger_state"],
@@ -812,6 +886,7 @@ def _empty_desk() -> dict[str, Any]:
         },
         "execution": "unknown",
         "feeds": {"fresh": None, "total": None},
+        "tracks": [],
         "risk": {
             "ledger_state": "unknown",
             "realized_drawdown_pct": None,
