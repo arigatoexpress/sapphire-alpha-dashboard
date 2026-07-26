@@ -718,9 +718,8 @@ def test_windows_links_publish_only_observed_values(tmp_path, monkeypatch):
     assert archive["event_rate"] == 0.2
 
     worker = next(agent for agent in snapshot["agents"] if agent["id"] == "agent-worker")
-    assert "2 lifetime tasks" in worker["activity"]
-    assert "2 completed tasks" in worker["activity"]
-    assert "0 failed tasks" in worker["activity"]
+    assert worker["activity"] == "working now | lifetime: 2 total, 2 completed, 0 failed"
+    assert worker["provider_class"] == "local GPU"
     assert "check" not in worker["activity"]
 
 
@@ -734,6 +733,38 @@ def test_windows_alive_heartbeat_is_not_worker_handoff_traffic(tmp_path, monkeyp
         now=NOW,
     )
     assert _links(snapshot)[("telegram-bot", "agent-worker")]["event_rate"] == 0.0
+
+
+def test_windows_worker_separates_current_state_from_lifetime_history(
+    tmp_path, monkeypatch
+):
+    home, worker, telegram = _windows_sources(tmp_path)
+    local_stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(NOW - 30))
+    _write(
+        worker / "heartbeat.json",
+        {
+            "ts": local_stamp,
+            "state": "idle",
+            "release": "test",
+            "model": "ollama/qwen3-coder:30b",
+        },
+    )
+    _write(worker / "metrics.json", {"tasks": 16, "pass": 2, "fail": 14})
+    _stub_windows_hardware(monkeypatch)
+
+    snapshot = win_collector.build_snapshot(
+        home,
+        agent_worker_dir=worker,
+        telegram_bot_dir=telegram,
+        now=NOW,
+    )
+    agent = next(
+        row for row in snapshot["agents"] if row["id"] == "agent-worker")
+
+    assert agent["state"] == "idle"
+    assert agent["verification"] == "verified"
+    assert agent["activity"] == (
+        "idle now | lifetime: 16 total, 2 completed, 14 failed")
 
 
 def test_windows_summary_attention_uses_authoritative_pending_review(
