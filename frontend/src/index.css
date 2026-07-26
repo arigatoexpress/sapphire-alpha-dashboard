@@ -29,6 +29,266 @@
   background-size: 36px 36px;
 }
 
+/* The evidence reel is a time-indexed instrument log, not another dashboard
+   card grid. The single vertical sapphire rule is the page's visual memory:
+   observations accumulate beside it, while authority remains in the rail
+   below. */
+
+.evidence-watch {
+  margin-top: 24px;
+  border: 1px solid var(--color-line-lit);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-sapphire) 5%, transparent), transparent 42%),
+    rgba(5, 6, 11, 0.94);
+}
+
+.evidence-watch-head {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(300px, 1.15fr);
+  align-items: end;
+  gap: clamp(32px, 8vw, 120px);
+  padding: clamp(26px, 3.5vw, 46px);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.evidence-watch-head span,
+.evidence-subhead span,
+.signal-tape > span,
+.evidence-policy span {
+  color: var(--color-ice);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.evidence-watch-head h2 {
+  max-width: 13ch;
+  margin-top: 12px;
+  color: var(--color-ink);
+  font-family: var(--font-conviction);
+  font-size: clamp(2rem, 3.4vw, 3.75rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 0.96;
+}
+
+.evidence-watch-head p {
+  max-width: 46rem;
+  color: var(--color-ink-dim);
+  font-size: clamp(0.9rem, 1.2vw, 1.05rem);
+  line-height: 1.65;
+}
+
+.evidence-watch-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.65fr);
+}
+
+.evidence-watch-body > div {
+  min-width: 0;
+  border-right: 1px solid var(--color-line);
+}
+
+.evidence-subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px clamp(22px, 3vw, 36px);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.evidence-subhead strong {
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.evidence-reel ol {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-reel ol::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: clamp(53px, 5vw, 70px);
+  width: 1px;
+  background: linear-gradient(var(--color-sapphire), var(--color-sapphire-deep));
+  content: '';
+}
+
+.evidence-reel li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 64px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 18px;
+  padding: 17px clamp(22px, 3vw, 36px);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent);
+}
+
+.evidence-reel li::before {
+  position: absolute;
+  top: 23px;
+  left: calc(clamp(53px, 5vw, 70px) - 3px);
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--color-sapphire);
+  background: var(--color-void);
+  content: '';
+  transform: rotate(45deg);
+}
+
+.evidence-reel li > span,
+.evidence-reel time,
+.signal-tape time,
+.signal-tape b {
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.evidence-reel li > strong {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: clamp(0.9rem, 1.2vw, 1.05rem);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.evidence-empty {
+  padding: 32px clamp(22px, 3vw, 36px);
+  color: var(--color-ink-faint);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.signal-tape {
+  padding: 18px clamp(22px, 3vw, 36px) 22px;
+}
+
+.signal-tape ol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 14px 0 0;
+  padding: 1px;
+  background: var(--color-line);
+  list-style: none;
+}
+
+.signal-tape li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  padding: 11px 12px;
+  background: var(--color-void);
+}
+
+.signal-tape li > strong {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.signal-tape li > b {
+  color: var(--color-ice);
+}
+
+.signal-tape p {
+  margin-top: 12px;
+  color: var(--color-ink-faint);
+  font-size: 0.84rem;
+}
+
+.system-watch dl {
+  margin: 0;
+}
+
+.system-watch dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px clamp(20px, 2.5vw, 30px);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent);
+}
+
+.system-watch dt,
+.system-watch dd {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.system-watch dt {
+  color: var(--color-ink-dim);
+}
+
+.system-watch dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.system-watch dd i {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+}
+
+.watch-current { color: var(--color-sapphire); }
+.watch-protected { color: var(--color-ice); }
+.watch-warning { color: var(--color-degraded); }
+.watch-stopped { color: var(--color-failed); }
+.watch-unknown { color: var(--color-ink-faint); }
+
+.evidence-policy {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--color-line);
+  background: var(--color-line);
+}
+
+.evidence-policy > div {
+  min-width: 0;
+  padding: 15px 18px;
+  background: var(--color-void);
+}
+
+.evidence-policy strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.evidence-watch-error {
+  border-top: 1px solid var(--color-line);
+  padding: 12px 18px;
+  color: var(--color-degraded);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
 .decision-head {
   display: grid;
   grid-template-columns: minmax(300px, 1.05fr) minmax(300px, 0.95fr);
@@ -648,6 +908,33 @@
 }
 
 @media (max-width: 720px) {
+  .evidence-watch-head,
+  .evidence-watch-body {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-watch-head {
+    gap: 18px;
+  }
+
+  .evidence-watch-body > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .evidence-reel li {
+    grid-template-columns: 22px 48px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .signal-tape ol {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-policy {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .decision-head {
     grid-template-columns: 1fr;
     gap: 26px;
