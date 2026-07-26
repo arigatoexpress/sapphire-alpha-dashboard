@@ -30,3 +30,21 @@ def test_deploy_script_never_sends_inline_secrets_or_live_state():
     assert "AUTH_PASSWORD=${" not in content
     for forbidden in ("WALLET_ADDRESS", "MAX_ORDER_USD", "TV_WEBHOOK_URL", "DASHBOARD_ARMED", "DASHBOARD_SIGNALS_JSON"):
         assert forbidden not in content
+
+
+def test_cloud_source_upload_excludes_local_and_generated_state():
+    content = (ROOT / ".gcloudignore").read_text(encoding="utf-8")
+    for forbidden in (
+        ".git/",
+        ".env",
+        ".remember/",
+        ".claude/",
+        "daily-brief.sh",
+        "frontend/node_modules/",
+        "frontend/dist/",
+        "web/node_modules/",
+        "web/.next/",
+        "web/out/",
+        "backend/.venv/",
+    ):
+        assert forbidden in content
