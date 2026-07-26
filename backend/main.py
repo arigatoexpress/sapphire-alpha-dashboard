@@ -1271,6 +1271,7 @@ async def frontend_assets(filename: str, request: Request, user: str = Depends(a
 
 _MINIAPP_HTML = Path(__file__).resolve().parent / "static" / "miniapp.html"
 _DEFAULT_DECISION_BOT_URL = "https://t.me/sapphirerelaybot"
+_PRIVATE_NO_STORE = {"Cache-Control": "no-store"}
 
 
 def _observed_file_at(path: Path) -> str | None:
@@ -1348,15 +1349,22 @@ async def miniapp_page(request: Request) -> Response:
     """Public static shell; all data behind /api/tg/* (validated initData)."""
     if not _MINIAPP_HTML.is_file():
         raise HTTPException(status_code=404, detail="miniapp not built")
-    return FileResponse(_MINIAPP_HTML, media_type="text/html")
+    return FileResponse(
+        _MINIAPP_HTML,
+        media_type="text/html",
+        headers=_PRIVATE_NO_STORE,
+    )
 
 
 @app.get("/api/tg/summary")
 @limiter.limit("60/minute")
 async def api_tg_summary(
-    request: Request, _user: telegram_miniapp.TelegramUser = Depends(tg_auth)
+    request: Request,
+    response: Response,
+    _user: telegram_miniapp.TelegramUser = Depends(tg_auth),
 ) -> dict[str, Any]:
     """Private decision inbox projection for the read-only Mini App."""
+    response.headers.update(_PRIVATE_NO_STORE)
     return {
         "inbox": _miniapp_inbox(),
         "decision_url": _decision_bot_url(),
@@ -1367,9 +1375,12 @@ async def api_tg_summary(
 @app.get("/api/tg/decisions")
 @limiter.limit("60/minute")
 async def api_tg_decisions(
-    request: Request, _user: telegram_miniapp.TelegramUser = Depends(tg_auth)
+    request: Request,
+    response: Response,
+    _user: telegram_miniapp.TelegramUser = Depends(tg_auth),
 ) -> dict[str, Any]:
     """Read-only outcome history with honest file-observation semantics."""
+    response.headers.update(_PRIVATE_NO_STORE)
     path = _TELEGRAM_DIR / "decisions.jsonl"
     if not path.is_file():
         return {
