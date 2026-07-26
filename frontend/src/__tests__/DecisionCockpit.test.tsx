@@ -125,15 +125,26 @@ describe('decision cockpit', () => {
   it('shows paper-track evidence without exposing portfolio detail', () => {
     expect(markup).toContain('Paper strategy evidence')
     expect(markup).toContain('2 reporting tracks')
+    expect(markup).toContain('1 untrusted')
     expect(markup).toContain('1 / 14')
     expect(markup).toContain('4 / 14')
-    expect(markup).toContain('Replay conflict')
+    expect(markup).toContain('Untrusted · disqualified')
+    expect(markup).toContain('untrusted')
     expect(markup).toContain('Flat / inactive')
     expect(markup).toContain('4s ago')
     expect(markup).toContain('2m ago')
     expect(markup).toContain('strategy-status-current')
     expect(markup).toContain('strategy-status-inactive')
+    expect(markup).toContain('strategy-status-untrusted')
+    expect(markup).toContain('is-untrusted')
     expect(markup).not.toContain('strategy-rank')
+    // Contaminated positive returns must not render as celebratory green.
+    expect(markup).not.toMatch(/is-positive[^"]*">\+176% live/)
+  })
+
+  it('keeps untrusted paper marks from reading as authority', () => {
+    expect(markup).toContain('cannot lead')
+    expect(markup).toContain('Untrusted paper marks never unlock the start button')
   })
 
   it('keeps private and named-source detail out of the decision surface', () => {

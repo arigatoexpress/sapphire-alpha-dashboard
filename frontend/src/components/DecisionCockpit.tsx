@@ -1,5 +1,7 @@
-import type { LiveDesk } from '../types'
+import type { LiveDesk, PublicTrack } from '../types'
 import { formatAge, NOT_OBSERVED } from '../desk/format'
+
+type ValidationConflict = NonNullable<LiveDesk['validation']['conflict_details']>[number]
 
 const POSTURES: Record<LiveDesk['posture'], string> = {
   capital_preservation: 'Capital preservation',
@@ -68,10 +70,49 @@ function nextAction(desk: LiveDesk | null) {
     return 'Reconcile the loss ledger before new risk can be assessed.'
   }
   if (releaseBlockers(desk).length > 0) {
-    return 'Execution remains withheld until every release condition below clears.'
+    return 'Execution remains withheld until every release condition below clears. Untrusted paper marks never unlock the start button.'
   }
   if ((desk.decisions.pending_review ?? 0) > 0) return 'Review the decision inbox.'
   return 'All observed gates are aligned.'
+}
+
+/** Live/replay conflict or data-quality flag → paper mark is not leadership-eligible. */
+function trackIsUntrusted(
+  track: PublicTrack,
+  conflict: ValidationConflict | undefined,
+) {
+  return Boolean(conflict) || (track.data_flags ?? 0) > 0
+}
+
+function trackTrustLabel(
+  track: PublicTrack,
+  conflict: ValidationConflict | undefined,
+) {
+  if (conflict) {
+    return conflict.gap_pp >= 20
+      ? 'Untrusted · disqualified'
+      : 'Replay conflict'
+  }
+  if ((track.data_flags ?? 0) > 0) {
+    return `${track.data_flags} data ${track.data_flags === 1 ? 'flag' : 'flags'} · untrusted`
+  }
+  if (track.status === 'inactive') return 'Flat / inactive'
+  if (track.status === 'stale') return 'Stale'
+  return 'Paper only'
+}
+
+function sortTracksForDisplay(
+  tracks: PublicTrack[],
+  conflictByStrategy: Map<string, ValidationConflict>,
+) {
+  return [...tracks].sort((a, b) => {
+    const aUntrusted = trackIsUntrusted(a, conflictByStrategy.get(a.strategy)) ? 1 : 0
+    const bUntrusted = trackIsUntrusted(b, conflictByStrategy.get(b.strategy)) ? 1 : 0
+    if (aUntrusted !== bUntrusted) return aUntrusted - bUntrusted
+    if (a.status === 'inactive' && b.status !== 'inactive') return 1
+    if (b.status === 'inactive' && a.status !== 'inactive') return -1
+    return a.strategy.localeCompare(b.strategy)
+  })
 }
 
 function releaseBlockers(desk: LiveDesk | null) {
@@ -161,7 +202,10 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
   const conflictByStrategy = new Map(
     conflictDetails.map((conflict) => [conflict.strategy, conflict]),
   )
-  const paperTracks = desk?.tracks ?? []
+  const paperTracks = sortTracksForDisplay(desk?.tracks ?? [], conflictByStrategy)
+  const untrustedTrackCount = paperTracks.filter((track) =>
+    trackIsUntrusted(track, conflictByStrategy.get(track.strategy)),
+  ).length
   const maxConflictGap = Math.max(1, ...conflictDetails.map((item) => item.gap_pp))
   const queue = [
     { label: 'Awaiting review', value: desk?.decisions.pending_review ?? NOT_OBSERVED },
@@ -240,44 +284,48 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
           <div className="strategy-ledger-head">
             <div>
               <span>Paper strategy evidence</span>
-              <strong>{paperTracks.length} reporting tracks</strong>
+              <strong>
+                {paperTracks.length} reporting tracks
+                {untrustedTrackCount > 0
+                  ? ` · ${untrustedTrackCount} untrusted`
+                  : ''}
+              </strong>
             </div>
             <p>
               Live return, evidence clock, open simulations, and data quality.
-              Paper performance never grants execution authority.
+              Paper performance never grants execution authority. Contaminated
+              or conflicted marks stay untrusted and cannot lead.
             </p>
           </div>
           <ol>
             {paperTracks.map((track) => {
               const conflict = conflictByStrategy.get(track.strategy)
+              const untrusted = trackIsUntrusted(track, conflict)
               const progress = Math.min(
                 100,
                 Math.max(0, track.green_days * 100 / track.target_days),
               )
-              const quality = conflict
-                ? 'Replay conflict'
-                : track.data_flags > 0
-                  ? `${track.data_flags} data ${track.data_flags === 1 ? 'flag' : 'flags'}`
-                  : track.status === 'inactive'
-                    ? 'Flat / inactive'
-                    : track.status === 'stale'
-                      ? 'Stale'
-                      : 'Paper only'
+              const quality = trackTrustLabel(track, conflict)
+              const returnClass = untrusted
+                ? 'is-untrusted'
+                : track.live_return_pct > 0
+                  ? 'is-positive'
+                  : track.live_return_pct < 0
+                    ? 'is-negative'
+                    : undefined
               return (
-                <li key={track.strategy}>
+                <li
+                  key={track.strategy}
+                  className={untrusted ? 'is-untrusted-track' : undefined}
+                >
                   <span
-                    className={`strategy-status strategy-status-${track.status}`}
-                    aria-label={`${track.status}, observed ${formatAge(track.freshness_s)}`}
+                    className={`strategy-status strategy-status-${track.status}${untrusted ? ' strategy-status-untrusted' : ''}`}
+                    aria-label={`${track.status}${untrusted ? ', untrusted' : ''}, observed ${formatAge(track.freshness_s)}`}
                   />
                   <strong>{track.strategy}</strong>
-                  <span className={
-                    track.live_return_pct > 0
-                      ? 'is-positive'
-                      : track.live_return_pct < 0
-                        ? 'is-negative'
-                        : undefined
-                  }>
+                  <span className={returnClass}>
                     {signedPercent(track.live_return_pct)} live
+                    {untrusted ? ' · untrusted' : ''}
                   </span>
                   <span>{conflict ? `${signedPercent(conflict.replay_return_pct)} replay` : 'Replay not matched'}</span>
                   <div>
@@ -285,7 +333,7 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
                     <i aria-hidden="true"><b style={{ width: `${progress}%` }} /></i>
                   </div>
                   <span>{track.open_count} open</span>
-                  <b className={conflict || track.data_flags > 0 || track.status === 'stale' ? 'is-warning' : ''}>
+                  <b className={untrusted || track.status === 'stale' ? 'is-warning' : ''}>
                     <span>{quality}</span>
                     <small>{formatAge(track.freshness_s)}</small>
                   </b>
