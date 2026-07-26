@@ -14,50 +14,91 @@ function ratio(part: number | null, total: number | null, suffix = '') {
   return `${part} / ${total}${suffix}`
 }
 
+function percent(value: number | null | undefined) {
+  if (value === null || value === undefined) return NOT_OBSERVED
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+}
+
+function remainingDays(desk: LiveDesk | null) {
+  const qualified = desk?.experiment?.qualified_days
+  const required = desk?.experiment?.required_days
+  if (qualified === null || qualified === undefined || required === null || required === undefined) {
+    return null
+  }
+  return Math.max(0, required - qualified)
+}
+
 function headline(desk: LiveDesk | null) {
   if (!desk || desk.execution === 'unknown') return 'Waiting for desk state.'
-  const blocked = desk.decisions.blocked ?? 0
-  if (blocked > 0) {
-    return `${blocked} approved ${blocked === 1 ? 'decision is' : 'decisions are'} blocked.`
+  if (desk.execution === 'gated') return 'Trading is gated.'
+  return 'Trading stays off.'
+}
+
+function nextAction(desk: LiveDesk | null) {
+  if (!desk) return 'Waiting for the first complete readiness report.'
+  const collector = desk.experiment?.collector
+  if (collector === 'stale' || collector === 'missing') {
+    return 'Restore evidence collection before another day can qualify.'
   }
-  if ((desk.decisions.pending_review ?? desk.decisions.pending ?? 0) > 0) {
-    return 'A decision needs review.'
+  if (desk.risk?.ledger_state === 'unknown') {
+    return 'Reconcile the loss ledger before new risk can be assessed.'
   }
-  if ((desk.decisions.approved_awaiting_execution ?? 0) > 0) {
-    return 'Approved decisions are unresolved.'
+  const remaining = remainingDays(desk)
+  if (remaining && remaining > 0) {
+    return `${remaining} more qualified ${remaining === 1 ? 'day' : 'days'} must close before promotion can be judged.`
   }
-  if (desk.execution === 'halted') return 'The desk is protected.'
-  if (desk.leader === 'none') return 'No result has earned authority.'
-  return 'Evidence is aligned.'
+  if ((desk.validation.conflicts ?? 0) > 0) {
+    const conflicts = desk.validation.conflicts ?? 0
+    return `Resolve ${conflicts} validation ${conflicts === 1 ? 'conflict' : 'conflicts'} before authority can pass forward.`
+  }
+  if (desk.leader === 'none') return 'No result has earned execution authority.'
+  if ((desk.decisions.pending_review ?? 0) > 0) return 'Review the decision inbox.'
+  return 'All observed gates are aligned.'
 }
 
 export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
-  const cells = [
-    { label: 'Posture', value: desk ? POSTURES[desk.posture] : NOT_OBSERVED },
+  const used = desk?.risk?.realized_drawdown_pct
+  const limit = desk?.risk?.drawdown_limit_pct
+  const runwayFill = used !== null && used !== undefined && limit
+    ? Math.min(100, Math.max(0, used * 100 / limit))
+    : 0
+  const gates = [
     {
-      label: 'Credible leader',
-      value: desk?.leader === 'credible' ? 'Present' : desk?.leader === 'none' ? 'None' : NOT_OBSERVED,
+      label: 'Data',
+      value: desk ? ratio(desk.feeds.fresh, desk.feeds.total, ' current') : NOT_OBSERVED,
+      state: desk && desk.feeds.fresh === desk.feeds.total ? 'pass' : 'hold',
     },
     {
-      label: 'OOS validation',
+      label: 'Loss ledger',
+      value: desk?.risk?.ledger_state === 'reconciled' ? 'Reconciled' : NOT_OBSERVED,
+      state: desk?.risk?.ledger_state === 'reconciled' ? 'pass' : 'hold',
+    },
+    {
+      label: 'OOS',
       value: desk ? ratio(desk.validation.oos_pass, desk.validation.oos_total, ' pass') : NOT_OBSERVED,
+      state: (desk?.validation.oos_pass ?? 0) > 0 ? 'pass' : 'hold',
     },
     {
-      label: 'Validation conflicts',
-      value: desk?.validation.conflicts ?? NOT_OBSERVED,
+      label: 'Sealed trial',
+      value: desk?.experiment
+        ? ratio(desk.experiment.qualified_days, desk.experiment.required_days)
+        : NOT_OBSERVED,
+      state:
+        desk?.experiment?.qualified_days === desk?.experiment?.required_days
+          ? 'pass'
+          : 'hold',
     },
     {
-      label: 'Awaiting review',
-      value: desk?.decisions.pending_review ?? desk?.decisions.pending ?? NOT_OBSERVED,
+      label: 'Authority',
+      value: desk?.leader === 'credible' ? 'Earned' : desk?.leader === 'none' ? 'Withheld' : NOT_OBSERVED,
+      state: desk?.leader === 'credible' ? 'pass' : 'hold',
     },
-    {
-      label: 'Approved unresolved',
-      value: desk?.decisions.approved_awaiting_execution ?? NOT_OBSERVED,
-    },
-    {
-      label: 'Execution eligible',
-      value: desk?.decisions.eligible_execution ?? NOT_OBSERVED,
-    },
+  ] as const
+  const queue = [
+    { label: 'Awaiting review', value: desk?.decisions.pending_review ?? NOT_OBSERVED },
+    { label: 'Blocked before review', value: desk?.decisions.pending_policy_blocked ?? NOT_OBSERVED },
+    { label: 'Approved unresolved', value: desk?.decisions.approved_awaiting_execution ?? NOT_OBSERVED },
+    { label: 'Execution eligible', value: desk?.decisions.eligible_execution ?? NOT_OBSERVED },
     {
       label: 'Blocked by policy',
       value: desk?.decisions.blocked ?? NOT_OBSERVED,
@@ -65,12 +106,10 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
     },
     {
       label: 'Execution',
-      value: desk?.execution === 'unknown' || !desk ? NOT_OBSERVED : desk.execution,
-      critical: desk?.execution === 'halted',
-    },
-    {
-      label: 'Strategy feeds',
-      value: desk ? ratio(desk.feeds.fresh, desk.feeds.total, ' current') : NOT_OBSERVED,
+      value: desk?.execution === 'unknown' || !desk
+        ? NOT_OBSERVED
+        : desk.execution[0].toUpperCase() + desk.execution.slice(1),
+      protected: desk?.execution === 'halted' || desk?.execution === 'off',
     },
   ]
 
@@ -82,22 +121,63 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
     >
       <div className="decision-head">
         <div>
-          <span className="decision-index">01 / DECISION STATE</span>
+          <span className="decision-index">READINESS / CAPITAL RUNWAY</span>
           <h2 id="decision-title">{headline(desk)}</h2>
         </div>
-        <p>
-          The mandate is the prior. Independent evidence can challenge it, change
-          sizing, or stop action—it cannot silently replace it.
-        </p>
+        <div className="decision-next">
+          <span>Next gate</span>
+          <p>{nextAction(desk)}</p>
+          <small>{desk ? POSTURES[desk.posture] : NOT_OBSERVED}</small>
+        </div>
       </div>
-      <div className="decision-tape" aria-label="Current desk conclusions">
-        {cells.map((cell, index) => (
+      <div className="readiness-readouts">
+        <div className="capital-runway">
+          <div className="readout-label">
+            <span>Loss allowance</span>
+            <strong>{percent(used)} used</strong>
+          </div>
+          <div className="runway-track" aria-label={`${percent(used)} of ${percent(limit)} loss limit used`}>
+            <span style={{ width: `${runwayFill}%` }} />
+            <i style={{ left: `${runwayFill}%` }} />
+          </div>
+          <div className="runway-scale">
+            <span>0</span>
+            <strong>{percent(desk?.risk?.budget_remaining_pct)} remains</strong>
+            <span>{percent(limit)} stop</span>
+          </div>
+        </div>
+        <div className="trial-clock">
+          <span>Sealed trial</span>
+          <strong>
+            {desk?.experiment
+              ? ratio(desk.experiment.qualified_days, desk.experiment.required_days)
+              : NOT_OBSERVED}
+          </strong>
+          <p>
+            Collector {desk?.experiment?.collector ?? 'not observed'}
+            {desk?.experiment?.last_committed_date
+              ? ` · through ${desk.experiment.last_committed_date}`
+              : ''}
+          </p>
+        </div>
+      </div>
+      <ol className="readiness-gates" aria-label="Promotion gates">
+        {gates.map((gate) => (
+          <li key={gate.label} className={`gate-${gate.state}`}>
+            <i aria-hidden="true" />
+            <span>{gate.label}</span>
+            <strong>{gate.value}</strong>
+          </li>
+        ))}
+      </ol>
+      <div className="decision-tape" aria-label="Decision queue">
+        {queue.map((cell, index) => (
           <div
             key={cell.label}
             className={
               cell.blocked
                 ? 'is-blocked'
-                : cell.critical
+                : cell.protected
                   ? 'is-protected'
                   : undefined
             }
@@ -108,9 +188,9 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
         ))}
       </div>
       <div className="decision-boundary">
-        <span>Research informs</span>
+        <span>Evidence can challenge the mandate; it cannot silently replace it</span>
         <i aria-hidden="true" />
-        <strong>Risk gates decide whether action is allowed</strong>
+        <strong>Only completed gates release execution</strong>
       </div>
     </section>
   )

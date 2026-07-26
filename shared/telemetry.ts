@@ -177,9 +177,31 @@ export interface LiveDesk {
     approved_awaiting_execution: number | null
     eligible_execution: number | null
     blocked: number | null
+    /** Pending proposals that already fail policy and should not consume human attention. */
+    pending_policy_blocked?: number | null
   }
   execution: DeskExecution
   feeds: { fresh: number | null; total: number | null }
+  risk?: {
+    ledger_state: 'reconciled' | 'unknown'
+    realized_drawdown_pct: number | null
+    drawdown_limit_pct: number | null
+    /** Share of the configured loss allowance, not portfolio capital. */
+    budget_remaining_pct: number | null
+    new_risk: 'available' | 'restricted' | 'blocked' | 'unknown'
+  }
+  experiment?: {
+    status:
+      | 'collecting'
+      | 'ready_for_terminal_evaluation'
+      | 'complete'
+      | 'invalidated'
+      | 'unknown'
+    qualified_days: number | null
+    required_days: number | null
+    last_committed_date: string | null
+    collector: 'current' | 'stale' | 'missing' | 'unknown'
+  }
 }
 
 export interface LiveSnapshot {

@@ -995,19 +995,36 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
         "leader": "none",
         "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
         "decisions": {
-            "pending": 0,
+            "pending": 1,
             "pending_review": 0,
+            "pending_policy_blocked": 1,
             "approved_awaiting_execution": 14,
             "eligible_execution": 0,
             "blocked": 14,
         },
         "execution": "halted",
         "feeds": {"fresh": 7, "total": 7},
+        "risk": {
+            "ledger_state": "reconciled",
+            "realized_drawdown_pct": 24.0,
+            "drawdown_limit_pct": 25.0,
+            "budget_remaining_pct": 4.0,
+            "new_risk": "restricted",
+        },
+        "experiment": {
+            "status": "collecting",
+            "qualified_days": 1,
+            "required_days": 14,
+            "last_committed_date": "2026-07-25",
+            "collector": "current",
+        },
     }
     path.write_text(json.dumps(expected), encoding="utf-8")
     assert win_collector._desk_projection(path) == expected
 
     legacy = dict(expected)
+    legacy.pop("risk")
+    legacy.pop("experiment")
     legacy["decisions"] = {"pending": 0}
     path.write_text(json.dumps(legacy), encoding="utf-8")
     assert win_collector._desk_projection(path)["decisions"] == {
@@ -1016,7 +1033,9 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
         "approved_awaiting_execution": None,
         "eligible_execution": None,
         "blocked": None,
+        "pending_policy_blocked": None,
     }
+    assert win_collector._desk_projection(path)["risk"]["ledger_state"] == "unknown"
 
     contradictory = dict(expected)
     contradictory["decisions"] = dict(expected["decisions"], blocked=13)

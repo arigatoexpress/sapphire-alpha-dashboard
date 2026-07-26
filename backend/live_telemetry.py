@@ -73,6 +73,12 @@ _EVENT_STATES = {"observed", "verified", "pending", "degraded", "failed", "recov
 _POSTURES = {"capital_preservation", "selective_risk", "risk_seeking", "neutral", "unknown"}
 _LEADER_STATES = {"credible", "none", "unknown"}
 _DESK_EXECUTION = {"halted", "off", "gated", "unknown"}
+_LEDGER_STATES = {"reconciled", "unknown"}
+_NEW_RISK_STATES = {"available", "restricted", "blocked", "unknown"}
+_EXPERIMENT_STATES = {
+    "collecting", "ready_for_terminal_evaluation", "complete", "invalidated", "unknown",
+}
+_COLLECTOR_STATES = {"current", "stale", "missing", "unknown"}
 
 
 class TelemetryValidationError(ValueError):
@@ -148,6 +154,18 @@ def _integer(value: Any, *, where: str, low: int = 0, high: int = 1_000_000) -> 
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
         raise TelemetryValidationError(f"{where} must be an integer in range")
     return value
+
+
+def _nullable_number(
+    value: Any,
+    *,
+    where: str,
+    low: float = 0,
+    high: float = 1_000_000,
+) -> float | None:
+    if value is None:
+        return None
+    return _number(value, where=where, low=low, high=high)
 
 
 def _nullable_integer(
@@ -226,7 +244,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             desk_raw,
             allowed={
                 "version", "updated_at", "posture", "leader", "validation",
-                "decisions", "execution", "feeds",
+                "decisions", "execution", "feeds", "risk", "experiment",
             },
             required={
                 "version", "updated_at", "posture", "leader", "validation",
@@ -250,6 +268,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "approved_awaiting_execution",
                 "eligible_execution",
                 "blocked",
+                "pending_policy_blocked",
             },
             required={"pending"},
             where="desk.decisions",
@@ -260,6 +279,62 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             required={"fresh", "total"},
             where="desk.feeds",
         )
+        risk_raw = desk_obj.get("risk")
+        if risk_raw is None:
+            risk_raw = {
+                "ledger_state": "unknown",
+                "realized_drawdown_pct": None,
+                "drawdown_limit_pct": None,
+                "budget_remaining_pct": None,
+                "new_risk": "unknown",
+            }
+        risk_raw = _keys(
+            risk_raw,
+            allowed={
+                "ledger_state", "realized_drawdown_pct", "drawdown_limit_pct",
+                "budget_remaining_pct", "new_risk",
+            },
+            required={
+                "ledger_state", "realized_drawdown_pct", "drawdown_limit_pct",
+                "budget_remaining_pct", "new_risk",
+            },
+            where="desk.risk",
+        )
+        experiment_raw = desk_obj.get("experiment")
+        if experiment_raw is None:
+            experiment_raw = {
+                "status": "unknown",
+                "qualified_days": None,
+                "required_days": None,
+                "last_committed_date": None,
+                "collector": "unknown",
+            }
+        experiment_raw = _keys(
+            experiment_raw,
+            allowed={
+                "status", "qualified_days", "required_days",
+                "last_committed_date", "collector",
+            },
+            required={
+                "status", "qualified_days", "required_days",
+                "last_committed_date", "collector",
+            },
+            where="desk.experiment",
+        )
+        last_committed_date = experiment_raw["last_committed_date"]
+        if last_committed_date is not None:
+            last_committed_date = _text(
+                last_committed_date,
+                where="desk.experiment.last_committed_date",
+                limit=10,
+            )
+            try:
+                if datetime.fromisoformat(last_committed_date).date().isoformat() != last_committed_date:
+                    raise ValueError
+            except ValueError as exc:
+                raise TelemetryValidationError(
+                    "desk.experiment.last_committed_date must be an ISO date"
+                ) from exc
         desk = {
             "version": 1,
             "updated_at": _timestamp(desk_obj["updated_at"], where="desk.updated_at"),
@@ -296,11 +371,66 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                     where="desk.decisions.blocked",
                     high=1_000,
                 ),
+                "pending_policy_blocked": _nullable_integer(
+                    decisions_raw.get("pending_policy_blocked"),
+                    where="desk.decisions.pending_policy_blocked",
+                    high=1_000,
+                ),
             },
             "execution": _enum(desk_obj["execution"], _DESK_EXECUTION, where="desk.execution"),
             "feeds": {
                 "fresh": _integer(feeds_raw["fresh"], where="desk.feeds.fresh", high=100),
                 "total": _integer(feeds_raw["total"], where="desk.feeds.total", high=100),
+            },
+            "risk": {
+                "ledger_state": _enum(
+                    risk_raw["ledger_state"],
+                    _LEDGER_STATES,
+                    where="desk.risk.ledger_state",
+                ),
+                "realized_drawdown_pct": _nullable_number(
+                    risk_raw["realized_drawdown_pct"],
+                    where="desk.risk.realized_drawdown_pct",
+                    high=100,
+                ),
+                "drawdown_limit_pct": _nullable_number(
+                    risk_raw["drawdown_limit_pct"],
+                    where="desk.risk.drawdown_limit_pct",
+                    high=100,
+                ),
+                "budget_remaining_pct": _nullable_number(
+                    risk_raw["budget_remaining_pct"],
+                    where="desk.risk.budget_remaining_pct",
+                    high=100,
+                ),
+                "new_risk": _enum(
+                    risk_raw["new_risk"],
+                    _NEW_RISK_STATES,
+                    where="desk.risk.new_risk",
+                ),
+            },
+            "experiment": {
+                "status": _enum(
+                    experiment_raw["status"],
+                    _EXPERIMENT_STATES,
+                    where="desk.experiment.status",
+                ),
+                "qualified_days": _nullable_integer(
+                    experiment_raw["qualified_days"],
+                    where="desk.experiment.qualified_days",
+                    high=100,
+                ),
+                "required_days": _nullable_integer(
+                    experiment_raw["required_days"],
+                    where="desk.experiment.required_days",
+                    high=100,
+                ),
+                "last_committed_date": last_committed_date,
+                "collector": _enum(
+                    experiment_raw["collector"],
+                    _COLLECTOR_STATES,
+                    where="desk.experiment.collector",
+                ),
             },
         }
         if desk["validation"]["oos_pass"] > desk["validation"]["oos_total"]:
@@ -310,7 +440,11 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
         decision_counts = desk["decisions"]
         if (
             decision_counts["pending_review"] is not None
-            and decision_counts["pending"] != decision_counts["pending_review"]
+            and decision_counts["pending_policy_blocked"] is not None
+            and decision_counts["pending"] != (
+                decision_counts["pending_review"]
+                + decision_counts["pending_policy_blocked"]
+            )
         ):
             raise TelemetryValidationError("desk pending decision counts disagree")
         if all(
@@ -325,6 +459,37 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             != decision_counts["approved_awaiting_execution"]
         ):
             raise TelemetryValidationError("desk execution queue counts disagree")
+        risk = desk["risk"]
+        risk_numbers = (
+            risk["realized_drawdown_pct"],
+            risk["drawdown_limit_pct"],
+            risk["budget_remaining_pct"],
+        )
+        if risk["ledger_state"] == "reconciled" and (
+            any(value is None for value in risk_numbers)
+            or risk["new_risk"] == "unknown"
+        ):
+            raise TelemetryValidationError("desk reconciled risk state is incomplete")
+        if risk["ledger_state"] == "unknown" and (
+            any(value is not None for value in risk_numbers)
+            or risk["new_risk"] != "unknown"
+        ):
+            raise TelemetryValidationError("desk unknown risk state carries conclusions")
+        experiment = desk["experiment"]
+        if experiment["status"] == "unknown":
+            if (
+                experiment["qualified_days"] is not None
+                or experiment["required_days"] is not None
+                or experiment["last_committed_date"] is not None
+                or experiment["collector"] != "unknown"
+            ):
+                raise TelemetryValidationError("desk unknown experiment carries conclusions")
+        elif (
+            experiment["qualified_days"] is None
+            or experiment["required_days"] is None
+            or experiment["qualified_days"] > experiment["required_days"]
+        ):
+            raise TelemetryValidationError("desk experiment day counts are invalid")
 
     summary_raw = _keys(
         obj["summary"],
@@ -544,9 +709,24 @@ def _empty_desk() -> dict[str, Any]:
             "approved_awaiting_execution": None,
             "eligible_execution": None,
             "blocked": None,
+            "pending_policy_blocked": None,
         },
         "execution": "unknown",
         "feeds": {"fresh": None, "total": None},
+        "risk": {
+            "ledger_state": "unknown",
+            "realized_drawdown_pct": None,
+            "drawdown_limit_pct": None,
+            "budget_remaining_pct": None,
+            "new_risk": "unknown",
+        },
+        "experiment": {
+            "status": "unknown",
+            "qualified_days": None,
+            "required_days": None,
+            "last_committed_date": None,
+            "collector": "unknown",
+        },
     }
 
 
