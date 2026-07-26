@@ -1,0 +1,27 @@
+# Only source needed by the explicit Dockerfile COPY rules should leave the
+# workstation. Keep local agent state, credentials, caches, and built output out
+# of Cloud Build source archives even when those files are untracked.
+.gcloudignore
+.git/
+.gitignore
+
+.env
+.env.*
+**/.env
+**/.env.*
+
+.remember/
+.claude/
+daily-brief.sh
+
+**/.DS_Store
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+backend/.venv/
+
+frontend/node_modules/
+frontend/dist/
+web/node_modules/
+web/.next/
+web/out/
