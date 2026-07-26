@@ -8,7 +8,33 @@ const desk: LiveDesk = {
   updated_at: '2026-07-26T08:00:00+00:00',
   posture: 'capital_preservation',
   leader: 'none',
-  validation: { oos_pass: 0, oos_total: 7, conflicts: 1 },
+  validation: {
+    oos_pass: 0,
+    oos_total: 7,
+    conflicts: 3,
+    conflict_details: [
+      {
+        strategy: 'sniper',
+        live_return_pct: 176.01,
+        replay_return_pct: -7.82,
+        gap_pp: 183.83,
+      },
+      {
+        strategy: 'flow-follow',
+        live_return_pct: -17.11,
+        replay_return_pct: -99.01,
+        gap_pp: 81.9,
+      },
+      {
+        strategy: 'mean-rev',
+        live_return_pct: -50.5,
+        replay_return_pct: -57.56,
+        gap_pp: 7.06,
+      },
+    ],
+    replay_span_hours: 245.3,
+    replay_data_through: '2026-07-22',
+  },
   decisions: {
     pending: 0,
     pending_review: 0,
@@ -43,7 +69,7 @@ describe('decision cockpit', () => {
     expect(markup).toContain('Release conditions')
     expect(markup).toContain('13 evidence days')
     expect(markup).toContain('Positive OOS')
-    expect(markup).toContain('1 conflict')
+    expect(markup).toContain('3 conflicts')
     expect(markup).toContain('Order runway')
     expect(markup).toContain('Restricted')
     expect(markup).toContain('until every release condition')
@@ -60,6 +86,18 @@ describe('decision cockpit', () => {
     expect(markup).toContain('Approved unresolved')
     expect(markup).toContain('Execution eligible')
     expect(markup).toContain('Blocked by policy')
+  })
+
+  it('shows the evidence behind each validation conflict', () => {
+    expect(markup).toContain('Live / replay audit')
+    expect(markup).toContain('Replay: 245.3 hours')
+    expect(markup).toContain('through Jul 22, 2026')
+    expect(markup).toContain('sniper')
+    expect(markup).toContain('flow-follow')
+    expect(markup).toContain('mean-rev')
+    expect(markup).toContain('+176% live')
+    expect(markup).toContain('-7.8% replay')
+    expect(markup).toContain('+183.8pp')
   })
 
   it('keeps private and named-source detail out of the decision surface', () => {

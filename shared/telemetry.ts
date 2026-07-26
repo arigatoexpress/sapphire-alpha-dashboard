@@ -155,6 +155,21 @@ export type DeskPosture =
 
 export type DeskLeader = 'credible' | 'none' | 'unknown'
 export type DeskExecution = 'halted' | 'off' | 'gated' | 'unknown'
+export type PublicStrategy =
+  | 'flow-follow'
+  | 'sniper'
+  | 'equity'
+  | 'rotation'
+  | 'mean-rev'
+  | 'smart-money'
+  | 'breakout'
+
+export interface ValidationConflict {
+  strategy: PublicStrategy
+  live_return_pct: number
+  replay_return_pct: number
+  gap_pp: number
+}
 
 /**
  * Public-safe desk conclusions. This intentionally excludes instruments,
@@ -169,6 +184,10 @@ export interface LiveDesk {
     oos_pass: number | null
     oos_total: number | null
     conflicts: number | null
+    /** Bounded, public-safe evidence for each live-vs-replay contradiction. */
+    conflict_details?: ValidationConflict[]
+    replay_span_hours?: number | null
+    replay_data_through?: string | null
   }
   decisions: {
     /** Compatibility alias for pending_review. */

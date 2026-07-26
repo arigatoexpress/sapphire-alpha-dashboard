@@ -999,7 +999,19 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
         "updated_at": "2026-07-26T08:00:00+00:00",
         "posture": "capital_preservation",
         "leader": "none",
-        "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
+        "validation": {
+            "oos_pass": 0,
+            "oos_total": 7,
+            "conflicts": 1,
+            "conflict_details": [{
+                "strategy": "sniper",
+                "live_return_pct": 176.01,
+                "replay_return_pct": -7.82,
+                "gap_pp": 183.83,
+            }],
+            "replay_span_hours": 245.3,
+            "replay_data_through": "2026-07-22",
+        },
         "decisions": {
             "pending": 1,
             "pending_review": 0,
@@ -1031,9 +1043,16 @@ def test_windows_collector_reads_only_bounded_desk_projection(tmp_path):
     legacy = dict(expected)
     legacy.pop("risk")
     legacy.pop("experiment")
+    legacy["validation"] = {"oos_pass": 0, "oos_total": 7, "conflicts": 1}
     legacy["decisions"] = {"pending": 0}
     path.write_text(json.dumps(legacy), encoding="utf-8")
-    assert win_collector._desk_projection(path)["decisions"] == {
+    legacy_projection = win_collector._desk_projection(path)
+    assert legacy_projection["validation"] == {
+        "oos_pass": 0,
+        "oos_total": 7,
+        "conflicts": 1,
+    }
+    assert legacy_projection["decisions"] == {
         "pending": 0,
         "pending_review": None,
         "approved_awaiting_execution": None,

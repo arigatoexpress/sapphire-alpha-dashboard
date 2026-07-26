@@ -121,6 +121,10 @@ const SERVING_STATES = ['live', 'stale', 'warming', 'offline'] as const
 const DESK_POSTURES = ['capital_preservation', 'selective_risk', 'risk_seeking', 'neutral', 'unknown'] as const
 const DESK_LEADERS = ['credible', 'none', 'unknown'] as const
 const DESK_EXECUTIONS = ['halted', 'off', 'gated', 'unknown'] as const
+const PUBLIC_STRATEGIES = [
+  'flow-follow', 'sniper', 'equity', 'rotation',
+  'mean-rev', 'smart-money', 'breakout',
+] as const
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/
 
 function object(value: unknown): JsonObject | null {
@@ -143,6 +147,10 @@ function identifier(value: unknown): string | null {
 
 function number(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+function signedNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function integer(value: unknown): number | null {
@@ -184,7 +192,14 @@ function unknownDesk(): LiveDesk {
     updated_at: null,
     posture: 'unknown',
     leader: 'unknown',
-    validation: { oos_pass: null, oos_total: null, conflicts: null },
+    validation: {
+      oos_pass: null,
+      oos_total: null,
+      conflicts: null,
+      conflict_details: [],
+      replay_span_hours: null,
+      replay_data_through: null,
+    },
     decisions: {
       pending: null,
       pending_review: null,
@@ -211,6 +226,29 @@ function parseDesk(value: unknown): LiveDesk | null {
   const oosPass = nullableInteger(validation.oos_pass)
   const oosTotal = nullableInteger(validation.oos_total)
   const conflicts = nullableInteger(validation.conflicts)
+  const conflictDetails = validation.conflict_details === undefined
+    ? []
+    : collect(validation.conflict_details, (item) => {
+        const strategy = member(item.strategy, PUBLIC_STRATEGIES)
+        const liveReturn = signedNumber(item.live_return_pct)
+        const replayReturn = signedNumber(item.replay_return_pct)
+        const gap = number(item.gap_pp)
+        if (strategy === null || liveReturn === null || replayReturn === null || gap === null) {
+          return null
+        }
+        return {
+          strategy,
+          live_return_pct: liveReturn,
+          replay_return_pct: replayReturn,
+          gap_pp: gap,
+        }
+      })
+  const replaySpanHours = validation.replay_span_hours === undefined
+    ? null
+    : nullableNumber(validation.replay_span_hours)
+  const replayDataThrough = validation.replay_data_through === undefined
+    ? null
+    : nullableText(validation.replay_data_through)
   const pending = nullableInteger(decisions.pending)
   const pendingReview =
     decisions.pending_review === undefined ? null : nullableInteger(decisions.pending_review)
@@ -229,6 +267,10 @@ function parseDesk(value: unknown): LiveDesk | null {
   if (
     updatedAt === undefined || posture === null || leader === null || execution === null ||
     oosPass === undefined || oosTotal === undefined || conflicts === undefined ||
+    conflictDetails === null || conflictDetails.length > 7 ||
+    (validation.conflict_details !== undefined && conflictDetails.length !== conflicts) ||
+    new Set(conflictDetails.map((item) => item.strategy)).size !== conflictDetails.length ||
+    replaySpanHours === undefined || replayDataThrough === undefined ||
     pending === undefined || pendingReview === undefined || approvedAwaiting === undefined ||
     eligibleExecution === undefined || blocked === undefined ||
     fresh === undefined || total === undefined
@@ -245,7 +287,14 @@ function parseDesk(value: unknown): LiveDesk | null {
     updated_at: updatedAt,
     posture,
     leader,
-    validation: { oos_pass: oosPass, oos_total: oosTotal, conflicts },
+    validation: {
+      oos_pass: oosPass,
+      oos_total: oosTotal,
+      conflicts,
+      conflict_details: conflictDetails,
+      replay_span_hours: replaySpanHours,
+      replay_data_through: replayDataThrough,
+    },
     decisions: {
       pending,
       pending_review: pendingReview,
