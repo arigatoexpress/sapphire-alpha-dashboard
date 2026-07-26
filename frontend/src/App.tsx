@@ -561,9 +561,7 @@ function EventLedger({ events, observed }: { events: LiveEvent[]; observed: bool
             a row fades in when a new event turns up in the snapshot. */}
         <AnimatePresence initial={false}>
           {events.length ? (
-            events
-              .slice(-9)
-              .reverse()
+            recentEvents(events)
               .map((event) => (
                 <motion.article
                   key={event.id}
@@ -610,4 +608,10 @@ function EventLedger({ events, observed }: { events: LiveEvent[]; observed: bool
       </div>
     </Panel>
   )
+}
+
+export function recentEvents(events: LiveEvent[]) {
+  return [...events]
+    .sort((left, right) => Date.parse(right.observed_at) - Date.parse(left.observed_at))
+    .slice(0, 9)
 }
