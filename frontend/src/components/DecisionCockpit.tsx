@@ -43,17 +43,45 @@ function nextAction(desk: LiveDesk | null) {
   if (desk.risk?.ledger_state === 'unknown') {
     return 'Reconcile the loss ledger before new risk can be assessed.'
   }
-  const remaining = remainingDays(desk)
-  if (remaining && remaining > 0) {
-    return `${remaining} more qualified ${remaining === 1 ? 'day' : 'days'} must close before promotion can be judged.`
+  if (releaseBlockers(desk).length > 0) {
+    return 'Execution remains withheld until every release condition below clears.'
   }
-  if ((desk.validation.conflicts ?? 0) > 0) {
-    const conflicts = desk.validation.conflicts ?? 0
-    return `Resolve ${conflicts} validation ${conflicts === 1 ? 'conflict' : 'conflicts'} before authority can pass forward.`
-  }
-  if (desk.leader === 'none') return 'No result has earned execution authority.'
   if ((desk.decisions.pending_review ?? 0) > 0) return 'Review the decision inbox.'
   return 'All observed gates are aligned.'
+}
+
+function releaseBlockers(desk: LiveDesk | null) {
+  if (!desk) return []
+  const blockers: string[] = []
+  const missingFeeds = Math.max(0, (desk.feeds.total ?? 0) - (desk.feeds.fresh ?? 0))
+  if (missingFeeds > 0) blockers.push(`${missingFeeds} stale ${missingFeeds === 1 ? 'feed' : 'feeds'}`)
+  if (desk.risk?.ledger_state !== 'reconciled') blockers.push('Loss ledger')
+  if (desk.experiment?.collector === 'stale' || desk.experiment?.collector === 'missing') {
+    blockers.push('Evidence collector')
+  }
+  const remaining = remainingDays(desk)
+  if (remaining && remaining > 0) blockers.push(`${remaining} evidence ${remaining === 1 ? 'day' : 'days'}`)
+  if (
+    desk.validation.oos_pass !== null
+    && desk.validation.oos_pass !== undefined
+    && desk.validation.oos_pass <= 0
+  ) {
+    blockers.push('Positive OOS')
+  }
+  const conflicts = desk.validation.conflicts ?? 0
+  if (conflicts > 0) blockers.push(`${conflicts} ${conflicts === 1 ? 'conflict' : 'conflicts'}`)
+  if (desk.risk?.new_risk === 'restricted' || desk.risk?.new_risk === 'blocked') {
+    blockers.push('Order runway')
+  }
+  if (
+    desk.leader !== 'credible'
+    && !remaining
+    && (desk.validation.oos_pass ?? 0) > 0
+    && conflicts === 0
+  ) {
+    blockers.push('Execution authority')
+  }
+  return blockers
 }
 
 export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
@@ -89,11 +117,22 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
           : 'hold',
     },
     {
+      label: 'Order runway',
+      value:
+        desk?.risk?.new_risk === 'available'
+          ? 'Available'
+          : desk?.risk?.new_risk === 'unknown' || !desk?.risk
+            ? NOT_OBSERVED
+            : 'Restricted',
+      state: desk?.risk?.new_risk === 'available' ? 'pass' : 'hold',
+    },
+    {
       label: 'Authority',
       value: desk?.leader === 'credible' ? 'Earned' : desk?.leader === 'none' ? 'Withheld' : NOT_OBSERVED,
       state: desk?.leader === 'credible' ? 'pass' : 'hold',
     },
   ] as const
+  const blockers = releaseBlockers(desk)
   const queue = [
     { label: 'Awaiting review', value: desk?.decisions.pending_review ?? NOT_OBSERVED },
     { label: 'Blocked before review', value: desk?.decisions.pending_policy_blocked ?? NOT_OBSERVED },
@@ -125,8 +164,13 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
           <h2 id="decision-title">{headline(desk)}</h2>
         </div>
         <div className="decision-next">
-          <span>Next gate</span>
+          <span>Release conditions</span>
           <p>{nextAction(desk)}</p>
+          {blockers.length > 0 ? (
+            <ul className="decision-blockers" aria-label="Current release blockers">
+              {blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+            </ul>
+          ) : null}
           <small>{desk ? POSTURES[desk.posture] : NOT_OBSERVED}</small>
         </div>
       </div>
