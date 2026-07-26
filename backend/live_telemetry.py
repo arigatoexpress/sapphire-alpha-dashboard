@@ -150,6 +150,18 @@ def _integer(value: Any, *, where: str, low: int = 0, high: int = 1_000_000) -> 
     return value
 
 
+def _nullable_integer(
+    value: Any,
+    *,
+    where: str,
+    low: int = 0,
+    high: int = 1_000_000,
+) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, where=where, low=low, high=high)
+
+
 def _identifier(value: Any, *, where: str) -> str:
     value = _text(value, where=where, limit=40)
     if not _ID_RE.fullmatch(value):
@@ -232,7 +244,13 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
         )
         decisions_raw = _keys(
             desk_obj["decisions"],
-            allowed={"pending"},
+            allowed={
+                "pending",
+                "pending_review",
+                "approved_awaiting_execution",
+                "eligible_execution",
+                "blocked",
+            },
             required={"pending"},
             where="desk.decisions",
         )
@@ -253,7 +271,31 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "conflicts": _integer(validation_raw["conflicts"], where="desk.validation.conflicts", high=100),
             },
             "decisions": {
-                "pending": _integer(decisions_raw["pending"], where="desk.decisions.pending", high=1_000),
+                "pending": _nullable_integer(
+                    decisions_raw["pending"],
+                    where="desk.decisions.pending",
+                    high=1_000,
+                ),
+                "pending_review": _nullable_integer(
+                    decisions_raw.get("pending_review"),
+                    where="desk.decisions.pending_review",
+                    high=1_000,
+                ),
+                "approved_awaiting_execution": _nullable_integer(
+                    decisions_raw.get("approved_awaiting_execution"),
+                    where="desk.decisions.approved_awaiting_execution",
+                    high=1_000,
+                ),
+                "eligible_execution": _nullable_integer(
+                    decisions_raw.get("eligible_execution"),
+                    where="desk.decisions.eligible_execution",
+                    high=1_000,
+                ),
+                "blocked": _nullable_integer(
+                    decisions_raw.get("blocked"),
+                    where="desk.decisions.blocked",
+                    high=1_000,
+                ),
             },
             "execution": _enum(desk_obj["execution"], _DESK_EXECUTION, where="desk.execution"),
             "feeds": {
@@ -265,6 +307,24 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             raise TelemetryValidationError("desk OOS passing count exceeds total")
         if desk["feeds"]["fresh"] > desk["feeds"]["total"]:
             raise TelemetryValidationError("desk fresh feed count exceeds total")
+        decision_counts = desk["decisions"]
+        if (
+            decision_counts["pending_review"] is not None
+            and decision_counts["pending"] != decision_counts["pending_review"]
+        ):
+            raise TelemetryValidationError("desk pending decision counts disagree")
+        if all(
+            decision_counts[key] is not None
+            for key in (
+                "approved_awaiting_execution",
+                "eligible_execution",
+                "blocked",
+            )
+        ) and (
+            decision_counts["eligible_execution"] + decision_counts["blocked"]
+            != decision_counts["approved_awaiting_execution"]
+        ):
+            raise TelemetryValidationError("desk execution queue counts disagree")
 
     summary_raw = _keys(
         obj["summary"],
@@ -478,7 +538,13 @@ def _empty_desk() -> dict[str, Any]:
         "posture": "unknown",
         "leader": "unknown",
         "validation": {"oos_pass": None, "oos_total": None, "conflicts": None},
-        "decisions": {"pending": None},
+        "decisions": {
+            "pending": None,
+            "pending_review": None,
+            "approved_awaiting_execution": None,
+            "eligible_execution": None,
+            "blocked": None,
+        },
         "execution": "unknown",
         "feeds": {"fresh": None, "total": None},
     }

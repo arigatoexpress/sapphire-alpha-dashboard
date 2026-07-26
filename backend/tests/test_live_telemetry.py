@@ -95,7 +95,13 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             "posture": "capital_preservation",
             "leader": "none",
             "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
-            "decisions": {"pending": 2},
+            "decisions": {
+                "pending": 2,
+                "pending_review": 2,
+                "approved_awaiting_execution": 14,
+                "eligible_execution": 0,
+                "blocked": 14,
+            },
             "execution": "halted",
             "feeds": {"fresh": 7, "total": 7},
         },
@@ -162,6 +168,13 @@ def test_signed_ingest_and_operator_projection():
         "oos_total": 7,
         "conflicts": 1,
     }
+    assert live["desk"]["decisions"] == {
+        "pending": 2,
+        "pending_review": 2,
+        "approved_awaiting_execution": 14,
+        "eligible_execution": 0,
+        "blocked": 14,
+    }
 
 
 def test_legacy_producer_without_desk_gets_honest_unknown_projection():
@@ -169,7 +182,26 @@ def test_legacy_producer_without_desk_gets_honest_unknown_projection():
     payload.pop("desk")
     normalized = live_telemetry.validate_snapshot(payload)
     assert normalized["desk"]["posture"] == "unknown"
-    assert normalized["desk"]["decisions"]["pending"] is None
+    assert normalized["desk"]["decisions"] == {
+        "pending": None,
+        "pending_review": None,
+        "approved_awaiting_execution": None,
+        "eligible_execution": None,
+        "blocked": None,
+    }
+
+
+def test_legacy_desk_producer_does_not_invent_new_queue_counts():
+    payload = _sample()
+    payload["desk"]["decisions"] = {"pending": 2}
+    normalized = live_telemetry.validate_snapshot(payload)
+    assert normalized["desk"]["decisions"] == {
+        "pending": 2,
+        "pending_review": None,
+        "approved_awaiting_execution": None,
+        "eligible_execution": None,
+        "blocked": None,
+    }
 
 
 def test_desk_projection_rejects_private_or_unbounded_detail():
@@ -178,6 +210,20 @@ def test_desk_projection_rejects_private_or_unbounded_detail():
     raw, headers = _signed(payload, nonce="nonce-private-desk-01")
     response = client.post("/api/v1/telemetry", content=raw, headers=headers)
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"pending_review": 3},
+        {"blocked": 13},
+    ],
+)
+def test_desk_projection_rejects_contradictory_queue_counts(updates):
+    payload = _sample()
+    payload["desk"]["decisions"].update(updates)
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
 
 
 def test_bad_signature_and_stale_timestamp_fail_closed():

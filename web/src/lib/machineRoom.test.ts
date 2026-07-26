@@ -289,6 +289,18 @@ describe('the schema boundary — bands never become measurements', () => {
     expect(parsed?.snapshot.links[3].event_rate).toBe(snapshot.links[3].event_rate)
   })
 
+  it('fails closed when queue stages contradict their total', () => {
+    expect(
+      normalizeLivePayload({
+        ...snapshot,
+        desk: {
+          ...snapshot.desk,
+          decisions: { ...snapshot.desk.decisions, blocked: 13 },
+        },
+      }),
+    ).toBeNull()
+  })
+
   it('accepts honest null rates in the exact contract and leaves them still', () => {
     const honest = {
       ...snapshot,
