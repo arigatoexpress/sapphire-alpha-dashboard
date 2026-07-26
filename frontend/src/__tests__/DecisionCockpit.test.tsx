@@ -15,21 +15,42 @@ const desk: LiveDesk = {
     approved_awaiting_execution: 14,
     eligible_execution: 0,
     blocked: 14,
+    pending_policy_blocked: 1,
   },
   execution: 'halted',
   feeds: { fresh: 7, total: 7 },
+  risk: {
+    ledger_state: 'reconciled',
+    realized_drawdown_pct: 24,
+    drawdown_limit_pct: 25,
+    budget_remaining_pct: 4,
+    new_risk: 'restricted',
+  },
+  experiment: {
+    status: 'collecting',
+    qualified_days: 1,
+    required_days: 14,
+    last_committed_date: '2026-07-25',
+    collector: 'current',
+  },
 }
 
 describe('decision cockpit', () => {
   const markup = renderToStaticMarkup(<DecisionCockpit desk={desk} />)
 
   it('answers the desk questions before exposing machine plumbing', () => {
-    expect(markup).toContain('14 approved decisions are blocked.')
+    expect(markup).toContain('Trading stays off.')
+    expect(markup).toContain('13 more qualified days')
     expect(markup).toContain('Capital preservation')
     expect(markup).toContain('0 / 7 pass')
     expect(markup).toContain('7 / 7 current')
-    expect(markup).toContain('>halted<')
+    expect(markup).toContain('24% used')
+    expect(markup).toContain('4% remains')
+    expect(markup).toContain('1 / 14')
+    expect(markup).toContain('Collector current')
+    expect(markup).toContain('>Halted<')
     expect(markup).toContain('Awaiting review')
+    expect(markup).toContain('Blocked before review')
     expect(markup).toContain('Approved unresolved')
     expect(markup).toContain('Execution eligible')
     expect(markup).toContain('Blocked by policy')

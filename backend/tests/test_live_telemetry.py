@@ -96,14 +96,29 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             "leader": "none",
             "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
             "decisions": {
-                "pending": 2,
+                "pending": 3,
                 "pending_review": 2,
                 "approved_awaiting_execution": 14,
                 "eligible_execution": 0,
                 "blocked": 14,
+                "pending_policy_blocked": 1,
             },
             "execution": "halted",
             "feeds": {"fresh": 7, "total": 7},
+            "risk": {
+                "ledger_state": "reconciled",
+                "realized_drawdown_pct": 24.0,
+                "drawdown_limit_pct": 25.0,
+                "budget_remaining_pct": 4.0,
+                "new_risk": "restricted",
+            },
+            "experiment": {
+                "status": "collecting",
+                "qualified_days": 1,
+                "required_days": 14,
+                "last_committed_date": "2026-07-25",
+                "collector": "current",
+            },
         },
         "events": [
             {
@@ -169,11 +184,20 @@ def test_signed_ingest_and_operator_projection():
         "conflicts": 1,
     }
     assert live["desk"]["decisions"] == {
-        "pending": 2,
+        "pending": 3,
         "pending_review": 2,
         "approved_awaiting_execution": 14,
         "eligible_execution": 0,
         "blocked": 14,
+        "pending_policy_blocked": 1,
+    }
+    assert live["desk"]["risk"]["budget_remaining_pct"] == 4.0
+    assert live["desk"]["experiment"] == {
+        "status": "collecting",
+        "qualified_days": 1,
+        "required_days": 14,
+        "last_committed_date": "2026-07-25",
+        "collector": "current",
     }
 
 
@@ -188,7 +212,10 @@ def test_legacy_producer_without_desk_gets_honest_unknown_projection():
         "approved_awaiting_execution": None,
         "eligible_execution": None,
         "blocked": None,
+        "pending_policy_blocked": None,
     }
+    assert normalized["desk"]["risk"]["ledger_state"] == "unknown"
+    assert normalized["desk"]["experiment"]["status"] == "unknown"
 
 
 def test_legacy_desk_producer_does_not_invent_new_queue_counts():
@@ -201,6 +228,7 @@ def test_legacy_desk_producer_does_not_invent_new_queue_counts():
         "approved_awaiting_execution": None,
         "eligible_execution": None,
         "blocked": None,
+        "pending_policy_blocked": None,
     }
 
 

@@ -106,9 +106,24 @@ def _unknown_desk() -> dict[str, Any]:
             "approved_awaiting_execution": None,
             "eligible_execution": None,
             "blocked": None,
+            "pending_policy_blocked": None,
         },
         "execution": "unknown",
         "feeds": {"fresh": None, "total": None},
+        "risk": {
+            "ledger_state": "unknown",
+            "realized_drawdown_pct": None,
+            "drawdown_limit_pct": None,
+            "budget_remaining_pct": None,
+            "new_risk": "unknown",
+        },
+        "experiment": {
+            "status": "unknown",
+            "qualified_days": None,
+            "required_days": None,
+            "last_committed_date": None,
+            "collector": "unknown",
+        },
     }
 
 
@@ -116,10 +131,11 @@ def _desk_projection(path: Path) -> dict[str, Any]:
     """Read only the bounded public contract emitted by the Telegram desk."""
     value = _read_json(path)
     try:
-        if set(value) != {
+        required = {
             "version", "updated_at", "posture", "leader", "validation",
             "decisions", "execution", "feeds",
-        }:
+        }
+        if not required <= set(value) or not set(value) <= required | {"risk", "experiment"}:
             return _unknown_desk()
         validation = value["validation"]
         decisions = value["decisions"]
@@ -139,6 +155,7 @@ def _desk_projection(path: Path) -> dict[str, Any]:
                 "approved_awaiting_execution",
                 "eligible_execution",
                 "blocked",
+                "pending_policy_blocked",
             })
             or set(feeds) != {"fresh", "total"}
         ):
@@ -160,6 +177,7 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             "approved_awaiting_execution": decisions.get("approved_awaiting_execution"),
             "eligible_execution": decisions.get("eligible_execution"),
             "blocked": decisions.get("blocked"),
+            "pending_policy_blocked": decisions.get("pending_policy_blocked"),
         }
         if any(
             count is not None
@@ -173,7 +191,11 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             return _unknown_desk()
         if (
             decision_counts["pending_review"] is not None
-            and decision_counts["pending"] != decision_counts["pending_review"]
+            and decision_counts["pending_policy_blocked"] is not None
+            and decision_counts["pending"] != (
+                decision_counts["pending_review"]
+                + decision_counts["pending_policy_blocked"]
+            )
         ):
             return _unknown_desk()
         if all(
@@ -188,6 +210,109 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             != decision_counts["approved_awaiting_execution"]
         ):
             return _unknown_desk()
+        risk = value.get("risk") or {
+            "ledger_state": "unknown",
+            "realized_drawdown_pct": None,
+            "drawdown_limit_pct": None,
+            "budget_remaining_pct": None,
+            "new_risk": "unknown",
+        }
+        if set(risk) != {
+            "ledger_state", "realized_drawdown_pct", "drawdown_limit_pct",
+            "budget_remaining_pct", "new_risk",
+        }:
+            return _unknown_desk()
+        risk_values = [
+            risk["realized_drawdown_pct"],
+            risk["drawdown_limit_pct"],
+            risk["budget_remaining_pct"],
+        ]
+        if (
+            risk["ledger_state"] not in {"reconciled", "unknown"}
+            or risk["new_risk"] not in {"available", "restricted", "blocked", "unknown"}
+            or any(
+                item is not None
+                and (
+                    isinstance(item, bool)
+                    or not isinstance(item, (int, float))
+                    or not 0 <= item <= 100
+                )
+                for item in risk_values
+            )
+            or (
+                risk["ledger_state"] == "reconciled"
+                and (
+                    any(item is None for item in risk_values)
+                    or risk["new_risk"] == "unknown"
+                )
+            )
+            or (
+                risk["ledger_state"] == "unknown"
+                and (
+                    any(item is not None for item in risk_values)
+                    or risk["new_risk"] != "unknown"
+                )
+            )
+        ):
+            return _unknown_desk()
+        experiment = value.get("experiment") or {
+            "status": "unknown",
+            "qualified_days": None,
+            "required_days": None,
+            "last_committed_date": None,
+            "collector": "unknown",
+        }
+        if set(experiment) != {
+            "status", "qualified_days", "required_days",
+            "last_committed_date", "collector",
+        }:
+            return _unknown_desk()
+        experiment_states = {
+            "collecting", "ready_for_terminal_evaluation", "complete",
+            "invalidated", "unknown",
+        }
+        qualified = experiment["qualified_days"]
+        required_days = experiment["required_days"]
+        if (
+            experiment["status"] not in experiment_states
+            or experiment["collector"] not in {"current", "stale", "missing", "unknown"}
+            or any(
+                item is not None
+                and (
+                    isinstance(item, bool)
+                    or not isinstance(item, int)
+                    or not 0 <= item <= 100
+                )
+                for item in (qualified, required_days)
+            )
+            or (
+                experiment["status"] == "unknown"
+                and (
+                    qualified is not None
+                    or required_days is not None
+                    or experiment["last_committed_date"] is not None
+                    or experiment["collector"] != "unknown"
+                )
+            )
+            or (
+                experiment["status"] != "unknown"
+                and (
+                    qualified is None
+                    or required_days is None
+                    or qualified > required_days
+                )
+            )
+        ):
+            return _unknown_desk()
+        committed_date = experiment["last_committed_date"]
+        if committed_date is not None:
+            if not isinstance(committed_date, str):
+                return _unknown_desk()
+            try:
+                if datetime.fromisoformat(committed_date).date().isoformat() != committed_date:
+                    return _unknown_desk()
+            except ValueError:
+                return _unknown_desk()
         datetime.fromisoformat(str(value["updated_at"]).replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError):
         return _unknown_desk()
@@ -200,6 +325,8 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         "decisions": decision_counts,
         "execution": value["execution"],
         "feeds": dict(feeds),
+        "risk": dict(risk),
+        "experiment": dict(experiment),
     }
 
 
