@@ -2,7 +2,6 @@ import os
 import subprocess
 import sys
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ["AUTH_USERNAME"] = "testuser"
@@ -74,7 +73,7 @@ def test_widgets_with_auth():
     assert "gate" in data
     assert "telegram_queue" in data
     assert "recent_signals" in data
-    assert "defi_report" in data
+    assert "research" in data
     assert "tradingview" in data
     assert "system_health" in data
 

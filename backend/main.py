@@ -25,14 +25,12 @@ Anonymous read access:
 
 from __future__ import annotations
 
-import base64
 import html
 import json
 import logging
 import os
 import re
 import secrets
-import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -216,7 +214,6 @@ _IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 _HOME = Path.home()
 _RH_CHAIN_DIR = _HOME / "ops-state" / "rh-chain"
 _TELEGRAM_DIR = _HOME / "ops-state" / "telegram-bot"
-_KNOWLEDGE_CLIPS_DIR = _HOME / "Knowledge" / "3-Resources" / "Clippings"
 
 
 def _mask_address(addr: str | None) -> str | None:
@@ -690,122 +687,140 @@ def _recent_signals() -> list[dict[str, Any]]:
     return []
 
 
-def _parse_tdr_rss(xml_text: str) -> list[dict[str, Any]]:
-    """Minimal parser for The DeFi Report podcast RSS feed."""
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
-    channel = root.find("channel")
-    if channel is None:
-        return []
+_RESEARCH_POLICY: dict[str, Any] = {
+    "owner": {
+        "id": "ari",
+        "label": "Ari's investment thesis",
+        "role": "mandate",
+    },
+    "cycle_prior": {
+        "as_of": "2026-07-25",
+        "posture": "late_cycle_capital_preservation",
+        "primary_lens": "benjamin_cowen",
+    },
+    "rules": {
+        "analysts_are_advisory_only": True,
+        "single_analyst_evidence_cap": 0.25,
+        "minimum_independent_primary_sources": 2,
+        "analyst_can_set_conviction": False,
+        "analyst_can_authorize_execution": False,
+    },
+    "lenses": {
+        "benjamin_cowen": {
+            "label": "Benjamin Cowen",
+            "domain": "cycle and risk",
+            "scope": "primary_cycle_lens",
+        },
+        "arthur_hayes": {
+            "label": "Arthur Hayes",
+            "domain": "macro liquidity",
+            "scope": "scenario_and_countercase",
+        },
+        "bankless": {
+            "label": "Bankless",
+            "domain": "crypto market structure",
+            "scope": "structural_theme_discovery",
+        },
+        "limitless": {
+            "label": "Limitless",
+            "domain": "AI and frontier technology",
+            "scope": "technology_theme_discovery",
+        },
+        "michael_nadeau": {
+            "label": "Michael Nadeau",
+            "domain": "fundamentals and value accrual",
+            "scope": "fundamentals_only",
+        },
+    },
+}
 
-    def _local_name(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1].lower()
-
-    def _first_text(element: ET.Element, *names: str) -> str:
-        wanted = {name.lower() for name in names}
-        for child in element:
-            if _local_name(child.tag) in wanted:
-                return "".join(child.itertext()).strip()
-        return ""
-
-    def _strip_html(value: str) -> str:
-        text = str(value or "")
-        text = re.sub(r"<[^>]+>", " ", text)
-        text = html.unescape(text)
-        return re.sub(r"\s+", " ", text).strip()
-
-    clips: list[dict[str, Any]] = []
-    for item in channel.findall("item"):
-        title = _strip_html(_first_text(item, "title"))
-        guid = _first_text(item, "guid") or _first_text(item, "link")
-        link = _first_text(item, "link")
-        if not guid:
-            continue
-        slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:80] or "tdr-episode"
-        clips.append({"id": slug, "title": title or "Untitled TDR episode", "source": "tdr_pro", "path": link or ""})
-    return clips
+_MAX_RESEARCH_CLIPS = 10
+_MAX_CLIPS_PER_SOURCE = 2
 
 
-async def _fetch_tdr_rss() -> list[dict[str, Any]]:
-    """Fetch the public TDR Pro RSS feed directly from Cloud Run."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            r = await client.get("https://feeds.transistor.fm/the-defi-report")
-        if r.status_code == 200:
-            return _parse_tdr_rss(r.text)[:8]
-        log.warning("TDR Pro RSS returned HTTP %s", r.status_code)
-    except Exception as exc:
-        log.warning("failed to fetch TDR Pro RSS: %s", exc)
-    return []
+def _clean_research_text(value: Any, *, fallback: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = re.sub(r"\s+", " ", html.unescape(text)).strip()
+    return text[:240] or fallback
 
 
-async def _defi_report_feed() -> dict[str, Any]:
-    """DeFi Report clip feed — aggregate only, no subscriber PII.
+def _research_feed() -> dict[str, Any]:
+    """Return an explicit, balanced research feed with no fabricated fallback.
 
-    Local clippings take precedence. When running on Cloud Run without access to
-    the Mac filesystem, pass ``DASHBOARD_TDR_CLIPS_JSON`` as a JSON array of
-    clip objects, or ``DASHBOARD_TDR_JSON`` pointing to a local JSON summary file.
-    The env value may be base64-encoded to survive shell/gcloud substitution parsing.
-
-    As a last resort, the backend can fetch the public RSS feed directly when
-    ``TDR_PRO_LIVE=1``.
+    Producers provide reviewed clips through ``DASHBOARD_RESEARCH_CLIPS_JSON``.
+    Unknown sources are rejected and no source may occupy more than two slots.
+    The clips remain advisory: the policy shipped beside them makes clear that
+    Ari's checked-in thesis owns conviction and a separate gate owns execution.
     """
-    clips: list[dict[str, Any]] = []
 
-    env_clips = _env("DASHBOARD_TDR_CLIPS_JSON", "").strip()
-    if env_clips:
-        raw = env_clips
-        try:
-            raw = base64.b64decode(raw).decode("utf-8")
-        except Exception:
-            pass
+    raw = _env("DASHBOARD_RESEARCH_CLIPS_JSON", "").strip()
+    parsed: Any = []
+    if raw:
         try:
             parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                clips = parsed[:8]
         except json.JSONDecodeError:
-            log.warning("DASHBOARD_TDR_CLIPS_JSON is not valid JSON")
+            log.warning("DASHBOARD_RESEARCH_CLIPS_JSON is not valid JSON")
 
-    if not clips:
-        env_summary = _env("DASHBOARD_TDR_JSON", "").strip()
-        if env_summary:
-            try:
-                path = Path(env_summary)
-                if path.exists():
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                    for ep in data.get("episodes", [])[:8]:
-                        clips.append(
-                            {
-                                "id": ep.get("slug", "tdr-000"),
-                                "title": ep.get("title", "TDR Pro episode"),
-                                "source": "tdr_pro",
-                                "path": "",
-                            }
-                        )
-            except (json.JSONDecodeError, OSError) as exc:
-                log.warning("failed to read DASHBOARD_TDR_JSON: %s", exc)
+    clips: list[dict[str, Any]] = []
+    source_counts: dict[str, int] = {}
+    if isinstance(parsed, list):
+        for index, item in enumerate(parsed):
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "").strip()
+            if source not in _RESEARCH_POLICY["lenses"]:
+                continue
+            if source_counts.get(source, 0) >= _MAX_CLIPS_PER_SOURCE:
+                continue
+            title = _clean_research_text(item.get("title"), fallback="Untitled research note")
+            raw_id = str(item.get("id") or title).lower()
+            clip_id = re.sub(r"[^a-z0-9]+", "-", raw_id).strip("-")[:80]
+            clips.append(
+                {
+                    "id": clip_id or f"research-{index + 1:03d}",
+                    "title": title,
+                    "source": source,
+                    "path": str(item.get("path") or ""),
+                    "observed_at": str(item.get("observed_at") or ""),
+                }
+            )
+            source_counts[source] = source_counts.get(source, 0) + 1
+            if len(clips) >= _MAX_RESEARCH_CLIPS:
+                break
 
-    if not clips:
-        clips_dir = _KNOWLEDGE_CLIPS_DIR
-        if clips_dir.exists():
-            for p in sorted(clips_dir.glob("*.md"), reverse=True)[:8]:
-                lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
-                title = next(
-                    (l.lstrip("# ").strip() for l in lines if l.strip().startswith("# ")), p.stem
-                )
-                clips.append({"id": p.stem, "title": title, "source": "tdr_pro", "path": str(p)})
+    # A fixed item limit is not an evidence-share cap: two clips from one
+    # analyst would still dominate a three-item feed. Trim the newest clip from
+    # any overrepresented source until every remaining source is at or below
+    # the policy share. With analyst clips alone this conservatively requires
+    # at least four independent voices.
+    cap = float(_RESEARCH_POLICY["rules"]["single_analyst_evidence_cap"])
+    while clips:
+        final_counts = {
+            source: sum(1 for clip in clips if clip["source"] == source)
+            for source in {clip["source"] for clip in clips}
+        }
+        overrepresented = {
+            source for source, count in final_counts.items() if count / len(clips) > cap
+        }
+        if not overrepresented:
+            break
+        drop_index = next(
+            index
+            for index in range(len(clips) - 1, -1, -1)
+            if clips[index]["source"] in overrepresented
+        )
+        clips.pop(drop_index)
 
-    live = _safe_bool(_env("TDR_PRO_LIVE", "0"))
-    if live and not clips:
-        clips = await _fetch_tdr_rss()
-
-    if not clips:
-        clips = [
-            {"id": "tdr-001", "title": "DeFi Report — weekly rollup", "source": "tdr_pro", "path": ""},
-        ]
-    return {"clips": clips, "source": "tdr_pro", "live": live or bool(clips and clips[0]["id"] != "tdr-001")}
+    source_counts = {
+        source: sum(1 for clip in clips if clip["source"] == source)
+        for source in {clip["source"] for clip in clips}
+    }
+    return {
+        "clips": clips,
+        "sources_observed": sorted(source_counts),
+        "live": bool(clips),
+        "policy": _RESEARCH_POLICY,
+    }
 
 
 # Lightweight cache so a 30s dashboard poll does not hammer the Windows webhook.
@@ -982,14 +997,21 @@ def _public_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _public_defi_report(feed: dict[str, Any]) -> dict[str, Any]:
+def _public_research(feed: dict[str, Any]) -> dict[str, Any]:
     return {
         "clips": [
-            {"id": c.get("id", ""), "title": c.get("title", ""), "source": c.get("source", ""), "path": ""}
+            {
+                "id": c.get("id", ""),
+                "title": c.get("title", ""),
+                "source": c.get("source", ""),
+                "path": "",
+                "observed_at": c.get("observed_at", ""),
+            }
             for c in feed.get("clips", [])
         ],
-        "source": feed.get("source", ""),
+        "sources_observed": list(feed.get("sources_observed", [])),
         "live": bool(feed.get("live", False)),
+        "policy": feed.get("policy", _RESEARCH_POLICY),
     }
 
 
@@ -1054,7 +1076,7 @@ async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> 
         "wallet": _wallet_status(),
         "telegram_queue": _telegram_queue(),
         "recent_signals": _recent_signals(),
-        "defi_report": await _defi_report_feed(),
+        "research": _research_feed(),
         "tradingview": await _tradingview_status(),
         "business_health": await _business_health(),
         "system_health": await _system_health(),
@@ -1067,7 +1089,7 @@ async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> 
             "wallet": _public_wallet(full["wallet"]),
             "telegram_queue": _public_telegram(full["telegram_queue"]),
             "recent_signals": _public_signals(full["recent_signals"]),
-            "defi_report": _public_defi_report(full["defi_report"]),
+            "research": _public_research(full["research"]),
             "tradingview": _public_tradingview(full["tradingview"]),
             "business_health": _public_business_health(full["business_health"]),
             "system_health": _public_system_health(full["system_health"]),

@@ -59,9 +59,34 @@ def public_mode(monkeypatch):
         ),
     )
     monkeypatch.setenv(
-        "DASHBOARD_TDR_CLIPS_JSON",
+        "DASHBOARD_RESEARCH_CLIPS_JSON",
         json.dumps(
-            [{"id": "ep-1", "title": "Episode one", "source": "tdr_pro", "path": "/Users/aribs/Knowledge/clip.md"}]
+            [
+                {
+                    "id": "cycle-1",
+                    "title": "Cycle evidence",
+                    "source": "benjamin_cowen",
+                    "path": "/Users/aribs/Knowledge/cycle.md",
+                },
+                {
+                    "id": "liquidity-1",
+                    "title": "Liquidity countercase",
+                    "source": "arthur_hayes",
+                    "path": "/Users/aribs/Knowledge/liquidity.md",
+                },
+                {
+                    "id": "structure-1",
+                    "title": "Crypto structure",
+                    "source": "bankless",
+                    "path": "/Users/aribs/Knowledge/structure.md",
+                },
+                {
+                    "id": "compute-1",
+                    "title": "AI frontier",
+                    "source": "limitless",
+                    "path": "/Users/aribs/Knowledge/compute.md",
+                },
+            ]
         ),
     )
     yield
@@ -105,10 +130,12 @@ def test_anonymous_widgets_sanitized(public_mode):
     # Signals: symbol/side/time only — no confidence/venue (strategy internals).
     for sig in data["recent_signals"]:
         assert set(sig) == {"id", "instrument", "side", "timestamp"}
-    # TDR clips: titles only, no file paths.
-    for clip in data["defi_report"]["clips"]:
+    # Research clips: balanced sources and titles only, no file paths.
+    for clip in data["research"]["clips"]:
         assert clip["path"] == ""
-    assert data["defi_report"]["clips"][0]["title"] == "Episode one"
+    assert data["research"]["clips"][0]["title"] == "Cycle evidence"
+    assert data["research"]["policy"]["owner"]["id"] == "ari"
+    assert data["research"]["policy"]["cycle_prior"]["primary_lens"] == "benjamin_cowen"
     # TradingView: no endpoint URL, no log tail.
     assert "endpoint" not in data["tradingview"]
     assert "recent_log" not in data["tradingview"]

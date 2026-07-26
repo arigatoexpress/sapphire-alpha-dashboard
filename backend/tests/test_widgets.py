@@ -3,7 +3,6 @@ import json
 import os
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ["AUTH_USERNAME"] = "testuser"
@@ -11,10 +10,10 @@ os.environ["AUTH_PASSWORD"] = "testpass-strong-99"
 
 from main import (
     _business_health,
-    _defi_report_feed,
     _executor_heartbeat,
     _mask_address,
     _recent_signals,
+    _research_feed,
     _sanitize_proposal,
     _skin_book,
     _telegram_queue,
@@ -127,17 +126,66 @@ def test_recent_signals_missing_is_honestly_empty(tmp_path, monkeypatch):
     assert _recent_signals() == []
 
 
-def test_defi_report_feed(tmp_path, monkeypatch):
-    import asyncio
-    import main
+def test_research_feed_is_multi_source_and_caps_any_one_analyst(monkeypatch):
+    monkeypatch.setenv(
+        "DASHBOARD_RESEARCH_CLIPS_JSON",
+        json.dumps(
+            [
+                {"id": "n1", "title": "Fees", "source": "michael_nadeau", "path": "/private/1"},
+                {"id": "n2", "title": "Supply", "source": "michael_nadeau", "path": "/private/2"},
+                {"id": "n3", "title": "Third Nadeau item", "source": "michael_nadeau"},
+                {"id": "c1", "title": "Cycle", "source": "benjamin_cowen"},
+                {"id": "h1", "title": "Liquidity", "source": "arthur_hayes"},
+                {"id": "b1", "title": "Structure", "source": "bankless"},
+                {"id": "l1", "title": "Compute", "source": "limitless"},
+                {"id": "x1", "title": "Unknown oracle", "source": "unknown_person"},
+            ]
+        ),
+    )
 
-    clip = tmp_path / "2026-07-15-clip.md"
-    clip.write_text("# Bitcoin green light\nSome content", encoding="utf-8")
-    monkeypatch.setattr(main, "_KNOWLEDGE_CLIPS_DIR", tmp_path)
-    feed = asyncio.run(_defi_report_feed())
-    assert feed["source"] == "tdr_pro"
-    assert len(feed["clips"]) == 1
-    assert feed["clips"][0]["title"] == "Bitcoin green light"
+    feed = _research_feed()
+
+    counts = {
+        source: sum(1 for clip in feed["clips"] if clip["source"] == source)
+        for source in feed["sources_observed"]
+    }
+    assert counts["michael_nadeau"] == 1
+    assert all(count / len(feed["clips"]) <= 0.25 for count in counts.values())
+    assert set(feed["sources_observed"]) == {
+        "arthur_hayes",
+        "bankless",
+        "benjamin_cowen",
+        "limitless",
+        "michael_nadeau",
+    }
+    assert "unknown_person" not in counts
+    assert feed["policy"]["owner"]["id"] == "ari"
+    assert feed["policy"]["cycle_prior"]["primary_lens"] == "benjamin_cowen"
+    assert feed["policy"]["lenses"]["michael_nadeau"]["scope"] == "fundamentals_only"
+    assert all(clip["path"].startswith("/") for clip in feed["clips"] if clip["source"] == "michael_nadeau")
+
+
+def test_research_feed_rejects_an_analyst_only_packet(monkeypatch):
+    monkeypatch.setenv(
+        "DASHBOARD_RESEARCH_CLIPS_JSON",
+        json.dumps(
+            [
+                {"id": "n1", "title": "Fees", "source": "michael_nadeau"},
+                {"id": "n2", "title": "Supply", "source": "michael_nadeau"},
+            ]
+        ),
+    )
+
+    feed = _research_feed()
+
+    assert feed["clips"] == []
+    assert feed["sources_observed"] == []
+    assert feed["live"] is False
+
+
+def test_research_feed_missing_is_honestly_empty(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_RESEARCH_CLIPS_JSON", raising=False)
+    assert _research_feed()["clips"] == []
 
 
 def test_tradingview_status_log(tmp_path, monkeypatch):
@@ -180,7 +228,7 @@ def test_widgets_returns_new_keys():
     assert "wallet" in data
     assert "telegram_queue" in data
     assert "recent_signals" in data
-    assert "defi_report" in data
+    assert "research" in data
     assert "tradingview" in data
     assert "business_health" in data
     assert "system_health" in data
@@ -197,17 +245,6 @@ def test_status_returns_wallet():
 
 def test_widgets_no_pii_in_telegram(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
-    proposals = [
-        {
-            "action": "buy",
-            "instrument": "RICH",
-            "side": "BUY",
-            "chat_id": 123,
-            "user_id": 456,
-            "username": "ari",
-            "status": "pending",
-        }
-    ]
     monkeypatch.setenv("DASHBOARD_SIGNALS_JSON", json.dumps([]))
     # Simulate a pending queue via env by creating a temp file is hard because path is
     # hardcoded; instead verify the sanitizer behavior is used in _telegram_queue.
