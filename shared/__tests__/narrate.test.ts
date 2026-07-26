@@ -93,12 +93,12 @@ describe('narrate — healthy', () => {
     expect(narrate(healthy)).toEqual({
       tone: 'healthy',
       sentences: [
-        'The home graphics card is sending work to the trading desk, about 44 times a minute.',
+        'The busiest measured connection links the home graphics card to the trading desk at about 44 events a minute.',
         'Three agents are working.',
         'Nothing is waiting on you.',
       ],
       text:
-        'The home graphics card is sending work to the trading desk, about 44 times a minute. ' +
+        'The busiest measured connection links the home graphics card to the trading desk at about 44 events a minute. ' +
         'Three agents are working. Nothing is waiting on you.',
     })
   })
@@ -160,8 +160,27 @@ describe('narrate — healthy', () => {
       links: [link({ source: 'intelligence', target: 'markets', event_rate: 5 })],
     })
     expect(narrate(plural).sentences[0]).toBe(
-      'The thinking agents are sending work to the trading desk, about 5 times a minute.',
+      'The busiest measured connection links the thinking agents to the trading desk at about 5 events a minute.',
     )
+  })
+
+  it('does not describe measured traffic as active agents', () => {
+    const backgroundTraffic = snapshot({
+      summary: {
+        state: 'observing',
+        active_agents: 0,
+        events_per_min: 599,
+        verified_today: null,
+        attention: null,
+      },
+      nodes: [node({ id: 'intelligence', zone: 'intelligence' }), node({ id: 'markets', zone: 'markets' })],
+      links: [link({ source: 'intelligence', target: 'markets', event_rate: 599 })],
+    })
+    expect(narrate(backgroundTraffic).sentences[0]).toBe(
+      'The busiest measured connection links the thinking agents to the trading desk at about 599 events a minute.',
+    )
+    expect(narrate(backgroundTraffic).sentences).toContain('No agents are working right now.')
+    expect(narrate(backgroundTraffic).text).not.toContain('sending work')
   })
 })
 
@@ -190,17 +209,34 @@ describe('narrate — degraded', () => {
     expect(narrate(degraded)).toEqual({
       tone: 'degraded',
       sentences: [
-        'The home graphics card is sending work to the trading desk, about 12 times a minute.',
+        'The busiest measured connection links the home graphics card to the trading desk at about 12 events a minute.',
         'One agent is working.',
         'Two parts are not reporting: the knowledge archive and the job scheduler.',
         'Three things are waiting for a person to decide.',
       ],
       text:
-        'The home graphics card is sending work to the trading desk, about 12 times a minute. ' +
+        'The busiest measured connection links the home graphics card to the trading desk at about 12 events a minute. ' +
         'One agent is working. ' +
         'Two parts are not reporting: the knowledge archive and the job scheduler. ' +
         'Three things are waiting for a person to decide.',
     })
+  })
+
+  it('uses a plural verb for one degraded node with a plural display name', () => {
+    const pluralTrouble = snapshot({
+      summary: {
+        state: 'degraded',
+        active_agents: 0,
+        events_per_min: null,
+        verified_today: null,
+        attention: null,
+      },
+      nodes: [node({ id: 'intelligence', zone: 'intelligence', status: 'degraded' })],
+    })
+    expect(narrate(pluralTrouble).sentences).toContain(
+      'The thinking agents are having trouble.',
+    )
+    expect(narrate(pluralTrouble).text).not.toContain('thinking agents is')
   })
 })
 

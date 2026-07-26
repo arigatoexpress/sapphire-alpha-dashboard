@@ -96,10 +96,8 @@ function flowSentence(snapshot: LiveSnapshot): string {
     return 'No connection supplied a traffic measurement in this report.'
   }
   const rate = Math.round(busiest.event_rate)
-  const pace =
-    rate === 0 ? 'less than once a minute' : rate === 1 ? 'about once a minute' : `about ${rate} times a minute`
-  const source = describeNode(busiest.source)
-  return `The ${phrase(source)} ${source.plural ? 'are' : 'is'} sending work to ${nodePhrase(busiest.target)}, ${pace}.`
+  const pace = rate === 1 ? 'about one event a minute' : `about ${rate} events a minute`
+  return `The busiest measured connection links ${nodePhrase(busiest.source)} to ${nodePhrase(busiest.target)} at ${pace}.`
 }
 
 function agentSentence(snapshot: LiveSnapshot): string {
@@ -122,7 +120,9 @@ function troubleSentences(snapshot: LiveSnapshot): string[] {
     if (hit.length === 0) continue
     const names = hit.slice(0, 3).map((node) => nodePhrase(node.id))
     if (hit.length === 1) {
-      sentences.push(`${names[0].charAt(0).toUpperCase()}${names[0].slice(1)} is ${group.verb}.`)
+      const description = describeNode(hit[0].id)
+      const verb = description.plural ? 'are' : 'is'
+      sentences.push(`${names[0].charAt(0).toUpperCase()}${names[0].slice(1)} ${verb} ${group.verb}.`)
     } else if (hit.length <= 3) {
       sentences.push(`${count(hit.length)} parts are ${group.verb}: ${list(names)}.`)
     } else {
