@@ -120,6 +120,6 @@ export const NODES: Node[] = [
     id: 'edge',
     role: 'Public edge',
     hardware: 'Cloud Run · us-central1',
-    duty: 'This site, the telemetry API, and the delayed public projection.',
+    duty: 'This site, the public telemetry API, and privacy-bounded capital summaries.',
   },
 ]

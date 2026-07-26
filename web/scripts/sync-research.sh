@@ -64,7 +64,7 @@ if [[ "$found" == "0" ]]; then
   To publish a report, add `publish: true` to its YAML frontmatter:
 
       ---
-      title: Value accrual under the Nadeau lens
+      title: Evidence packet with a written falsifier
       description: One-line summary shown on the research index.
       date: 2026-07-25
       publish: true

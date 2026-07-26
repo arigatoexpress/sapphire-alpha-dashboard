@@ -16,98 +16,126 @@
    Edit ../../shared/theme.css, never here. */
 @import '../../shared/theme.css';
 
-/* ---------------------------------------------------------------------------
-   Signal Loom.
+/* Signal paths are rows, not a free-form graph. Every route gets its own
+   reading lane, so labels and connections cannot collide at any viewport. */
 
-   The topology viz drives styling through class names generated at render time
-   (`status-degraded`, `band-busy`, `signal-market`), applied to SVG elements.
-   Utility classes cannot express that, so it keeps hand-written CSS — bound to
-   the shared tokens rather than to literals, so it recolours with the system.
-   --------------------------------------------------------------------------- */
+.route-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.85fr) minmax(260px, 1.55fr) minmax(150px, 0.85fr);
+  align-items: center;
+  gap: 28px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-void) 76%, transparent);
+}
 
-.loom {
-  width: 100%;
-  height: 470px;
+.route-row:last-child {
+  border-bottom: 0;
+}
+
+.route-endpoint {
+  min-width: 0;
+}
+
+.route-endpoint strong {
   display: block;
-  overflow: visible;
+  overflow: hidden;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.link-bed {
-  fill: none;
-  stroke: var(--color-line);
-  stroke-width: calc(var(--flow-width) * 1px + 3px);
+.route-endpoint-target {
+  text-align: right;
 }
 
-.link-current {
-  fill: none;
-  stroke: var(--color-sapphire);
-  stroke-width: calc(var(--flow-width) * 1px);
-  stroke-linecap: round;
-  stroke-dasharray: 8 16;
-}
-
-/* Signal class tints. Sapphire stays the default; the others are held close to
-   it so the loom reads as one instrument rather than a pie chart. */
-.signal-agent .link-current { stroke: var(--color-sapphire); }
-.signal-network .link-current { stroke: #4aa8d8; }
-.signal-market .link-current { stroke: #7c8cf0; }
-.signal-archive .link-current { stroke: #6f59a9; }
-.signal-reliability .link-current { stroke: var(--color-sapphire-deep); }
-
-.loom-link:not(.band-quiet) .link-current {
-  animation: current-flow var(--flow-duration) linear infinite;
-}
-
-.loom-link.band-quiet .link-current {
-  stroke-dasharray: none;
-  opacity: 0.25;
-}
-
-/* Health overrides win over signal class — a degraded link must look degraded
-   regardless of what kind of traffic it carries. */
-.loom-link.status-degraded .link-current { stroke: var(--color-degraded); }
-.loom-link.status-down .link-current { stroke: var(--color-failed); opacity: 0.55; }
-
-@keyframes current-flow {
-  to {
-    stroke-dashoffset: -48;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loom-link .link-current {
-    animation: none !important;
-  }
-}
-
-.node-halo {
-  fill: var(--color-raised);
-  stroke: var(--color-line-lit);
-  stroke-width: 1;
-}
-
-.node-core { fill: var(--color-verified); }
-.loom-node.status-degraded .node-core { fill: var(--color-degraded); }
-.loom-node.status-down .node-core { fill: var(--color-failed); }
-.loom-node.status-unknown .node-core { fill: var(--color-ink-faint); }
-
-.node-zone {
-  font: 500 8px var(--font-mono);
-  text-transform: uppercase;
+.route-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
   letter-spacing: 0.14em;
-  fill: var(--color-ink-faint);
+  text-transform: uppercase;
 }
 
-.node-label {
-  font: 600 12px var(--font-display);
-  fill: var(--color-ink);
+.route-track {
+  position: relative;
+  height: 1px;
+  margin-top: 9px;
+  background: var(--color-line-lit);
 }
 
-.node-meta {
-  font: 400 7px var(--font-mono);
-  fill: var(--color-ink-faint);
+.route-track span {
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 3px;
+  background: var(--color-sapphire);
+  transform-origin: left center;
 }
 
-#arrow path {
-  fill: currentColor;
+.route-track::after {
+  position: absolute;
+  top: -4px;
+  right: -1px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--color-sapphire);
+  content: '';
+}
+
+.route-row.signal-network .route-track span { background: #4aa8d8; }
+.route-row.signal-network .route-track::after { border-left-color: #4aa8d8; }
+.route-row.signal-market .route-track span { background: #7c8cf0; }
+.route-row.signal-market .route-track::after { border-left-color: #7c8cf0; }
+.route-row.signal-archive .route-track span { background: #8067be; }
+.route-row.signal-archive .route-track::after { border-left-color: #8067be; }
+.route-row.signal-reliability .route-track span { background: var(--color-sapphire-deep); }
+.route-row.signal-reliability .route-track::after { border-left-color: var(--color-sapphire-deep); }
+.route-row.status-degraded .route-track span { background: var(--color-degraded); }
+.route-row.status-degraded .route-track::after { border-left-color: var(--color-degraded); }
+.route-row.status-down .route-track span { background: var(--color-failed); opacity: 0.55; }
+.route-row.status-down .route-track::after { border-left-color: var(--color-failed); opacity: 0.55; }
+
+.route-status {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  background: var(--color-sapphire);
+}
+
+.route-status.status-degraded { background: var(--color-degraded); }
+.route-status.status-down { background: var(--color-failed); }
+.route-status.status-unknown { background: var(--color-ink-faint); }
+
+@media (max-width: 720px) {
+  .route-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 18px 20px;
+  }
+
+  .route-row > div:nth-child(2) {
+    display: contents;
+  }
+
+  .route-row > div:nth-child(2) > div:first-child,
+  .route-row > div:nth-child(2) > div:last-child {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .route-track {
+    width: 34px;
+    margin: 0;
+  }
+
+  .route-endpoint strong {
+    white-space: normal;
+  }
 }

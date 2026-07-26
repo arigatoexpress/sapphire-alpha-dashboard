@@ -13,13 +13,54 @@ import hmac
 import json
 import math
 import os
+import re
 import secrets
 import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+try:  # running as a package (backend tests, `python -m telemetry.collector`)
+    from telemetry import probes
+except ImportError:  # running the file directly, as the LaunchAgent does
+    import probes  # type: ignore[no-redef]
+
+
+# The public edge answers this from anywhere, so the round trip the orchestration
+# host measures against it is the real network leg between those two components.
+PUBLIC_EDGE_HEALTH_URL = "https://sapphirealpha.xyz/healthz/"
+# The GPU gateway publishes its tiers here and routes to the first healthy one.
+GPU_GATEWAY_HEALTH_URL = "http://127.0.0.1:8800/healthz"
+
+# Most sources on this host are refreshed every minute or two, so a quarter hour
+# without an update means something stopped.
+DEFAULT_SOURCE_STALE_AFTER_SECONDS = 900
+# The desk cycle is a batch job, not a heartbeat: `com.ari.deskos-cycle` runs on
+# StartInterval 21600. Judging it against the 900 s ceiling above marked it
+# "down" for 5 h 45 m of every 6 h cycle — red 95.8% of the time, on a source
+# reporting `status: ok` with zero errors. A check that is always red trains
+# everyone to ignore it, so a real outage reads as the usual noise. A periodic
+# job is healthy while its last success is inside two cadences, which tolerates
+# exactly one missed run and nothing more. Paired with the plist and asserted by
+# backend/tests/test_link_instrumentation.py.
+DESK_CYCLE_INTERVAL_SECONDS = 21_600
+DESK_CYCLE_STALE_AFTER_SECONDS = DESK_CYCLE_INTERVAL_SECONDS * 2
+
+_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_PHONE_RE = re.compile(
+    r"(?<!\w)(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}(?!\w)"
+)
+_HANDLE_RE = re.compile(r"(?<![\w@])@[A-Za-z0-9_]{2,32}\b")
+_SENSITIVE_TEXT = (
+    "http://",
+    "https://",
+    "/users/",
+    "c:\\users",
+    "localhost",
+    "ts.net",
+)
 
 
 @dataclass(frozen=True)
@@ -74,8 +115,8 @@ def _age(now: float, *candidates: Any) -> float:
     return round(max(0.0, now - max(timestamps)), 3) if timestamps else 86_400.0
 
 
-def _health(value: Any, *, age_s: float) -> str:
-    if age_s > 900:
+def _health(value: Any, *, age_s: float, stale_after_s: float = DEFAULT_SOURCE_STALE_AFTER_SECONDS) -> str:
+    if age_s > stale_after_s:
         return "down"
     normalized = str(value or "unknown").lower()
     if normalized in {"healthy", "ok", "up", "live", "running", "current"}:
@@ -93,6 +134,32 @@ def _agent_id(label: str, index: int) -> str:
     return slug or f"observer-{index + 1}"
 
 
+def public_semantic_text(value: Any, *, fallback: str, limit: int) -> str:
+    """Return bounded public prose, replacing text that can identify a person.
+
+    Presence and remote collectors are local inputs, not a trusted public
+    vocabulary. Keeping their arbitrary strings would let an email address,
+    phone number, handle, endpoint, or home path become public through a role,
+    activity, or event label. The backend rejects the same classes at ingest;
+    collectors replace them first so one poisoned local record cannot take the
+    whole telemetry push down.
+    """
+    if not isinstance(value, str):
+        return fallback
+    candidate = " ".join(value.split()).strip()
+    lowered = candidate.lower()
+    if (
+        not candidate
+        or len(candidate) > limit
+        or any(marker in lowered for marker in _SENSITIVE_TEXT)
+        or _EMAIL_RE.search(candidate)
+        or _PHONE_RE.search(candidate)
+        or _HANDLE_RE.search(candidate)
+    ):
+        return fallback
+    return candidate
+
+
 def _presence_agents(value: dict[str, Any]) -> list[dict[str, Any]]:
     raw_agents = value.get("agents") if isinstance(value.get("agents"), list) else []
     allowed_states = {"working", "verifying", "idle", "blocked", "offline"}
@@ -102,28 +169,41 @@ def _presence_agents(value: dict[str, Any]) -> list[dict[str, Any]]:
     for index, raw in enumerate(raw_agents[:24]):
         if not isinstance(raw, dict):
             continue
-        role = str(raw.get("role") or "Agent observer")[:64]
+        role = public_semantic_text(raw.get("role"), fallback="Agent observer", limit=64)
         state = str(raw.get("state") or "offline")
         verification = str(raw.get("verification") or "pending")
         provider = str(raw.get("provider_class") or "unassigned")
         updated_at = raw.get("updated_at")
-        if state not in allowed_states or verification not in allowed_verification or provider not in allowed_providers or _epoch(updated_at) is None:
+        updated_epoch = _epoch(updated_at)
+        if (
+            state not in allowed_states
+            or verification not in allowed_verification
+            or provider not in allowed_providers
+            or updated_epoch is None
+        ):
             continue
+        activity = {
+            "working": "Capability route active",
+            "verifying": "Capability result under verification",
+            "idle": "Capability route waiting",
+            "blocked": "Capability route unavailable",
+            "offline": "Capability route not observed",
+        }[state]
         agents.append(
             {
                 "id": _agent_id(role, index),
                 "role": role,
                 "state": state,
-                "activity": str(raw.get("activity") or "Agent state observed")[:120],
+                "activity": activity,
                 "verification": verification,
                 "provider_class": provider,
-                "updated_at": datetime.fromtimestamp(_epoch(updated_at) or 0, UTC).isoformat(),
+                "updated_at": datetime.fromtimestamp(updated_epoch, UTC).isoformat(),
             }
         )
     return agents
 
 
-def _presence_events(value: dict[str, Any], *, now: float) -> tuple[list[dict[str, Any]], float]:
+def _presence_events(value: dict[str, Any], *, now: float) -> tuple[list[dict[str, Any]], float | None]:
     raw_events = value.get("events") if isinstance(value.get("events"), list) else []
     status_map = {
         "observed": "observed",
@@ -137,7 +217,13 @@ def _presence_events(value: dict[str, Any], *, now: float) -> tuple[list[dict[st
         "offline": "degraded",
     }
     events: list[dict[str, Any]] = []
-    recent = 0
+    # The presence projector re-runs on every append to the event log
+    # (`com.ari.agent-presence-projector` is WatchPaths-driven), so this list is
+    # an append-only source: a window with nothing in it means nothing happened,
+    # which is a measured zero rather than a blank. `has_source` separates that
+    # from "the presence file is not there at all", which is not measurable.
+    has_source = isinstance(value.get("events"), list)
+    occurrences: list[float] = []
     for index, raw in enumerate(raw_events[-24:]):
         if not isinstance(raw, dict):
             continue
@@ -145,8 +231,7 @@ def _presence_events(value: dict[str, Any], *, now: float) -> tuple[list[dict[st
         status = status_map.get(str(raw.get("status") or ""))
         if occurred is None or status is None:
             continue
-        if 0 <= now - occurred <= 60:
-            recent += 1
+        occurrences.append(occurred)
         events.append(
             {
                 "id": f"presence-{index + 1}",
@@ -154,20 +239,74 @@ def _presence_events(value: dict[str, Any], *, now: float) -> tuple[list[dict[st
                 "event_class": "agent",
                 "source": "intelligence",
                 "target": "archive",
-                "label": str(raw.get("label") or "Agent activity observed")[:120],
+                "label": {
+                    "verified": "Agent result verified",
+                    "failed": "Agent result failed",
+                    "degraded": "Agent capability degraded",
+                    "pending": "Agent result pending",
+                    "observed": "Agent activity observed",
+                }[status],
                 "status": status,
             }
         )
-    return events, float(recent)
+    # The projector currently retains at most 24 entries. When that list is
+    # full, older events inside the five-minute window may have been dropped,
+    # so dividing the retained entries by the window would publish a silent
+    # undercount. An upstream producer may explicitly attest completeness.
+    saturated = len(raw_events) >= 24 and value.get("events_window_complete") is not True
+    rate = None if saturated else probes.timestamp_rate_per_min(
+        occurrences if has_source else None,
+        now=now,
+    )
+    return events, rate
 
 
-def _presence_health(agents: list[dict[str, Any]], *, source_errors: int = 0) -> str:
+def _presence_health(agents: list[dict[str, Any]], *, source_errors: int | None = 0) -> str:
+    """Health of the agent-presence spine — which is not the same as busyness.
+
+    `state: "offline"` in `agent-presence.json` means only that a role's last
+    event is older than the projector's staleness window (ops_server
+    `agent_events._public_agent_state`). Those roles are capability-router lanes
+    that emit nothing until something routes through them, so all-offline means
+    "no work arrived", not "the intelligence layer is broken". Mapping it to
+    `down` — as this did — nailed the node red permanently and left the check
+    unable to distinguish idle from dead.
+
+    What genuinely indicates trouble: the projector reporting source errors, or a
+    role reporting `blocked`. Idle is reported honestly through the node's
+    `freshness_s` and its measured event rate, both of which say "nothing for a
+    day" without claiming an outage.
+    """
+    if not agents:
+        return "unknown"
     states = {agent["state"] for agent in agents}
-    if not states or states == {"offline"}:
-        return "down"
-    if source_errors or states & {"blocked", "offline"}:
+    if (source_errors is not None and source_errors > 0) or "blocked" in states:
         return "degraded"
     return "healthy"
+
+
+def _desk_insert_rate(desk: dict[str, Any], *, desk_age: float) -> float | None:
+    """Rows per minute the last desk cycle actually wrote, while it still counts.
+
+    The number is real — rows inserted divided by the cycle's own wall clock —
+    but it describes the window the cycle ran in. Once that window falls outside
+    the measurement horizon it no longer describes now, and the honest answer
+    becomes None. On a six-hourly cadence that is most of the time, which is why
+    this edge reads blank far more often than it reads busy. Blank is correct:
+    the alternative is republishing a three-hour-old burst as current traffic.
+    """
+    totals = desk.get("totals")
+    inserted = totals.get("inserted") if isinstance(totals, dict) else None
+    if isinstance(inserted, bool) or not isinstance(inserted, (int, float)) or inserted < 0:
+        return None
+    started = _epoch(desk.get("started_at"))
+    finished = _epoch(desk.get("finished_at"))
+    if started is None or finished is None or finished <= started:
+        return None
+    return probes.snapshot_measurement(
+        float(inserted) / ((finished - started) / 60.0),
+        source_age_s=desk_age,
+    )
 
 
 def build_snapshot(
@@ -189,19 +328,27 @@ def build_snapshot(
     presence = _read(sources.agent_presence) if sources.agent_presence else {}
 
     rh_age = _age(now, rh_health.get("generated_ts"))
-    feed_age = _age(now, feed.get("updated"), memes.get("updated"))
+    # The chain feed's age is the chain feed's own timestamp. This used to be
+    # max(feed, memes), which let a live memes stream vouch for a dead chain
+    # feed: `markets` would read "current", and its latency and message rate
+    # would keep being republished, while nothing had arrived from the chain for
+    # an hour. A freshness check that another source can satisfy is not a
+    # freshness check.
+    feed_age = _age(now, feed.get("updated"))
     gpu_age = _age(now, gpu.get("updated"), gpu.get("last_check"))
     desk_age = _age(now, desk.get("finished_at"), desk.get("started_at"))
     presence_agents = _presence_agents(presence)
     presence_events, presence_event_rate = _presence_events(presence, now=now)
+    raw_presence_agents = (
+        presence.get("agents") if isinstance(presence.get("agents"), list) else None
+    )
     raw_agents = rh_health.get("agents") if isinstance(rh_health.get("agents"), list) else []
     agents: list[dict[str, Any]] = list(presence_agents)
     for index, raw in enumerate(raw_agents[:12]):
         if not isinstance(raw, dict):
             continue
-        label = str(raw.get("label") or "Research observer")[:64]
+        label = public_semantic_text(raw.get("label"), fallback="Research observer", limit=64)
         status = _health(raw.get("status"), age_s=rh_age)
-        issue_count = len(raw.get("issues", [])) if isinstance(raw.get("issues"), list) else 0
         if any(agent["role"] == label for agent in agents):
             continue
         agents.append(
@@ -209,7 +356,11 @@ def build_snapshot(
                 "id": _agent_id(label, index),
                 "role": label,
                 "state": "working" if status == "healthy" else "blocked" if status == "degraded" else "offline",
-                "activity": "Observing live research signals" if status == "healthy" else f"Awaiting recovery from {issue_count} check",
+                "activity": (
+                    "Observing live research signals"
+                    if status == "healthy"
+                    else "Awaiting source recovery"
+                ),
                 "verification": "verified" if status == "healthy" else "failed" if status == "down" else "pending",
                 "provider_class": "local CPU",
                 "updated_at": datetime.fromtimestamp(max(0, now - rh_age), UTC).isoformat(),
@@ -231,33 +382,65 @@ def build_snapshot(
             }
         )
 
-    msg_rate = float(feed.get("msgs_per_min") or 0)
-    inserted = int((desk.get("totals") or {}).get("inserted") or 0) if isinstance(desk.get("totals"), dict) else 0
     market_status = "current" if feed_age <= 60 else "delayed" if feed_age <= 300 else "stale" if feed else "offline"
     market_health = "healthy" if market_status == "current" else "degraded" if market_status in {"delayed", "stale"} else "down"
-    source_errors = presence.get("source_errors") if isinstance(presence.get("source_errors"), int) else 0
+    source_errors = (
+        presence.get("source_errors")
+        if isinstance(presence.get("source_errors"), int)
+        and not isinstance(presence.get("source_errors"), bool)
+        else None
+    )
     rh_status = _presence_health(presence_agents, source_errors=source_errors) if presence_agents else _health(rh_health.get("overall"), age_s=rh_age)
     intelligence_age = _age(now, *(agent["updated_at"] for agent in presence_agents)) if presence_agents else rh_age
-    agent_rate = presence_event_rate if presence_agents else float(len(agents) * 4)
-    desk_status = _health(desk.get("status"), age_s=desk_age)
+    # Measured agent-event rate, or None. The old fallback here was
+    # `len(agents) * 4` — an agent head-count multiplied by a magic number and
+    # published as events per minute. That is the kind of number this whole
+    # module now exists to refuse.
+    agent_rate = presence_event_rate if presence_agents else None
+    desk_status = _health(desk.get("status"), age_s=desk_age, stale_after_s=DESK_CYCLE_STALE_AFTER_SECONDS)
+
+    # feed_lag_s is source timestamp lag, not a request/response round trip.
+    # Publishing it as latency_ms mislabeled a one-way freshness quantity as
+    # network latency. There is no RTT probe on this semantic edge.
+    markets_latency_ms = None
+    markets_rate = probes.snapshot_measurement(feed.get("msgs_per_min"), source_age_s=feed_age)
+    archive_rate = _desk_insert_rate(desk, desk_age=desk_age)
+    paper_strategy_count = paper.get("strategy_count")
+    if (
+        not isinstance(paper_strategy_count, int) or
+        isinstance(paper_strategy_count, bool) or
+        paper_strategy_count < 0
+    ):
+        paper_strategy_count = None
 
     def _fresh(age: float) -> float:
         return min(float(age), 86_400.0)
 
     nodes = [
-        {"id": "public-edge", "zone": "edge", "label": "Public edge", "status": "healthy", "load_band": "low", "activity_rate": max(1.0, msg_rate / 20), "freshness_s": 0.0},
-        {"id": "orchestration", "zone": "orchestration", "label": "Orchestration", "status": desk_status, "load_band": "medium" if inserted else "idle", "activity_rate": min(120.0, inserted / 5), "freshness_s": _fresh(desk_age)},
-        {"id": "gpu-compute", "zone": "compute", "label": "GPU compute", "status": gpu_status, "load_band": "medium" if service_count else "idle", "activity_rate": service_count * 8.0, "freshness_s": _fresh(gpu_age)},
-        {"id": "intelligence", "zone": "intelligence", "label": "Agent intelligence", "status": rh_status, "load_band": "high" if agent_rate >= 60 else "medium" if agent_rate else "idle", "activity_rate": agent_rate, "freshness_s": _fresh(intelligence_age)},
-        {"id": "markets", "zone": "markets", "label": "Robinhood Chain", "status": market_health, "load_band": "high" if msg_rate >= 60 else "medium" if msg_rate else "idle", "activity_rate": msg_rate, "freshness_s": _fresh(feed_age)},
-        {"id": "archive", "zone": "archive", "label": "Knowledge archive", "status": desk_status, "load_band": "medium" if inserted else "idle", "activity_rate": min(120.0, inserted / 5), "freshness_s": _fresh(desk_age)},
+        {"id": "public-edge", "zone": "edge", "label": "Public edge", "status": "healthy", "load_band": "low", "activity_rate": None, "freshness_s": 0.0},
+        {"id": "orchestration", "zone": "orchestration", "label": "Orchestration", "status": desk_status, "load_band": "medium" if archive_rate and archive_rate > 0 else "idle", "activity_rate": archive_rate, "freshness_s": _fresh(desk_age)},
+        {"id": "gpu-compute", "zone": "compute", "label": "GPU compute", "status": gpu_status, "load_band": "medium" if service_count else "idle", "activity_rate": None, "freshness_s": _fresh(gpu_age)},
+        {"id": "intelligence", "zone": "intelligence", "label": "Agent intelligence", "status": rh_status, "load_band": "high" if agent_rate is not None and agent_rate >= 60 else "medium" if agent_rate is not None and agent_rate > 0 else "idle", "activity_rate": agent_rate, "freshness_s": _fresh(intelligence_age)},
+        {"id": "markets", "zone": "markets", "label": "Robinhood Chain", "status": market_health, "load_band": "high" if markets_rate is not None and markets_rate >= 60 else "medium" if markets_rate is not None and markets_rate > 0 else "idle", "activity_rate": markets_rate, "freshness_s": _fresh(feed_age)},
+        {"id": "archive", "zone": "archive", "label": "Knowledge archive", "status": desk_status, "load_band": "medium" if archive_rate and archive_rate > 0 else "idle", "activity_rate": archive_rate, "freshness_s": _fresh(desk_age)},
     ]
+    # Each link states what it measures and why the blanks are blank. A None here
+    # is the finished answer, not a gap waiting for a default.
     links = [
-        {"source": "public-edge", "target": "orchestration", "status": desk_status, "latency_ms": link_latencies.get("public-edge:orchestration"), "event_rate": max(1.0, len(agents)), "signal_class": "network"},
-        {"source": "orchestration", "target": "gpu-compute", "status": gpu_status, "latency_ms": link_latencies.get("orchestration:gpu-compute"), "event_rate": service_count * 8.0, "signal_class": "agent"},
-        {"source": "gpu-compute", "target": "intelligence", "status": rh_status, "latency_ms": link_latencies.get("gpu-compute:intelligence"), "event_rate": agent_rate, "signal_class": "agent"},
-        {"source": "intelligence", "target": "markets", "status": market_health, "latency_ms": link_latencies.get("intelligence:markets"), "event_rate": msg_rate, "signal_class": "market"},
-        {"source": "intelligence", "target": "archive", "status": desk_status, "latency_ms": link_latencies.get("intelligence:archive"), "event_rate": min(120.0, inserted / 5), "signal_class": "archive"},
+        # Round trip from this host to the public edge. No request log for the
+        # edge is readable from here, so its rate is genuinely unknown.
+        {"source": "public-edge", "target": "orchestration", "status": desk_status, "latency_ms": link_latencies.get("public-edge:orchestration"), "event_rate": None, "signal_class": "network"},
+        # Round trip to the compute tier the GPU gateway would route to. The
+        # gateway is a streaming proxy that keeps no request log, so no rate.
+        {"source": "orchestration", "target": "gpu-compute", "status": gpu_status, "latency_ms": link_latencies.get("orchestration:gpu-compute"), "event_rate": None, "signal_class": "agent"},
+        # Agent events per minute from the presence spine. Nothing on this path
+        # is an addressable endpoint, so there is no latency to measure.
+        {"source": "gpu-compute", "target": "intelligence", "status": rh_status, "latency_ms": None, "event_rate": agent_rate, "signal_class": "agent"},
+        # Both measured: the feed reports its own lag and its own message rate.
+        {"source": "intelligence", "target": "markets", "status": market_health, "latency_ms": markets_latency_ms, "event_rate": markets_rate, "signal_class": "market"},
+        # Rows per minute the last desk cycle wrote, while that cycle is still
+        # current. A batch write path has no request latency.
+        {"source": "intelligence", "target": "archive", "status": desk_status, "latency_ms": None, "event_rate": archive_rate, "signal_class": "archive"},
     ]
 
     events = presence_events + [
@@ -273,21 +456,53 @@ def build_snapshot(
         for agent in agents[:8]
         if not presence_agents or agent not in presence_agents
     ]
-    if msg_rate:
+    if markets_rate:
         events.append({"id": f"market-{int(now)}", "observed_at": observed_at, "event_class": "market", "source": "markets", "target": "intelligence", "label": "Market activity observed", "status": "observed"})
-    if inserted:
+    if archive_rate:
         events.append({"id": f"archive-{int(now)}", "observed_at": observed_at, "event_class": "archive", "source": "intelligence", "target": "archive", "label": "Knowledge cycle recorded", "status": "verified"})
 
-    attention = sum(1 for node in nodes if node["status"] != "healthy")
+    degraded = any(node["status"] in {"degraded", "down"} for node in nodes)
+    # A count is only a count of the fleet when every expected source supplied a
+    # complete, untruncated agent list. Otherwise the visible agents remain
+    # useful individually but the aggregate is unknown.
+    active_agents_complete = (
+        raw_presence_agents is not None
+        and len(raw_presence_agents) <= 24
+        and isinstance(rh_health.get("agents"), list)
+        and len(raw_agents) <= 12
+        and bool(gpu)
+        and source_errors == 0
+        and len(agents) <= 32
+    )
+    active_agents = (
+        sum(1 for agent in agents if agent["state"] in {"working", "verifying"})
+        if active_agents_complete
+        else None
+    )
+    agents = agents[:32]
     return {
         "version": 1,
         "observed_at": observed_at,
         "sequence": time.time_ns(),
-        "summary": {"state": "degraded" if attention else "observing", "active_agents": sum(1 for agent in agents if agent["state"] in {"working", "verifying"}), "events_per_min": round(msg_rate + agent_rate, 3), "verified_today": sum(1 for agent in agents if agent["verification"] == "verified"), "attention": attention},
+        "summary": {
+            "state": "degraded" if degraded else "observing",
+            "active_agents": active_agents,
+            "events_per_min": None,
+            "verified_today": None,
+            "attention": None,
+        },
         "nodes": nodes,
         "links": links,
         "agents": agents,
-        "markets": {"network": "Robinhood Chain", "status": market_status, "feed_age_s": feed_age, "events_per_min": msg_rate, "paper_strategies": 7 if paper else 0, "decision_gate": "telegram", "execution": "off"},
+        "markets": {
+            "network": "Robinhood Chain",
+            "status": market_status,
+            "feed_age_s": feed_age if _epoch(feed.get("updated")) is not None else None,
+            "events_per_min": markets_rate,
+            "paper_strategies": paper_strategy_count,
+            "decision_gate": "telegram",
+            "execution": "off",
+        },
         "events": events,
     }
 
@@ -304,34 +519,59 @@ def signed_headers(body: bytes, secret: str, *, timestamp: int | None = None, no
 
 def measure_latency_ms(endpoint: str, *, timeout: float = 2.0) -> float | None:
     """Measure one configured health endpoint without exposing its address."""
-    if not endpoint:
-        return None
-    started = time.perf_counter()
-    try:
-        request = urllib.request.Request(endpoint, headers={"User-Agent": "sapphire-telemetry/1"})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            response.read(1)
-        return round((time.perf_counter() - started) * 1000, 3)
-    except (OSError, ValueError):
-        return None
+    return probes.http_latency_ms(endpoint, timeout=timeout)
 
 
-def configured_latencies() -> dict[str, float | None]:
-    probes = {
-        "public-edge:orchestration": os.getenv("SAPPHIRE_EDGE_PROBE", ""),
-        "orchestration:gpu-compute": os.getenv("SAPPHIRE_COMPUTE_PROBE", ""),
-        "intelligence:markets": os.getenv("SAPPHIRE_MARKETS_PROBE", ""),
-        "intelligence:archive": os.getenv("SAPPHIRE_ARCHIVE_PROBE", ""),
+def configured_latencies(
+    *,
+    http_probe: Callable[..., float | None] = probes.http_latency_ms,
+    gateway_probe: Callable[..., float | None] = probes.gateway_route_latency_ms,
+) -> dict[str, float | None]:
+    """Measure the two link latencies this host can actually observe.
+
+    The previous version read four `SAPPHIRE_*_PROBE` environment variables that
+    were never set on any host, so `measure_latency_ms("")` returned None four
+    times and every latency on the site was blank. The endpoints below are real
+    and reachable, and the env vars still win where they are set.
+
+    The other three Mac links are absent on purpose, not by oversight: nothing on
+    those paths is an addressable endpoint to time. See the link table in
+    `build_snapshot`.
+    """
+    return {
+        "public-edge:orchestration": http_probe(
+            os.getenv("SAPPHIRE_EDGE_PROBE") or PUBLIC_EDGE_HEALTH_URL
+        ),
+        "orchestration:gpu-compute": gateway_probe(
+            os.getenv("SAPPHIRE_GPU_GATEWAY_PROBE") or GPU_GATEWAY_HEALTH_URL
+        ),
     }
-    return {link: measure_latency_ms(endpoint) for link, endpoint in probes.items()}
 
 
-def push(snapshot: dict[str, Any], *, endpoint: str, secret: str, timeout: float = 10.0) -> dict[str, Any]:
+def _post(snapshot: dict[str, Any], *, endpoint: str, secret: str, timeout: float) -> dict[str, Any]:
     body = json.dumps(snapshot, separators=(",", ":"), allow_nan=False).encode()
     request = urllib.request.Request(endpoint, data=body, headers=signed_headers(body, secret), method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         result = json.loads(response.read())
     return result if isinstance(result, dict) else {}
+
+
+def push(
+    snapshot: dict[str, Any],
+    *,
+    endpoint: str,
+    secret: str,
+    timeout: float = 10.0,
+    transport: Callable[..., dict[str, Any]] = _post,
+) -> dict[str, Any]:
+    """Publish exactly one honest payload.
+
+    A backend that still rejects null measurements must retain its last accepted
+    snapshot until it is upgraded. Retrying with zero would turn "not measured"
+    into "measured no traffic", which is fiction even when the old wire cannot
+    express the distinction.
+    """
+    return transport(snapshot, endpoint=endpoint, secret=secret, timeout=timeout)
 
 
 def main() -> int:

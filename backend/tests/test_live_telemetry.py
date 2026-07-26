@@ -45,7 +45,7 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
                 "zone": "edge",
                 "label": "Public edge",
                 "status": "healthy",
-                "load_band": "low",
+                "load": "low",
                 "activity_rate": 8.0,
                 "freshness_s": 2.1,
             },
@@ -54,7 +54,7 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
                 "zone": "compute",
                 "label": "GPU compute",
                 "status": "healthy",
-                "load_band": "medium",
+                "load": "medium",
                 "activity_rate": 18.0,
                 "freshness_s": 1.2,
             },
@@ -200,19 +200,78 @@ def test_attack_useful_or_secret_fields_are_rejected(poison):
     assert response.status_code == 422
 
 
-def test_public_projection_buckets_timing_and_drops_internal_detail():
+@pytest.mark.parametrize(
+    ("field_path", "value"),
+    [
+        (("agents", 0, "role"), "owner@example.com"),
+        (("agents", 0, "activity"), "Call 303-555-0199"),
+        (("events", 0, "label"), "Ask @private_handle"),
+        (("events", 0, "label"), "Reference 123-45-6789"),
+    ],
+)
+def test_public_prose_rejects_common_personal_identifiers(field_path, value):
+    """Role/activity/event prose is public and producer-controlled. Bounded
+    length alone is not a privacy boundary, so common direct identifiers fail
+    closed before storage."""
+    payload = _sample()
+    collection, index, field = field_path
+    payload[collection][index][field] = value
+    raw, headers = _signed(payload, nonce=f"nonce-pii-{field}-{index}-{len(value)}")
+    response = client.post("/api/v1/telemetry", content=raw, headers=headers)
+    assert response.status_code == 422
+    assert "personal identifier" in response.json()["detail"]
+
+
+def test_nullable_activity_summary_and_market_measurements_survive_ingest():
+    payload = _sample()
+    payload["summary"].update(
+        {
+            "active_agents": None,
+            "events_per_min": None,
+            "verified_today": None,
+            "attention": None,
+        }
+    )
+    payload["nodes"][0]["activity_rate"] = None
+    payload["links"][0]["event_rate"] = None
+    payload["markets"].update(
+        {
+            "feed_age_s": None,
+            "events_per_min": None,
+            "paper_strategies": None,
+        }
+    )
+    raw, headers = _signed(payload, nonce="nonce-nullable-001")
+    assert client.post("/api/v1/telemetry", content=raw, headers=headers).status_code == 202
+    live = client.get("/api/v1/live").json()
+    assert live["summary"]["active_agents"] is None
+    assert live["summary"]["events_per_min"] is None
+    assert live["summary"]["verified_today"] is None
+    assert live["summary"]["attention"] is None
+    assert live["nodes"][0]["activity_rate"] is None
+    assert live["links"][0]["event_rate"] is None
+    assert live["markets"]["feed_age_s"] is None
+    assert live["markets"]["events_per_min"] is None
+    assert live["markets"]["paper_strategies"] is None
+
+
+def test_anonymous_view_is_unredacted_but_still_leaks_no_internal_identifiers():
+    """The redaction tier is gone; the ingest contract is what keeps this safe.
+
+    This used to assert the public projection bucketed timings into adjectives.
+    Bucketing is deleted (Ari, 2026-07-25) — anonymous readers get the real
+    numbers. What survives, and is the part that was ever load-bearing, is that
+    no hostname, path, address or secret can be in the payload at all, because
+    validate_snapshot rejects them at ingest rather than scrubbing them on read.
+    """
     raw, headers = _signed(_sample(), nonce="nonce-public-0001")
     assert client.post("/api/v1/telemetry", content=raw, headers=headers).status_code == 202
 
     public = client.get("/api/v1/live").json()
     body = json.dumps(public)
-    assert public["public_view"] is True
-    assert "latency_ms" not in public["links"][0]
-    assert public["links"][0]["latency_band"] == "under 20 ms"
-    assert "event_rate" not in public["links"][0]
-    assert public["links"][0]["activity_band"] == "active"
+    assert public["links"][0]["latency_ms"] == 7.4
+    assert public["links"][0]["event_rate"] == 18.0
     assert public["agents"][0]["role"] == "Research scout"
-    assert "id" not in public["agents"][0]
     for forbidden in (
         "192.168.",
         "100.125.",
@@ -245,17 +304,18 @@ def test_invalid_state_values_and_nonfinite_numbers_rejected():
     assert client.post("/api/v1/telemetry", content=raw, headers=headers).status_code == 422
 
 
-@pytest.mark.parametrize(
-    ("age_s", "expected"),
-    [
-        (0.0, "current"),
-        (60.0, "current"),
-        (61.0, "delayed"),
-        (3_599.0, "delayed"),
-        (3_600.0, "stale"),
-        (86_400.0, "stale"),
-    ],
-)
-def test_freshness_band_separates_dead_feeds_from_brief_delays(age_s, expected):
-    """A clamped two-day outage must not render identically to a 61s lag."""
-    assert live_telemetry._freshness_band(age_s) == expected
+def test_node_freshness_is_reported_as_a_number_not_a_bucket():
+    """The band helpers are deleted; a dead feed is distinguished by its value.
+
+    _freshness_band existed so a clamped two-day outage would not render like a
+    61-second lag. With the real `freshness_s` exposed, the distinction is in
+    the data itself and needs no bucketing to survive.
+    """
+    raw, headers = _signed(_sample(), nonce="nonce-freshness01")
+    assert client.post("/api/v1/telemetry", content=raw, headers=headers).status_code == 202
+
+    node = client.get("/api/v1/live").json()["nodes"][0]
+    assert node["freshness_s"] == 2.1
+    assert not hasattr(live_telemetry, "_freshness_band")
+    assert not hasattr(live_telemetry, "_latency_band")
+    assert not hasattr(live_telemetry, "_activity_band")

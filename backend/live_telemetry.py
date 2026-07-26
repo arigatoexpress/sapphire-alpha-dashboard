@@ -22,6 +22,11 @@ from typing import Any, Mapping, Protocol
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_REQUEST_SKEW_SECONDS = 300
+# Paired with StartInterval in infra/com.sapphire.alpha-telemetry-publisher.plist:
+# the publisher must fit two full cycles inside this window, or one missed push
+# marks a healthy feed stale. Raising this number to silence a staleness report
+# is the forbidden fix — a threshold that never fires reads green while checking
+# nothing. Shorten the cadence instead. Enforced by test_machine_room_public.py.
 DEFAULT_STALE_AFTER_SECONDS = 180
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
@@ -29,6 +34,12 @@ _NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
 _HEX_RE = re.compile(r"^[a-f0-9]{64}$")
 _IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 _WALLET_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_PHONE_RE = re.compile(
+    r"(?<!\w)(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}(?!\w)"
+)
+_HANDLE_RE = re.compile(r"(?<![\w@])@[A-Za-z0-9_]{2,32}\b")
+_SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
 
 _FORBIDDEN_KEYS = re.compile(
     r"(?:host(?:name)?|endpoint|url|uri|path|port|pid|ip|token|secret|password|"
@@ -92,6 +103,13 @@ def _scan_forbidden(value: Any, *, where: str = "payload") -> None:
             raise TelemetryValidationError(f"{where} contains an internal identifier")
         if _IPV4_RE.search(value) or _WALLET_RE.search(value):
             raise TelemetryValidationError(f"{where} contains an internal identifier")
+        if (
+            _EMAIL_RE.search(value)
+            or _PHONE_RE.search(value)
+            or _HANDLE_RE.search(value)
+            or _SSN_RE.search(value)
+        ):
+            raise TelemetryValidationError(f"{where} contains a personal identifier")
 
 
 def _text(value: Any, *, where: str, limit: int = 120) -> str:
@@ -192,10 +210,18 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     )
     summary = {
         "state": _enum(summary_raw["state"], _SUMMARY_STATES, where="summary.state"),
-        "active_agents": _integer(summary_raw["active_agents"], where="summary.active_agents", high=100),
-        "events_per_min": _number(summary_raw["events_per_min"], where="summary.events_per_min"),
-        "verified_today": _integer(summary_raw["verified_today"], where="summary.verified_today"),
-        "attention": _integer(summary_raw["attention"], where="summary.attention", high=100),
+        "active_agents": None
+        if summary_raw["active_agents"] is None
+        else _integer(summary_raw["active_agents"], where="summary.active_agents", high=100),
+        "events_per_min": None
+        if summary_raw["events_per_min"] is None
+        else _number(summary_raw["events_per_min"], where="summary.events_per_min"),
+        "verified_today": None
+        if summary_raw["verified_today"] is None
+        else _integer(summary_raw["verified_today"], where="summary.verified_today"),
+        "attention": None
+        if summary_raw["attention"] is None
+        else _integer(summary_raw["attention"], where="summary.attention", high=100),
     }
 
     if not isinstance(obj["nodes"], list) or len(obj["nodes"]) > 24:
@@ -203,10 +229,25 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = []
     node_ids: set[str] = set()
     for index, raw_node in enumerate(obj["nodes"]):
+        # `load` was called `load_band` before the redaction tier was deleted. It
+        # was never a band: producers measure a categorical load directly.
+        #
+        # The wire name is deliberately still `load_band`, and the collectors in
+        # telemetry/ still send it. Ingest and deploy are decoupled in time: the
+        # publisher runs from this checkout every 60 s while the backend only
+        # changes on a gated deploy, so a producer that switched first would 422
+        # against the live service until Ari deploys — which is exactly what
+        # happened when this rename was attempted producer-first. Renaming the
+        # wire field is a follow-up for after the deploy lands; until then this
+        # alias absorbs it and nothing downstream ever sees the old name.
+        if isinstance(raw_node, dict) and "load_band" in raw_node and "load" not in raw_node:
+            raw_node = {
+                ("load" if key == "load_band" else key): value for key, value in raw_node.items()
+            }
         node = _keys(
             raw_node,
-            allowed={"id", "zone", "label", "status", "load_band", "activity_rate", "freshness_s"},
-            required={"id", "zone", "label", "status", "load_band", "activity_rate", "freshness_s"},
+            allowed={"id", "zone", "label", "status", "load", "activity_rate", "freshness_s"},
+            required={"id", "zone", "label", "status", "load", "activity_rate", "freshness_s"},
             where=f"nodes[{index}]",
         )
         node_id = _identifier(node["id"], where=f"nodes[{index}].id")
@@ -219,8 +260,10 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "zone": _enum(node["zone"], _ZONES, where=f"nodes[{index}].zone"),
                 "label": _text(node["label"], where=f"nodes[{index}].label", limit=64),
                 "status": _enum(node["status"], _HEALTH, where=f"nodes[{index}].status"),
-                "load_band": _enum(node["load_band"], _LOAD, where=f"nodes[{index}].load_band"),
-                "activity_rate": _number(node["activity_rate"], where=f"nodes[{index}].activity_rate"),
+                "load": _enum(node["load"], _LOAD, where=f"nodes[{index}].load"),
+                "activity_rate": None
+                if node["activity_rate"] is None
+                else _number(node["activity_rate"], where=f"nodes[{index}].activity_rate"),
                 "freshness_s": _number(node["freshness_s"], where=f"nodes[{index}].freshness_s", high=86_400),
             }
         )
@@ -247,7 +290,15 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                 "latency_ms": None
                 if link["latency_ms"] is None
                 else _number(link["latency_ms"], where=f"links[{index}].latency_ms", high=60_000),
-                "event_rate": _number(link["event_rate"], where=f"links[{index}].event_rate"),
+                # None means "not measured", exactly as it does for latency_ms
+                # above, and it must survive to the client unchanged. Coercing it
+                # to 0 here would publish "no traffic on this edge" as a
+                # measurement, which is the one failure mode a transparency site
+                # cannot afford: a fabricated number is indistinguishable from an
+                # observed one once it is on the wire.
+                "event_rate": None
+                if link["event_rate"] is None
+                else _number(link["event_rate"], where=f"links[{index}].event_rate"),
                 "signal_class": _enum(
                     link["signal_class"], _SIGNAL_CLASSES, where=f"links[{index}].signal_class"
                 ),
@@ -305,9 +356,15 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     markets = {
         "network": _text(market["network"], where="markets.network", limit=48),
         "status": _enum(market["status"], _MARKET_STATES, where="markets.status"),
-        "feed_age_s": _number(market["feed_age_s"], where="markets.feed_age_s", high=86_400),
-        "events_per_min": _number(market["events_per_min"], where="markets.events_per_min"),
-        "paper_strategies": _integer(market["paper_strategies"], where="markets.paper_strategies", high=100),
+        "feed_age_s": None
+        if market["feed_age_s"] is None
+        else _number(market["feed_age_s"], where="markets.feed_age_s", high=86_400),
+        "events_per_min": None
+        if market["events_per_min"] is None
+        else _number(market["events_per_min"], where="markets.events_per_min"),
+        "paper_strategies": None
+        if market["paper_strategies"] is None
+        else _integer(market["paper_strategies"], where="markets.paper_strategies", high=100),
         "decision_gate": _enum(market["decision_gate"], _GATES, where="markets.decision_gate"),
         "execution": _enum(market["execution"], _EXECUTION, where="markets.execution"),
     }
@@ -349,115 +406,33 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     }
 
 
-def _latency_band(value: float | None) -> str:
-    if value is None:
-        return "not observed"
-    if value < 20:
-        return "under 20 ms"
-    if value < 80:
-        return "20–79 ms"
-    if value < 200:
-        return "80–199 ms"
-    return "200 ms or more"
+def _normalize_stored(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Bring a stored snapshot onto the current schema before serving it.
 
-
-def _activity_band(value: float) -> str:
-    if value <= 0:
-        return "quiet"
-    if value < 10:
-        return "light"
-    if value < 60:
-        return "active"
-    return "busy"
-
-
-def _freshness_band(age_s: float) -> str:
-    """Bucket node age so a dead feed reads differently from a brief delay.
-
-    Producers clamp freshness_s to the 86_400 validation ceiling, so without a
-    third band a two-day outage and a 61-second lag both render as "delayed".
+    Snapshots written before the redaction tier was deleted are already sitting
+    in Firestore with `load_band` on each node. They are served unchanged on the
+    next read, so without this the "no `*_band` key anywhere" guarantee would
+    hold for fresh pushes and quietly fail for everything already persisted.
     """
-    if age_s <= 60:
-        return "current"
-    if age_s < 3_600:
-        return "delayed"
-    return "stale"
+    for node in snapshot.get("nodes", []):
+        if isinstance(node, dict) and "load_band" in node:
+            node.setdefault("load", node.pop("load_band"))
+            node.pop("load_band", None)
+    return snapshot
 
 
-def public_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Bucket timing/rate detail and expose only public narrative fields."""
-    out = {
-        "version": snapshot["version"],
-        "observed_at": snapshot["observed_at"],
-        "sequence": snapshot["sequence"],
-        "summary": {
-            "state": snapshot["summary"]["state"],
-            "active_agents": snapshot["summary"]["active_agents"],
-            "activity_band": _activity_band(snapshot["summary"]["events_per_min"]),
-            "verified_today": snapshot["summary"]["verified_today"],
-            "attention": snapshot["summary"]["attention"],
-        },
-        "nodes": [
-            {
-                "id": node["id"],
-                "zone": node["zone"],
-                "label": node["label"],
-                "status": node["status"],
-                "load_band": node["load_band"],
-                "activity_band": _activity_band(node["activity_rate"]),
-                "freshness_band": _freshness_band(node["freshness_s"]),
-            }
-            for node in snapshot["nodes"]
-        ],
-        "links": [
-            {
-                "source": link["source"],
-                "target": link["target"],
-                "status": link["status"],
-                "latency_band": _latency_band(link["latency_ms"]),
-                "activity_band": _activity_band(link["event_rate"]),
-                "signal_class": link["signal_class"],
-            }
-            for link in snapshot["links"]
-        ],
-        "agents": [
-            {
-                "role": agent["role"],
-                "state": agent["state"],
-                "activity": agent["activity"],
-                "verification": agent["verification"],
-                "provider_class": agent["provider_class"],
-            }
-            for agent in snapshot["agents"]
-        ],
-        "markets": {
-            "network": snapshot["markets"]["network"],
-            "status": snapshot["markets"]["status"],
-            "feed_freshness": "current" if snapshot["markets"]["feed_age_s"] <= 60 else "delayed",
-            "activity_band": _activity_band(snapshot["markets"]["events_per_min"]),
-            "paper_strategies": snapshot["markets"]["paper_strategies"],
-            "decision_gate": snapshot["markets"]["decision_gate"],
-            "execution": snapshot["markets"]["execution"],
-        },
-        "events": copy.deepcopy(snapshot["events"]),
-        "public_view": True,
-        "public_policy": "Activity is aggregated and delayed for safety.",
-    }
-    return out
-
-
-def _empty_snapshot(*, public: bool, status: str = "offline") -> dict[str, Any]:
-    now = datetime.now(UTC).isoformat()
+def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
+    """The honest shape when nothing has been observed. One shape for everyone."""
     return {
         "version": 1,
         "observed_at": None,
         "sequence": None,
         "summary": {
             "state": "not observed",
-            "active_agents": 0,
-            "activity_band" if public else "events_per_min": "quiet" if public else 0,
-            "verified_today": 0,
-            "attention": 0,
+            "active_agents": None,
+            "events_per_min": None,
+            "verified_today": None,
+            "attention": None,
         },
         "nodes": [],
         "links": [],
@@ -465,24 +440,16 @@ def _empty_snapshot(*, public: bool, status: str = "offline") -> dict[str, Any]:
         "markets": {
             "network": "Robinhood Chain",
             "status": "offline",
-            "feed_freshness" if public else "feed_age_s": "unknown" if public else None,
-            "activity_band" if public else "events_per_min": "quiet" if public else 0,
-            "paper_strategies": 0,
+            "feed_age_s": None,
+            "events_per_min": None,
+            "paper_strategies": None,
             "decision_gate": "off",
             "execution": "off",
         },
         "events": [],
         "status": status,
         "freshness_s": None,
-        "served_at": now,
-        **(
-            {
-                "public_view": True,
-                "public_policy": "Activity is aggregated and delayed for safety.",
-            }
-            if public
-            else {}
-        ),
+        "served_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -683,17 +650,24 @@ class LiveTelemetryStore:
     def get(
         self,
         *,
-        public: bool,
-        delay_seconds: float = 0,
+        public: bool = False,
         stale_after_seconds: float = DEFAULT_STALE_AFTER_SECONDS,
         now: float | None = None,
     ) -> dict[str, Any]:
+        """Return the current snapshot. There is one view; `public` is vestigial.
+
+        The redaction tier is gone (Ari, 2026-07-25): anonymous readers get the
+        same numbers, at the same moment, that the operator does. `public` is
+        kept only so callers need not change, and there is deliberately no
+        `delay_seconds` left to set — the public delay was the last limb of the
+        redactor, and a parameter that can still hold data back is a redaction
+        tier waiting to be switched on by an environment variable. Capital is
+        banded in moss_telemetry: a different store, a deliberate exception.
+        """
         now = now if now is not None else time.time()
-        target = now - max(0, delay_seconds if public else 0)
-        selected = self._persistence.select(received_before=target)
+        selected = self._persistence.select(received_before=now)
         if selected is None:
             return _empty_snapshot(
-                public=public,
                 status="warming" if self._persistence.has_history() else "offline",
             )
 
@@ -701,7 +675,7 @@ class LiveTelemetryStore:
         observed = datetime.fromisoformat(snapshot["observed_at"]).timestamp()
         freshness_s = round(max(0.0, now - observed), 1)
         status = "live" if freshness_s <= stale_after_seconds else "stale"
-        projected = public_projection(snapshot) if public else copy.deepcopy(snapshot)
+        projected = _normalize_stored(copy.deepcopy(snapshot))
         projected.update(
             {
                 "status": status,

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Publish a merged Mac + Windows telemetry snapshot to sapphirealpha.xyz.
 #
-# Invoked by the com.sapphire.alpha-telemetry-publisher LaunchAgent every 5
-# minutes. The ingest secret is sourced from ~/.sapphire/ and is deliberately
+# Invoked by the com.sapphire.alpha-telemetry-publisher LaunchAgent every 60
+# seconds (StartInterval in infra/com.sapphire.alpha-telemetry-publisher.plist,
+# which must stay well under live_telemetry.DEFAULT_STALE_AFTER_SECONDS).
+# The ingest secret is sourced from ~/.sapphire/ and is deliberately
 # NOT stored in the plist, so it never lands in launchctl output or a backup.
 set -euo pipefail
 

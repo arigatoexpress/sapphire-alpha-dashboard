@@ -6,8 +6,8 @@ import { getReports } from '@/lib/research'
 export const metadata: Metadata = {
   title: 'Research',
   description:
-    'Published research under the Michael Nadeau / DeFi Report lens: real fees, whether ' +
-    'the token captures them, and net supply. Framework and retrospective — never the live book.',
+    "Ari's investment mandate tested against cycle, liquidity, crypto structure, AI, " +
+    'and protocol-fundamentals evidence. Framework and retrospective — never the live book.',
   alternates: { canonical: '/research/' },
 }
 
@@ -16,18 +16,18 @@ export const metadata: Metadata = {
 const STANDARD = [
   {
     n: '01',
-    title: 'Does it earn real fees?',
-    body: 'Revenue paid by users, not emissions dressed up as yield.',
+    title: 'What regime are we in?',
+    body: 'Cycle, liquidity, breadth, dominance, credit, and energy set the risk budget.',
   },
   {
     n: '02',
-    title: 'Does the token capture them?',
-    body: 'A protocol earning is not the same as the liquid token having a claim on it.',
+    title: 'Is the theme real?',
+    body: 'Retained users, utilization, settlement, and revenue—not an attractive story.',
   },
   {
     n: '03',
-    title: 'What is net supply doing?',
-    body: 'Buybacks net of emissions and vesting. A burn headline means nothing gross.',
+    title: 'Where does value accrue?',
+    body: 'Fees, token capture, net supply, capital intensity, and open exit rights.',
   },
   {
     n: '04',
@@ -44,7 +44,7 @@ export default function Research() {
       <PageHeader
         eyebrow="Research"
         title="Positions are private. The reasoning is not."
-        lede="Published work applies the Nadeau lens — real fees, token capture, net supply — and commits to what would prove it wrong. What is never published is the live book: current holdings and sizing stay operator-only."
+        lede="Ari’s thesis is the mandate. Cowen leads the current cycle view; Hayes, Bankless, Limitless, and Nadeau challenge bounded parts of it. Every claim needs independent evidence and a falsifier. The live book stays operator-only."
       />
 
       <section className="mx-auto max-w-6xl px-6 pt-14" aria-labelledby="standard-heading">
@@ -140,9 +140,9 @@ export default function Research() {
           <Eyebrow>What is withheld, and why</Eyebrow>
           <div className="mt-6 grid gap-8 md:grid-cols-2">
             <p className="text-sm leading-relaxed text-ink-dim">
-              Current positions, sizing, and exact figures are operator-only. A public,
-              real-time book is a front-running invitation, and the same masking rules that
-              govern the live desk govern this page.
+              Current holdings, sizing, and exact capital figures are excluded from this
+              corpus. The public architecture feed is a separate contract and contains none
+              of them; a real-time public book would invite front-running.
             </p>
             <p className="text-sm leading-relaxed text-ink-dim">
               What that leaves is the part worth reading anyway: the framework, and closed

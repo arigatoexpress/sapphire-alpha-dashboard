@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import MetricCard from '@/components/Metric'
-import LiveSystem from '@/components/LiveSystem'
+import MachineRoom from '@/components/MachineRoom'
 import { Eyebrow, Panel, Rule, Verified } from '@/components/Primitives'
 import { CHAIN, CORE_METRICS, MEASURED_AT } from '@/data/metrics'
 
@@ -26,7 +26,7 @@ const CAPABILITIES = [
     title: 'On-chain settlement',
     body:
       `Positions settle on ${CHAIN.name} (chain ${CHAIN.id}), an ${CHAIN.family}. ` +
-      'Addresses are masked in every public projection.',
+      'Wallet identifiers never enter an anonymous response.',
     href: '/onchain/',
   },
 ]
@@ -34,66 +34,56 @@ const CAPABILITIES = [
 export default function Home() {
   return (
     <>
-      {/* ---------------- Hero ---------------- */}
-      <section className="mx-auto max-w-6xl px-6 pt-20 pb-8 md:pt-32">
-        <div className="grid items-start gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
-          <div>
-            {/* Deliberately not a status badge. Live status is asserted in exactly
-                one place — the panel opposite, which reads the real feed. A second,
-                hardcoded "operational" claim would be green with nothing behind it. */}
-            <div className="rise">
-              <Eyebrow>
-                {CHAIN.name} · chain {CHAIN.id}
-              </Eyebrow>
-            </div>
+      {/* ------------------------------------------------------------------
+          THE MACHINE ROOM
 
-            <h1
-              className="rise mt-7 font-display text-6xl leading-[0.92] font-semibold tracking-[-0.035em] text-balance md:text-8xl"
-              style={{ animationDelay: '70ms' }}
-            >
-              Verify,
-              <br />
-              don&rsquo;t&nbsp;<span className="text-sapphire">trust</span>.
-            </h1>
+          The landing page used to describe the system in prose beside a small
+          status panel. It now *is* the system: the running machine is the first
+          thing a visitor meets, it explains its own parts in plain English, and
+          it says out loud which of its numbers are measured and which are not.
+          The prose that survived is the part the picture cannot say — what the
+          work is for, and what we are willing to be held to.
+          ------------------------------------------------------------------ */}
+      <section className="mx-auto w-full max-w-[1680px] px-5 pt-14 pb-4 md:px-10 md:pt-20">
+        <div className="rise max-w-4xl">
+          <Eyebrow>{CHAIN.name} · chain {CHAIN.id}</Eyebrow>
+          <h1 className="mt-6 font-display text-5xl leading-[0.92] font-semibold tracking-[-0.035em] text-balance md:text-7xl">
+            Verify,
+            <br />
+            don&rsquo;t&nbsp;<span className="text-sapphire">trust</span>.
+          </h1>
+          <p className="mt-7 max-w-2xl text-lg leading-relaxed text-ink-dim text-pretty">
+            Below is the system&rsquo;s declared map and its latest live report. Every part
+            says what it is in plain English. A line moves only when the feed supplies an
+            exact rate; older banded reports stay still, and missing figures say so.
+          </p>
+        </div>
 
-            <p
-              className="rise mt-8 max-w-xl text-lg leading-relaxed text-ink-dim text-pretty md:text-xl"
-              style={{ animationDelay: '150ms' }}
-            >
-              Autonomous trading and agent infrastructure that shows its work. The system
-              below is running right now — and every claim on this site is one you can hold
-              us to, because we say in advance what would prove it wrong.
-            </p>
+        <div className="rise mt-14 md:mt-16" style={{ animationDelay: '120ms' }}>
+          <MachineRoom />
+        </div>
 
-            <div
-              className="rise mt-10 flex flex-wrap items-center gap-4"
-              style={{ animationDelay: '230ms' }}
-            >
-              <Link
-                href="/architecture/"
-                className="border border-sapphire bg-sapphire px-6 py-3 font-mono text-[12px] tracking-[0.14em] text-void uppercase transition-colors hover:bg-transparent hover:text-sapphire"
-              >
-                Read the architecture
-              </Link>
-              <Link
-                href="/dashboard"
-                className="underline-grow px-1 py-3 font-mono text-[12px] tracking-[0.14em] text-ink-dim uppercase transition-colors hover:text-ink"
-              >
-                Open the live desk →
-              </Link>
-            </div>
-          </div>
-
-          {/* The hero's proof object: the running system itself, not a transcript. */}
-          <div className="rise lg:pt-3" style={{ animationDelay: '300ms' }}>
-            <LiveSystem />
-          </div>
+        <div className="mt-14 flex flex-wrap items-center gap-4">
+          <Link
+            href="/architecture/"
+            className="border border-sapphire bg-sapphire px-6 py-3 font-mono text-[12px] tracking-[0.14em] text-void uppercase transition-colors hover:bg-transparent hover:text-sapphire"
+          >
+            Read the architecture
+          </Link>
+          <Link
+            href="/dashboard"
+            className="underline-grow px-1 py-3 font-mono text-[12px] tracking-[0.14em] text-ink-dim uppercase transition-colors hover:text-ink"
+          >
+            Open the live desk →
+          </Link>
         </div>
       </section>
 
+      <Rule />
+
       {/* ---------------- Metrics ---------------- */}
       <section
-        className="mx-auto max-w-6xl px-6 pt-16 md:pt-24"
+        className="mx-auto max-w-6xl px-6"
         aria-labelledby="metrics-heading"
       >
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -184,8 +174,7 @@ export default function Home() {
             <p>
               This works the other way around. Before a position is taken, we write down what
               would prove the thesis wrong — and then that judgement gets scored against what
-              actually happened. The panel above is the live system, not a recording, and it
-              goes blank rather than pretending when the feed stops.
+              actually happened.
             </p>
             <p className="text-ink">
               The claim is not that we are always right. It is that you can tell when we
@@ -194,19 +183,23 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Each of these is a property of the live endpoint the page above reads,
+            so a reader can check all three against what they just watched. */}
         <Panel className="mt-14">
           <div className="grid gap-8 md:grid-cols-3">
             <div>
-              <Verified>Public projection</Verified>
+              <Verified>One telemetry contract</Verified>
               <p className="mt-3 text-sm leading-relaxed text-ink-dim">
-                Anonymous callers get a delayed, whitelisted view. Everything not explicitly
-                allowed is dropped.
+                The Machine Room reads one architecture feed with numeric fields when they
+                are available. Capital, wallet identifiers, and current holdings never enter
+                that contract.
               </p>
             </div>
             <div>
               <Verified>Signed ingest</Verified>
               <p className="mt-3 text-sm leading-relaxed text-ink-dim">
-                Telemetry is HMAC-signed and replay-rejected before it is ever stored.
+                Reads are open; writes are not. Telemetry is signed and replay-rejected
+                before it is ever stored.
               </p>
             </div>
             <div>

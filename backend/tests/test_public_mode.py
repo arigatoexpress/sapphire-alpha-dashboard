@@ -59,21 +59,50 @@ def public_mode(monkeypatch):
         ),
     )
     monkeypatch.setenv(
-        "DASHBOARD_TDR_CLIPS_JSON",
+        "DASHBOARD_RESEARCH_CLIPS_JSON",
         json.dumps(
-            [{"id": "ep-1", "title": "Episode one", "source": "tdr_pro", "path": "/Users/aribs/Knowledge/clip.md"}]
+            [
+                {
+                    "id": "cycle-1",
+                    "title": "Cycle evidence",
+                    "source": "benjamin_cowen",
+                    "path": "/Users/aribs/Knowledge/cycle.md",
+                },
+                {
+                    "id": "liquidity-1",
+                    "title": "Liquidity countercase",
+                    "source": "arthur_hayes",
+                    "path": "/Users/aribs/Knowledge/liquidity.md",
+                },
+                {
+                    "id": "structure-1",
+                    "title": "Crypto structure",
+                    "source": "bankless",
+                    "path": "/Users/aribs/Knowledge/structure.md",
+                },
+                {
+                    "id": "compute-1",
+                    "title": "AI frontier",
+                    "source": "limitless",
+                    "path": "/Users/aribs/Knowledge/compute.md",
+                },
+            ]
         ),
     )
     yield
 
 
-def test_public_mode_off_widgets_requires_auth(monkeypatch):
+def test_anonymous_reads_no_longer_depend_on_an_env_flag(monkeypatch):
+    """Anonymous GET is the contract, not a mode that can be switched off.
+
+    PUBLIC_READ_ONLY used to decide this. It no longer does — the sanitizers
+    are what protect these payloads, and they run on their own.
+    """
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    assert client.get("/api/v1/widgets").status_code == 401
-    assert client.get("/api/v1/status").status_code == 401
-    # `/` is the public marketing site and is intentionally anonymous; the
-    # operator surface it replaced is gated at /dashboard.
-    assert client.get("/dashboard").status_code == 401
+    for path in ("/api/v1/widgets", "/api/v1/status"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert r.json()["public_view"] is True
 
 
 def test_anonymous_widgets_sanitized(public_mode):
@@ -101,10 +130,12 @@ def test_anonymous_widgets_sanitized(public_mode):
     # Signals: symbol/side/time only — no confidence/venue (strategy internals).
     for sig in data["recent_signals"]:
         assert set(sig) == {"id", "instrument", "side", "timestamp"}
-    # TDR clips: titles only, no file paths.
-    for clip in data["defi_report"]["clips"]:
+    # Research clips: balanced sources and titles only, no file paths.
+    for clip in data["research"]["clips"]:
         assert clip["path"] == ""
-    assert data["defi_report"]["clips"][0]["title"] == "Episode one"
+    assert data["research"]["clips"][0]["title"] == "Cycle evidence"
+    assert data["research"]["policy"]["owner"]["id"] == "ari"
+    assert data["research"]["policy"]["cycle_prior"]["primary_lens"] == "benjamin_cowen"
     # TradingView: no endpoint URL, no log tail.
     assert "endpoint" not in data["tradingview"]
     assert "recent_log" not in data["tradingview"]
@@ -197,9 +228,10 @@ def test_public_rate_limit_tightened(public_mode):
     assert main._api_rate_limit() == "20/minute"
 
 
-def test_rate_limit_normal_when_private(monkeypatch):
+def test_rate_limit_is_unconditional(monkeypatch):
+    """There is no private mode left in which the looser limit would apply."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    assert main._api_rate_limit() == "60/minute"
+    assert main._api_rate_limit() == "20/minute"
 
 
 def test_round_usd():

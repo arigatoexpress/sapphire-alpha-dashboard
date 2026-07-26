@@ -6,7 +6,9 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "gray-matter": "4.0.3",
@@ -16,6 +18,10 @@
     "react-dom": "19.1.1",
     "sanitize-html": "2.17.6"
   },
+  "overrides": {
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.18.1",
@@ -23,6 +29,7 @@
     "@types/react-dom": "19.1.9",
     "@types/sanitize-html": "2.16.1",
     "tailwindcss": "4.3.3",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "4.1.10"
   }
 }

@@ -33,9 +33,7 @@ import re
 import secrets
 import shutil
 import subprocess
-import sys
 import time
-import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,13 +46,43 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 # Semantic limits mirror backend.live_telemetry validators.
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
+# This file is deployed standalone to the Windows box and run there over SSH, so
+# it cannot import telemetry/probes.py. The few measurement helpers it needs are
+# duplicated below rather than adding a second file that must be copied in step
+# with this one — a missing import on that host means no Windows snapshot at all.
+# The rules are the same ones probes.py states: a number is a measurement, None
+# means not measured, an append-only source with an empty window measured zero.
+MEASUREMENT_WINDOW_SECONDS = 300.0
+
 
 def _now() -> float:
     return time.time()
 
 
 def _ts_iso(ts: float | None = None) -> str:
-    return datetime.fromtimestamp(ts or _now(), UTC).isoformat()
+    return datetime.fromtimestamp(_now() if ts is None else ts, UTC).isoformat()
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _nonnegative_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        return None
+    return number
+
+
+def _count_text(value: int | None, noun: str) -> str:
+    if value is None:
+        return f"{noun} count not observed"
+    suffix = "" if value == 1 else "s"
+    return f"{value} {noun}{suffix}"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -96,29 +124,120 @@ def _parse_bot_log_tail(path: Path) -> dict[str, Any]:
     return out
 
 
+def _telegram_handoff_rate_per_min(
+    agent_worker_dir: Path,
+    *,
+    now: float,
+    window_s: float = MEASUREMENT_WINDOW_SECONDS,
+) -> float | None:
+    """Telegram-authored worker tasks created per minute.
+
+    ``desk.enqueue_dev`` writes a durable queue file carrying this marker before
+    the bot may claim that work was dispatched. The worker later moves that same
+    file from ``queue`` to ``done`` without changing its creation mtime, so the
+    two directories together are an append-only view of actual handoffs.
+
+    The previous implementation counted every timestamped ``bot.log`` line.
+    Periodic ``alive`` heartbeats therefore rendered as Telegram -> worker task
+    traffic even when no task crossed that edge.
+    """
+    if window_s <= 0:
+        return None
+    floor = now - window_s
+    observed = 0
+    marker = b"(queued from Telegram by Ari)"
+    for directory in (agent_worker_dir / "queue", agent_worker_dir / "done"):
+        try:
+            entries = list(directory.iterdir())
+        except OSError:
+            # A task may be waiting in queue or may already have moved to done.
+            # Seeing only one side is an incomplete window, not a measured zero.
+            return None
+        for entry in entries:
+            try:
+                modified = entry.stat().st_mtime
+                if not (floor <= modified <= now) or not entry.is_file():
+                    continue
+                size = entry.stat().st_size
+                with entry.open("rb") as handle:
+                    if size > 1024:
+                        handle.seek(size - 1024)
+                    tail = handle.read()
+            except OSError:
+                continue
+            if marker in tail:
+                observed += 1
+    return round(observed / (window_s / 60.0), 3)
+
+
+def _directory_rate_per_min(
+    path: Path,
+    *,
+    now: float,
+    window_s: float = MEASUREMENT_WINDOW_SECONDS,
+) -> float | None:
+    """Files that landed in a drop directory inside the window, per minute."""
+    try:
+        entries = list(path.iterdir())
+    except OSError:
+        return None
+    floor = now - window_s
+    observed = 0
+    for entry in entries:
+        try:
+            modified = entry.stat().st_mtime
+        except OSError:
+            continue
+        if floor <= modified <= now:
+            observed += 1
+    return round(observed / (window_s / 60.0), 3)
+
+
 def _ollama_ps(base: str) -> dict[str, Any]:
-    out: dict[str, Any] = {"ok": False, "models": []}
+    """Query Ollama and time the call.
+
+    `latency_ms` here is the real round trip the agent worker pays on every
+    inference request — same host, same socket, same server — so it is the
+    honest latency for the worker -> inference edge. None when the call failed,
+    because an unreachable server has no latency, it has an outage.
+    """
+    out: dict[str, Any] = {"ok": False, "latency_ms": None}
+    started = time.perf_counter()
     try:
         req = urllib.request.Request(f"{base}/api/ps", headers={"User-Agent": "sapphire-win-telemetry/1"})
         with urllib.request.urlopen(req, timeout=5) as r:
             data = json.loads(r.read().decode("utf-8"))
+        out["latency_ms"] = round((time.perf_counter() - started) * 1000, 3)
         out["ok"] = True
-        out["models"] = data.get("models") or []
-        out["loaded_count"] = len(out["models"])
-        out["vram_bytes"] = sum(int(m.get("size_vram", 0) or 0) for m in out["models"])
+        models = data.get("models")
+        if isinstance(models, list):
+            out["models"] = models
+            out["loaded_count"] = len(models)
+            sizes = [
+                _nonnegative_int(model.get("size_vram"))
+                for model in models
+                if isinstance(model, dict)
+            ]
+            out["vram_bytes"] = (
+                sum(size for size in sizes if size is not None)
+                if len(sizes) == len(models) and all(size is not None for size in sizes)
+                else None
+            )
     except Exception as e:
         out["error"] = str(e)[:80]
     return out
 
 
 def _ollama_tags(base: str) -> dict[str, Any]:
-    out: dict[str, Any] = {"ok": False, "count": 0}
+    out: dict[str, Any] = {"ok": False, "count": None}
     try:
         req = urllib.request.Request(f"{base}/api/tags", headers={"User-Agent": "sapphire-win-telemetry/1"})
         with urllib.request.urlopen(req, timeout=5) as r:
             data = json.loads(r.read().decode("utf-8"))
-        out["ok"] = True
-        out["count"] = len(data.get("models") or [])
+        models = data.get("models")
+        if isinstance(models, list):
+            out["ok"] = True
+            out["count"] = len(models)
     except Exception as e:
         out["error"] = str(e)[:80]
     return out
@@ -172,24 +291,6 @@ def _pause_present(home: Path) -> bool:
     return (home / ".sapphire" / "autonomous_trading_pause").exists()
 
 
-def _freshness_band(age_s: float) -> str:
-    if age_s <= 60:
-        return "current"
-    if age_s <= 300:
-        return "delayed"
-    if age_s <= 900:
-        return "stale"
-    return "offline"
-
-
-def _health_from_age(age_s: float) -> str:
-    if age_s <= 300:
-        return "healthy"
-    if age_s <= 900:
-        return "degraded"
-    return "down"
-
-
 def _agent_id(label: str, index: int) -> str:
     slug = "".join(char if char.isalnum() else "-" for char in label.lower()).strip("-")
     slug = "-".join(filter(None, slug.split("-")))[:32]
@@ -217,7 +318,7 @@ def build_snapshot(
     now: float | None = None,
 ) -> dict[str, Any]:
     """Build a schema-v1 telemetry snapshot from Windows-local sources."""
-    now = now or _now()
+    now = _now() if now is None else now
     observed_at = _ts_iso(now)
 
     agent_worker_dir = agent_worker_dir or home / "agent-worker"
@@ -246,7 +347,12 @@ def build_snapshot(
     hb_state = str(hb.get("state") or "unknown").lower()
 
     # Bot freshness
-    bot_age_s = max(0.0, now - bot.get("ts", 0)) if bot.get("seen") else 86_400.0
+    bot_timestamp = _nonnegative_number(bot.get("ts"))
+    bot_age_s = (
+        max(0.0, now - bot_timestamp)
+        if bot.get("seen") and bot_timestamp is not None
+        else 86_400.0
+    )
 
     # Ollama freshness
     ollama_age_s = 0.0 if ps["ok"] else 86_400.0
@@ -289,16 +395,26 @@ def build_snapshot(
     # Knowledge archive health (driven by worker metrics)
     archive_status = worker_status
 
-    # Load / activity bands
-    loaded_models = ps.get("loaded_count", 0)
-    pending = bot.get("pending", 0)
-    tasks_total = int(metrics.get("tasks", 0) or 0)
-    pass_count = int(metrics.get("pass", 0) or 0)
-    fail_count = int(metrics.get("fail", 0) or 0)
+    # Counts remain unknown when their source did not supply them. The previous
+    # implementation coerced all missing values to zero, then multiplied them
+    # into plausible-looking activity rates and load levels.
+    loaded_models = _nonnegative_int(ps.get("loaded_count"))
+    available_models = _nonnegative_int(tags.get("count"))
+    pending = _nonnegative_int(bot.get("pending"))
+    tasks_total = _nonnegative_int(metrics.get("tasks"))
+    pass_count = _nonnegative_int(metrics.get("pass"))
+    fail_count = _nonnegative_int(metrics.get("fail"))
+    gpu_util_pct = _nonnegative_number(gpu.get("gpu_util_pct"))
+    mem_util_pct = _nonnegative_number(gpu.get("mem_util_pct"))
+    temp_c = _nonnegative_number(gpu.get("temp_c"))
 
-    worker_activity = float(loaded_models * 8.0 + (1.0 if hb_state == "working" else 0.0))
-    bot_activity = float(pending * 4.0 + (1.0 if bot_state == "working" else 0.0))
-    gpu_activity = float(gpu.get("gpu_util_pct", 0) * 1.5 + loaded_models * 8.0)
+    # Link measurements. Every value below was observed; every None means the
+    # path has no observable on this host, and none of them are filled in with a
+    # stand-in. The old link block published `pending * 4`, `loaded_models * 8`,
+    # `gpu_util * 1.5` and a cumulative task counter as events per minute.
+    bot_message_rate = _telegram_handoff_rate_per_min(agent_worker_dir, now=now)
+    archive_completion_rate = _directory_rate_per_min(agent_worker_dir / "done", now=now)
+    inference_latency_ms = ps.get("latency_ms")
 
     nodes = [
         {
@@ -306,8 +422,8 @@ def build_snapshot(
             "zone": "compute",
             "label": "Windows workhorse",
             "status": workhorse_status,
-            "load_band": "high" if gpu_activity >= 60 else "medium" if gpu_activity >= 10 else "idle",
-            "activity_rate": round(min(gpu_activity, 120.0), 3),
+            "load_band": "high" if gpu_util_pct is not None and gpu_util_pct >= 80 else "medium" if gpu_util_pct is not None and gpu_util_pct > 0 else "idle",
+            "activity_rate": None,
             "freshness_s": round(min(ollama_age_s, 86_400.0), 3),
         },
         {
@@ -315,8 +431,8 @@ def build_snapshot(
             "zone": "intelligence",
             "label": "Agent worker",
             "status": worker_status,
-            "load_band": "high" if worker_activity >= 60 else "medium" if worker_activity >= 10 else "idle",
-            "activity_rate": round(min(worker_activity, 120.0), 3),
+            "load_band": "medium" if worker_state == "working" else "idle",
+            "activity_rate": bot_message_rate,
             "freshness_s": round(min(hb_age_s, 86_400.0), 3),
         },
         {
@@ -324,8 +440,8 @@ def build_snapshot(
             "zone": "edge",
             "label": "Telegram command bot",
             "status": bot_status,
-            "load_band": "high" if bot_activity >= 60 else "medium" if bot_activity >= 10 else "idle",
-            "activity_rate": round(min(bot_activity, 120.0), 3),
+            "load_band": "medium" if bot_state == "working" or (pending is not None and pending > 0) else "idle",
+            "activity_rate": bot_message_rate,
             "freshness_s": round(min(bot_age_s, 86_400.0), 3),
         },
         {
@@ -333,8 +449,8 @@ def build_snapshot(
             "zone": "compute",
             "label": "Ollama inference",
             "status": ollama_status,
-            "load_band": "high" if loaded_models >= 3 else "medium" if loaded_models >= 1 else "idle",
-            "activity_rate": float(loaded_models * 8.0),
+            "load_band": "high" if loaded_models is not None and loaded_models >= 3 else "medium" if loaded_models is not None and loaded_models >= 1 else "idle",
+            "activity_rate": None,
             "freshness_s": round(min(ollama_age_s, 86_400.0), 3),
         },
         {
@@ -342,24 +458,38 @@ def build_snapshot(
             "zone": "archive",
             "label": "Knowledge archive",
             "status": archive_status,
-            "load_band": "medium" if tasks_total else "idle",
-            "activity_rate": float(min(tasks_total * 2.0, 120.0)),
+            "load_band": "medium" if archive_completion_rate is not None and archive_completion_rate > 0 else "idle",
+            "activity_rate": archive_completion_rate,
             "freshness_s": round(min(hb_age_s, 86_400.0), 3),
         },
     ]
 
     links = [
-        {"source": "telegram-bot", "target": "agent-worker", "status": worker_status, "latency_ms": None, "event_rate": bot_activity, "signal_class": "agent"},
-        {"source": "agent-worker", "target": "ollama-inference", "status": ollama_status, "latency_ms": None, "event_rate": worker_activity, "signal_class": "agent"},
-        {"source": "ollama-inference", "target": "win-workhorse", "status": workhorse_status, "latency_ms": None, "event_rate": gpu_activity, "signal_class": "network"},
-        {"source": "agent-worker", "target": "knowledge-archive", "status": archive_status, "latency_ms": None, "event_rate": float(tasks_total), "signal_class": "archive"},
+        # Durable Telegram-authored queue files per minute. The queue handoff has
+        # no paired timestamps to difference, so there is no latency here.
+        {"source": "telegram-bot", "target": "agent-worker", "status": worker_status, "latency_ms": None, "event_rate": bot_message_rate, "signal_class": "agent"},
+        # Measured round trip to the inference server. Ollama's request log is
+        # empty on this host, so its request rate is genuinely unobservable.
+        {"source": "agent-worker", "target": "ollama-inference", "status": ollama_status, "latency_ms": inference_latency_ms, "event_rate": None, "signal_class": "agent"},
+        # Nothing observable either way: the GPU exposes utilisation and memory,
+        # neither of which is a latency or a rate. Utilisation reaches the site
+        # through the win-workhorse node, where it belongs.
+        {"source": "ollama-inference", "target": "win-workhorse", "status": workhorse_status, "latency_ms": None, "event_rate": None, "signal_class": "network"},
+        # Completed task files landing in the worker's done directory, per minute.
+        {"source": "agent-worker", "target": "knowledge-archive", "status": archive_status, "latency_ms": None, "event_rate": archive_completion_rate, "signal_class": "archive"},
     ]
 
     agents = [
         _agent(
             role="Agent worker",
             state=worker_state,
-            activity=f"Release {hb.get('release', 'unknown')} | tasks={tasks_total} pass={pass_count} fail={fail_count}",
+            activity=" | ".join(
+                (
+                    _count_text(tasks_total, "task"),
+                    _count_text(pass_count, "passing check"),
+                    _count_text(fail_count, "failing check"),
+                )
+            ),
             verification="verified" if worker_status == "healthy" else "pending" if worker_status == "degraded" else "failed",
             provider="local GPU" if "gpu" in str(hb.get("model", "")).lower() else "local CPU",
             updated_at=_ts_iso(now - hb_age_s),
@@ -368,7 +498,7 @@ def build_snapshot(
         _agent(
             role="Telegram command bot",
             state=bot_state,
-            activity=f"Pending commands: {pending} | armed={bot.get('armed', 'unknown')}",
+            activity=_count_text(pending, "pending command"),
             verification="verified" if bot_status == "healthy" else "pending" if bot_status == "degraded" else "failed",
             provider="local CPU",
             updated_at=_ts_iso(now - bot_age_s) if bot.get("seen") else observed_at,
@@ -377,7 +507,7 @@ def build_snapshot(
         _agent(
             role="Ollama inference host",
             state="working" if ps["ok"] else "offline",
-            activity=f"{loaded_models} loaded models | {tags.get('count', 0)} available | VRAM {round(ps.get('vram_bytes', 0) / 1e9, 1)} GB",
+            activity=f"{_count_text(loaded_models, 'loaded model')} | {_count_text(available_models, 'available model')}",
             verification="verified" if ps["ok"] else "failed",
             provider="local GPU",
             updated_at=observed_at,
@@ -386,7 +516,19 @@ def build_snapshot(
         _agent(
             role="GPU workhorse",
             state="working" if gpu_healthy else "offline",
-            activity=f"{gpu.get('name', 'GPU')} util {gpu.get('gpu_util_pct', 'unknown')}% | mem {gpu.get('mem_util_pct', 'unknown')}% | temp {gpu.get('temp_c', 'unknown')}C",
+            activity=" | ".join(
+                (
+                    "GPU utilization not observed"
+                    if gpu_util_pct is None
+                    else f"GPU utilization {gpu_util_pct:g}%",
+                    "memory utilization not observed"
+                    if mem_util_pct is None
+                    else f"memory utilization {mem_util_pct:g}%",
+                    "temperature not observed"
+                    if temp_c is None
+                    else f"temperature {temp_c:g}C",
+                )
+            ),
             verification="verified" if gpu_healthy else "failed",
             provider="local GPU",
             updated_at=observed_at,
@@ -412,7 +554,11 @@ def build_snapshot(
             "event_class": "agent",
             "source": "compute",
             "target": "compute",
-            "label": f"Ollama serving {loaded_models} model(s)",
+            "label": (
+                "Ollama model count not observed"
+                if loaded_models is None
+                else f"Ollama serving {loaded_models} model(s)"
+            ),
             "status": "verified",
         })
     if worker_status != "down":
@@ -422,7 +568,7 @@ def build_snapshot(
             "event_class": "agent",
             "source": "intelligence",
             "target": "archive",
-            "label": f"Agent worker {hb_state} | {tasks_total} tasks tracked",
+            "label": f"Agent worker {hb_state}",
             "status": "verified" if worker_status == "healthy" else "degraded",
         })
     if gpu_healthy:
@@ -432,7 +578,7 @@ def build_snapshot(
             "event_class": "agent",
             "source": "compute",
             "target": "compute",
-            "label": f"GPU {gpu.get('name', 'device')} observed",
+            "label": "GPU state observed",
             "status": "verified",
         })
     if pause_on:
@@ -446,7 +592,7 @@ def build_snapshot(
             "status": "verified",
         })
 
-    attention = sum(1 for node in nodes if node["status"] != "healthy")
+    degraded = any(node["status"] in {"degraded", "down"} for node in nodes)
     active_agents = sum(1 for agent in agents if agent["state"] in {"working", "verifying"})
 
     return {
@@ -454,11 +600,11 @@ def build_snapshot(
         "observed_at": observed_at,
         "sequence": time.time_ns(),
         "summary": {
-            "state": "degraded" if attention else "observing",
+            "state": "degraded" if degraded else "observing",
             "active_agents": active_agents,
-            "events_per_min": round(float(loaded_models * 4.0 + pending * 2.0 + (1.0 if worker_state == "working" else 0.0)), 3),
-            "verified_today": sum(1 for agent in agents if agent["verification"] == "verified"),
-            "attention": attention,
+            "events_per_min": None,
+            "verified_today": None,
+            "attention": None,
         },
         "nodes": nodes,
         "links": links,
@@ -466,9 +612,9 @@ def build_snapshot(
         "markets": {
             "network": "Windows workhorse",
             "status": "offline",
-            "feed_age_s": round(min(hb_age_s, 86_400.0), 3),
-            "events_per_min": 0.0,
-            "paper_strategies": 0,
+            "feed_age_s": None,
+            "events_per_min": None,
+            "paper_strategies": None,
             "decision_gate": "off",
             "execution": "off",
         },
@@ -491,12 +637,25 @@ def signed_headers(body: bytes, secret: str, *, timestamp: int | None = None, no
     }
 
 
-def push(snapshot: dict[str, Any], *, endpoint: str, secret: str, timeout: float = 15.0) -> dict[str, Any]:
+def _post(snapshot: dict[str, Any], *, endpoint: str, secret: str, timeout: float) -> dict[str, Any]:
     body = json.dumps(snapshot, separators=(",", ":"), allow_nan=False).encode()
     request = urllib.request.Request(endpoint, data=body, headers=signed_headers(body, secret), method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         result = json.loads(response.read())
     return result if isinstance(result, dict) else {}
+
+
+def push(
+    snapshot: dict[str, Any],
+    *,
+    endpoint: str,
+    secret: str,
+    timeout: float = 15.0,
+    transport: Any = None,
+) -> dict[str, Any]:
+    """Publish one honest payload; never retry unknown measurements as zero."""
+    transport = transport or _post
+    return transport(snapshot, endpoint=endpoint, secret=secret, timeout=timeout)
 
 
 def main() -> int:

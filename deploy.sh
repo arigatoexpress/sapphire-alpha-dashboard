@@ -16,7 +16,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --allow-unauthenticated \
   --service-account="sapphire-dashboard-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --update-env-vars "AUTH_USERNAME=${AUTH_USERNAME:-sapphire}" \
-  --update-env-vars "PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=15,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1" \
+  --update-env-vars "PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=0,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1" \
   --set-secrets "AUTH_PASSWORD=SAPPHIRE_AUTH_PASSWORD:latest,TELEMETRY_INGEST_SECRET=SAPPHIRE_TELEMETRY_INGEST_SECRET:latest"
 
 echo

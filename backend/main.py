@@ -10,24 +10,27 @@ Authenticated endpoints (HTTP Basic Auth):
   GET /api/v1/widgets
   GET /api/v1/transparency
 
-Public read-only mode (PUBLIC_READ_ONLY=1):
-  Anonymous GETs to the frontend, /assets/*, /api/v1/status, /api/v1/widgets and
-  /api/v1/tradingview/alerts are allowed but served a whitelist-sanitized payload
-  (no internal URLs/hostnames, no proposal bodies, no exact capital figures, no
-  limits/caps, no file paths). Authenticated users always get the full payload.
-  /vault/rag-map ALWAYS requires auth regardless of PUBLIC_READ_ONLY.
+Anonymous read access:
+  Every GET is anonymous. /api/v1/live is served un-redacted — the real
+  latencies, event rates and freshness, identical to what an operator sees.
+  The remaining sanitizers are narrow and deliberate, not a general tier:
+  /api/v1/status, /api/v1/widgets, /api/v1/fleet and /api/v1/tradingview/alerts
+  still drop internal URLs/hostnames, proposal bodies, exact capital figures,
+  limits/caps and file paths for anonymous callers, and /api/v1/moss keeps
+  capital in bands (Ari, 2026-07-25). Authenticated users get the full payload.
+
+  Reads being public does not make writes public: methods other than GET/HEAD require auth,
+  signed ingest keeps its HMAC, and /vault/rag-map always requires auth.
 """
 
 from __future__ import annotations
 
-import base64
 import html
 import json
 import logging
 import os
 import re
 import secrets
-import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -43,10 +46,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 try:
-    from . import telegram_miniapp, transparency
+    from . import public_vault_map, telegram_miniapp, transparency
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
+    import public_vault_map
     import telegram_miniapp
     import transparency
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
@@ -70,14 +74,14 @@ security_optional = HTTPBasic(auto_error=False)
 PUBLIC_USER = "public"
 
 
-def _public_read_only() -> bool:
-    """Whether anonymous read-only access is enabled (checked per request)."""
-    return _safe_bool(_env("PUBLIC_READ_ONLY", ""))
-
-
 def _api_rate_limit() -> str:
-    """Tighter limiter on API routes while the dashboard is publicly readable."""
-    return "20/minute" if _public_read_only() else "60/minute"
+    """Rate limit for API routes.
+
+    Anonymous reads are unconditional now, so the tighter of the two former
+    limits is the only one that applies; there is no operator-only mode left in
+    which the looser 60/minute would have been correct.
+    """
+    return "20/minute"
 
 
 @app.middleware("http")
@@ -113,6 +117,7 @@ async def _security_headers(request: Request, call_next: Any) -> Response:
 
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+_KNOWLEDGE_ROOT = Path(_env("KNOWLEDGE_ROOT", str(Path.home() / "Knowledge")))
 
 # Statically exported Next.js marketing site (`web/`). Served from this same
 # container so the public site, the operator dashboard, and the API share one
@@ -209,7 +214,6 @@ _IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 _HOME = Path.home()
 _RH_CHAIN_DIR = _HOME / "ops-state" / "rh-chain"
 _TELEGRAM_DIR = _HOME / "ops-state" / "telegram-bot"
-_KNOWLEDGE_CLIPS_DIR = _HOME / "Knowledge" / "3-Resources" / "Clippings"
 
 
 def _mask_address(addr: str | None) -> str | None:
@@ -275,14 +279,20 @@ def auth_or_public(
     request: Request,
     credentials: HTTPBasicCredentials | None = Depends(security_optional),
 ) -> str:
-    """Allow anonymous GETs when PUBLIC_READ_ONLY is enabled; otherwise require auth.
+    """Anonymous GET/HEAD reads are allowed; every mutating method requires auth.
 
-    Presented credentials are always validated (bad creds never fall back to the
-    anonymous path). Non-GET methods always require auth.
+    Reads are public because the system is meant to be watched — that is the
+    whole point of the machine room. Writes are a different question and the
+    answer did not change: un-redacting reads must not un-protect writes, so
+    mutating methods still require credentials, and signed ingest keeps its HMAC
+    regardless of this dependency.
+
+    Presented credentials are always validated, so bad credentials never fall
+    back to the anonymous path.
     """
     if credentials is not None:
         return require_auth(credentials)
-    if _public_read_only() and request.method == "GET":
+    if request.method in {"GET", "HEAD"}:
         return PUBLIC_USER
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -353,13 +363,8 @@ async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
 @app.get("/api/v1/live")
 @limiter.limit(_api_rate_limit)
 async def api_live(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
-    """Serve the current operator snapshot or delayed public projection."""
-    public = user == PUBLIC_USER
-    try:
-        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "15"))))
-    except ValueError:
-        delay_seconds = 15.0
-    return live_telemetry_store.get(public=public, delay_seconds=delay_seconds)
+    """Serve the current snapshot — the same one, undelayed, to every reader."""
+    return live_telemetry_store.get(public=user == PUBLIC_USER)
 
 
 @app.post("/api/v1/moss/telemetry", status_code=status.HTTP_202_ACCEPTED)
@@ -396,12 +401,18 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
 @app.get("/api/v1/moss")
 @limiter.limit(_api_rate_limit)
 async def api_moss(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
-    """Serve exact operator detail or a banded anonymous MOSS projection."""
+    """Serve exact operator detail or a banded anonymous MOSS projection.
+
+    Capital is the one thing that stays redacted (Ari, 2026-07-25) — but it is
+    redacted by *banding*, not by delay. The delay knob survives here only for
+    MOSS; it now defaults to 0 so the code agrees with the deployed config
+    instead of relying on an env var to switch off a behaviour nobody wants.
+    """
     public = user == PUBLIC_USER
     try:
-        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "15"))))
+        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "0"))))
     except ValueError:
-        delay_seconds = 15.0
+        delay_seconds = 0.0
     return moss_telemetry_store.get(public=public, delay_seconds=delay_seconds)
 
 
@@ -676,122 +687,140 @@ def _recent_signals() -> list[dict[str, Any]]:
     return []
 
 
-def _parse_tdr_rss(xml_text: str) -> list[dict[str, Any]]:
-    """Minimal parser for The DeFi Report podcast RSS feed."""
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
-    channel = root.find("channel")
-    if channel is None:
-        return []
+_RESEARCH_POLICY: dict[str, Any] = {
+    "owner": {
+        "id": "ari",
+        "label": "Ari's investment thesis",
+        "role": "mandate",
+    },
+    "cycle_prior": {
+        "as_of": "2026-07-25",
+        "posture": "late_cycle_capital_preservation",
+        "primary_lens": "benjamin_cowen",
+    },
+    "rules": {
+        "analysts_are_advisory_only": True,
+        "single_analyst_evidence_cap": 0.25,
+        "minimum_independent_primary_sources": 2,
+        "analyst_can_set_conviction": False,
+        "analyst_can_authorize_execution": False,
+    },
+    "lenses": {
+        "benjamin_cowen": {
+            "label": "Benjamin Cowen",
+            "domain": "cycle and risk",
+            "scope": "primary_cycle_lens",
+        },
+        "arthur_hayes": {
+            "label": "Arthur Hayes",
+            "domain": "macro liquidity",
+            "scope": "scenario_and_countercase",
+        },
+        "bankless": {
+            "label": "Bankless",
+            "domain": "crypto market structure",
+            "scope": "structural_theme_discovery",
+        },
+        "limitless": {
+            "label": "Limitless",
+            "domain": "AI and frontier technology",
+            "scope": "technology_theme_discovery",
+        },
+        "michael_nadeau": {
+            "label": "Michael Nadeau",
+            "domain": "fundamentals and value accrual",
+            "scope": "fundamentals_only",
+        },
+    },
+}
 
-    def _local_name(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1].lower()
-
-    def _first_text(element: ET.Element, *names: str) -> str:
-        wanted = {name.lower() for name in names}
-        for child in element:
-            if _local_name(child.tag) in wanted:
-                return "".join(child.itertext()).strip()
-        return ""
-
-    def _strip_html(value: str) -> str:
-        text = str(value or "")
-        text = re.sub(r"<[^>]+>", " ", text)
-        text = html.unescape(text)
-        return re.sub(r"\s+", " ", text).strip()
-
-    clips: list[dict[str, Any]] = []
-    for item in channel.findall("item"):
-        title = _strip_html(_first_text(item, "title"))
-        guid = _first_text(item, "guid") or _first_text(item, "link")
-        link = _first_text(item, "link")
-        if not guid:
-            continue
-        slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:80] or "tdr-episode"
-        clips.append({"id": slug, "title": title or "Untitled TDR episode", "source": "tdr_pro", "path": link or ""})
-    return clips
+_MAX_RESEARCH_CLIPS = 10
+_MAX_CLIPS_PER_SOURCE = 2
 
 
-async def _fetch_tdr_rss() -> list[dict[str, Any]]:
-    """Fetch the public TDR Pro RSS feed directly from Cloud Run."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            r = await client.get("https://feeds.transistor.fm/the-defi-report")
-        if r.status_code == 200:
-            return _parse_tdr_rss(r.text)[:8]
-        log.warning("TDR Pro RSS returned HTTP %s", r.status_code)
-    except Exception as exc:
-        log.warning("failed to fetch TDR Pro RSS: %s", exc)
-    return []
+def _clean_research_text(value: Any, *, fallback: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = re.sub(r"\s+", " ", html.unescape(text)).strip()
+    return text[:240] or fallback
 
 
-async def _defi_report_feed() -> dict[str, Any]:
-    """DeFi Report clip feed — aggregate only, no subscriber PII.
+def _research_feed() -> dict[str, Any]:
+    """Return an explicit, balanced research feed with no fabricated fallback.
 
-    Local clippings take precedence. When running on Cloud Run without access to
-    the Mac filesystem, pass ``DASHBOARD_TDR_CLIPS_JSON`` as a JSON array of
-    clip objects, or ``DASHBOARD_TDR_JSON`` pointing to a local JSON summary file.
-    The env value may be base64-encoded to survive shell/gcloud substitution parsing.
-
-    As a last resort, the backend can fetch the public RSS feed directly when
-    ``TDR_PRO_LIVE=1``.
+    Producers provide reviewed clips through ``DASHBOARD_RESEARCH_CLIPS_JSON``.
+    Unknown sources are rejected and no source may occupy more than two slots.
+    The clips remain advisory: the policy shipped beside them makes clear that
+    Ari's checked-in thesis owns conviction and a separate gate owns execution.
     """
-    clips: list[dict[str, Any]] = []
 
-    env_clips = _env("DASHBOARD_TDR_CLIPS_JSON", "").strip()
-    if env_clips:
-        raw = env_clips
-        try:
-            raw = base64.b64decode(raw).decode("utf-8")
-        except Exception:
-            pass
+    raw = _env("DASHBOARD_RESEARCH_CLIPS_JSON", "").strip()
+    parsed: Any = []
+    if raw:
         try:
             parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                clips = parsed[:8]
         except json.JSONDecodeError:
-            log.warning("DASHBOARD_TDR_CLIPS_JSON is not valid JSON")
+            log.warning("DASHBOARD_RESEARCH_CLIPS_JSON is not valid JSON")
 
-    if not clips:
-        env_summary = _env("DASHBOARD_TDR_JSON", "").strip()
-        if env_summary:
-            try:
-                path = Path(env_summary)
-                if path.exists():
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                    for ep in data.get("episodes", [])[:8]:
-                        clips.append(
-                            {
-                                "id": ep.get("slug", "tdr-000"),
-                                "title": ep.get("title", "TDR Pro episode"),
-                                "source": "tdr_pro",
-                                "path": "",
-                            }
-                        )
-            except (json.JSONDecodeError, OSError) as exc:
-                log.warning("failed to read DASHBOARD_TDR_JSON: %s", exc)
+    clips: list[dict[str, Any]] = []
+    source_counts: dict[str, int] = {}
+    if isinstance(parsed, list):
+        for index, item in enumerate(parsed):
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "").strip()
+            if source not in _RESEARCH_POLICY["lenses"]:
+                continue
+            if source_counts.get(source, 0) >= _MAX_CLIPS_PER_SOURCE:
+                continue
+            title = _clean_research_text(item.get("title"), fallback="Untitled research note")
+            raw_id = str(item.get("id") or title).lower()
+            clip_id = re.sub(r"[^a-z0-9]+", "-", raw_id).strip("-")[:80]
+            clips.append(
+                {
+                    "id": clip_id or f"research-{index + 1:03d}",
+                    "title": title,
+                    "source": source,
+                    "path": str(item.get("path") or ""),
+                    "observed_at": str(item.get("observed_at") or ""),
+                }
+            )
+            source_counts[source] = source_counts.get(source, 0) + 1
+            if len(clips) >= _MAX_RESEARCH_CLIPS:
+                break
 
-    if not clips:
-        clips_dir = _KNOWLEDGE_CLIPS_DIR
-        if clips_dir.exists():
-            for p in sorted(clips_dir.glob("*.md"), reverse=True)[:8]:
-                lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
-                title = next(
-                    (l.lstrip("# ").strip() for l in lines if l.strip().startswith("# ")), p.stem
-                )
-                clips.append({"id": p.stem, "title": title, "source": "tdr_pro", "path": str(p)})
+    # A fixed item limit is not an evidence-share cap: two clips from one
+    # analyst would still dominate a three-item feed. Trim the newest clip from
+    # any overrepresented source until every remaining source is at or below
+    # the policy share. With analyst clips alone this conservatively requires
+    # at least four independent voices.
+    cap = float(_RESEARCH_POLICY["rules"]["single_analyst_evidence_cap"])
+    while clips:
+        final_counts = {
+            source: sum(1 for clip in clips if clip["source"] == source)
+            for source in {clip["source"] for clip in clips}
+        }
+        overrepresented = {
+            source for source, count in final_counts.items() if count / len(clips) > cap
+        }
+        if not overrepresented:
+            break
+        drop_index = next(
+            index
+            for index in range(len(clips) - 1, -1, -1)
+            if clips[index]["source"] in overrepresented
+        )
+        clips.pop(drop_index)
 
-    live = _safe_bool(_env("TDR_PRO_LIVE", "0"))
-    if live and not clips:
-        clips = await _fetch_tdr_rss()
-
-    if not clips:
-        clips = [
-            {"id": "tdr-001", "title": "DeFi Report — weekly rollup", "source": "tdr_pro", "path": ""},
-        ]
-    return {"clips": clips, "source": "tdr_pro", "live": live or bool(clips and clips[0]["id"] != "tdr-001")}
+    source_counts = {
+        source: sum(1 for clip in clips if clip["source"] == source)
+        for source in {clip["source"] for clip in clips}
+    }
+    return {
+        "clips": clips,
+        "sources_observed": sorted(source_counts),
+        "live": bool(clips),
+        "policy": _RESEARCH_POLICY,
+    }
 
 
 # Lightweight cache so a 30s dashboard poll does not hammer the Windows webhook.
@@ -968,14 +997,21 @@ def _public_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _public_defi_report(feed: dict[str, Any]) -> dict[str, Any]:
+def _public_research(feed: dict[str, Any]) -> dict[str, Any]:
     return {
         "clips": [
-            {"id": c.get("id", ""), "title": c.get("title", ""), "source": c.get("source", ""), "path": ""}
+            {
+                "id": c.get("id", ""),
+                "title": c.get("title", ""),
+                "source": c.get("source", ""),
+                "path": "",
+                "observed_at": c.get("observed_at", ""),
+            }
             for c in feed.get("clips", [])
         ],
-        "source": feed.get("source", ""),
+        "sources_observed": list(feed.get("sources_observed", [])),
         "live": bool(feed.get("live", False)),
+        "policy": feed.get("policy", _RESEARCH_POLICY),
     }
 
 
@@ -1040,7 +1076,7 @@ async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> 
         "wallet": _wallet_status(),
         "telegram_queue": _telegram_queue(),
         "recent_signals": _recent_signals(),
-        "defi_report": await _defi_report_feed(),
+        "research": _research_feed(),
         "tradingview": await _tradingview_status(),
         "business_health": await _business_health(),
         "system_health": await _system_health(),
@@ -1053,7 +1089,7 @@ async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> 
             "wallet": _public_wallet(full["wallet"]),
             "telegram_queue": _public_telegram(full["telegram_queue"]),
             "recent_signals": _public_signals(full["recent_signals"]),
-            "defi_report": _public_defi_report(full["defi_report"]),
+            "research": _public_research(full["research"]),
             "tradingview": _public_tradingview(full["tradingview"]),
             "business_health": _public_business_health(full["business_health"]),
             "system_health": _public_system_health(full["system_health"]),
@@ -1111,7 +1147,7 @@ _EMPTY_FLEET = {
     "generated_at": None,
     "leases": [],
     "gates": [],
-    "counts": {"leases": 0, "gates_open": 0},
+    "counts": {"leases": None, "gates_open": None},
 }
 
 
@@ -1130,6 +1166,9 @@ def _no_paths(value: Any) -> str:
 def _whitelist_fleet(raw: Any) -> dict[str, Any]:
     """Reduce an untrusted fleet.json to the exact serving shape."""
     if not isinstance(raw, dict):
+        return dict(_EMPTY_FLEET)
+    generated_at = raw.get("generated_at")
+    if not isinstance(generated_at, str) or _fleet_age_seconds(generated_at) is None:
         return dict(_EMPTY_FLEET)
     leases = [
         {
@@ -1151,9 +1190,8 @@ def _whitelist_fleet(raw: Any) -> dict[str, Any]:
         for gate in raw.get("gates", [])
         if isinstance(gate, dict)
     ]
-    generated_at = raw.get("generated_at")
     return {
-        "generated_at": str(generated_at) if isinstance(generated_at, str) else None,
+        "generated_at": generated_at,
         "leases": leases,
         "gates": gates,
         "counts": {"leases": len(leases), "gates_open": len(gates)},
@@ -1186,6 +1224,15 @@ async def api_fleet(request: Request, user: str = Depends(auth_or_public)) -> di
             "snapshot_age_s": age_s,
         }
     return dict(snapshot, snapshot_age_s=age_s)
+
+
+@app.get("/api/v1/vault-map")
+@limiter.limit(_api_rate_limit)
+async def api_public_vault_map(
+    request: Request, _user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
+    """Fixed public topic graph with aggregate counts and no vault-derived text."""
+    return public_vault_map.generate(_KNOWLEDGE_ROOT)
 
 
 @app.get("/vault/rag-map", response_class=FileResponse)
@@ -1295,6 +1342,12 @@ async def web_next_assets(path: str, request: Request) -> Response:
     return _static_file_response(resolved, _IMMUTABLE_CACHE)
 
 
+@app.head("/_next/{path:path}", response_class=FileResponse)
+@limiter.limit("240/minute")
+async def web_next_assets_head(path: str, request: Request) -> Response:
+    return await web_next_assets(path, request)
+
+
 def _dashboard_index() -> Response:
     """Serve the operator SPA shell.
 
@@ -1319,10 +1372,24 @@ async def dashboard_spa(path: str, request: Request, user: str = Depends(auth_or
     return _dashboard_index()
 
 
-@app.get("/{catchall:path}", response_class=FileResponse)
+@app.head("/dashboard", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def frontend_root(catchall: str, request: Request) -> Response:
-    """Serve the public marketing site.
+async def dashboard_root_head(
+    request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return _dashboard_index()
+
+
+@app.head("/dashboard/{path:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def dashboard_spa_head(
+    path: str, request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return _dashboard_index()
+
+
+def _marketing_response(catchall: str) -> Response:
+    """Resolve one statically exported marketing path.
 
     Anonymous by design: this is the front door, and gating it behind Basic auth
     would make the site unreachable whenever PUBLIC_READ_ONLY is off. It serves
@@ -1348,6 +1415,19 @@ async def frontend_root(catchall: str, request: Request) -> Response:
             headers={"Cache-Control": _MARKETING_CACHE},
         )
     raise HTTPException(status_code=404, detail="not found")
+
+
+@app.get("/{catchall:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def frontend_root(catchall: str, request: Request) -> Response:
+    return _marketing_response(catchall)
+
+
+@app.head("/{catchall:path}", response_class=FileResponse)
+@limiter.limit("60/minute")
+async def frontend_head(catchall: str, request: Request) -> Response:
+    """Let static-export prefetchers and crawlers verify pages without 405s."""
+    return _marketing_response(catchall)
 
 
 @app.exception_handler(Exception)

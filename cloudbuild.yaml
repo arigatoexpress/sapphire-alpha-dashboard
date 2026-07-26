@@ -27,7 +27,7 @@ steps:
       - '--service-account'
       - 'sapphire-dashboard-sa@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars'
-      - 'AUTH_USERNAME=sapphire,PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=15,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1'
+      - 'AUTH_USERNAME=sapphire,PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=0,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1'
       # Do NOT --set-secrets AUTH_PASSWORD here: live service already has it as a
       # plain env var (type mismatch fails deploy). Rotate to Secret Manager only
       # via a deliberate one-shot ops step, then re-enable --set-secrets.

@@ -9,18 +9,20 @@ export type Tone = 'verified' | 'degraded' | 'failed' | 'neutral' | 'sapphire'
 /**
  * Map a telemetry status string onto the palette.
  *
- * The house rule that green means verified is enforced here: only genuinely
- * healthy/confirmed states resolve to `verified`, and anything unrecognised
- * falls through to neutral rather than optimistically reading as green.
+ * The house rule that green means verified is enforced here: ordinary runtime
+ * health and activity resolve to sapphire, while only an explicit verification
+ * resolves to `verified`. Anything unrecognised falls through to neutral rather
+ * than optimistically reading as green.
  */
 export function toneFor(status: string | null | undefined): Tone {
   switch ((status ?? '').toLowerCase()) {
     case 'live':
     case 'healthy':
-    case 'verified':
     case 'ok':
     case 'recovered':
     case 'working':
+      return 'sapphire'
+    case 'verified':
       return 'verified'
     case 'warming':
     case 'stale':

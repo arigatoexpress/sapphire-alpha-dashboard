@@ -11,8 +11,8 @@ body {
   font-feature-settings: 'cv05' 1, 'ss01' 1;
 }
 
-/* Measured flow along a live link. Duration is set inline from the observed
-   event rate, so speed is data rather than decoration. */
+/* Exact flow along a live link. Duration is set inline from the numeric rate
+   supplied by the report, so speed is data rather than decoration. */
 @keyframes flow {
   to {
     stroke-dashoffset: -48;
@@ -26,6 +26,225 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .flow {
     animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   THE MACHINE ROOM
+
+   The live architecture on the landing page. Two layers that must agree at
+   every width: node cards on a CSS grid, and an SVG of the connections between
+   them. They agree because the SVG is not laid out at all — the component
+   measures where the browser actually put each card and draws to those points.
+   So the same code is correct on a 320px phone (one column, vertical spine),
+   a tablet (two or three columns) and a wide screen (the five-column lanes the
+   real graph has), with no per-breakpoint geometry to keep in sync.
+
+   Colour carries meaning and nothing else, per the shared palette: sapphire is
+   a part that answered or a connection with an exact positive rate, amber is a
+   part in trouble, and red one that stopped. Verified green remains reserved for
+   independently checked claims. Grey hairlines are the absence of a
+   measurement, and are deliberately the dullest thing on screen.
+   --------------------------------------------------------------------------- */
+
+.mr-stage {
+  position: relative;
+}
+
+/* Beneath the cards, never over their text, and never a tab stop. */
+.mr-wires {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.mr-wires[data-ready='true'] {
+  opacity: 1;
+}
+
+.mr-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 620px) {
+  .mr-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+}
+
+@media (min-width: 920px) {
+  .mr-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+/* Only here does the diagram become the diagram: five columns, the public path
+   on the top row and the path a phone message takes on the second. */
+@media (min-width: 1200px) {
+  .mr-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 26px 30px;
+  }
+
+  .mr-node {
+    grid-column: var(--col);
+    grid-row: var(--row);
+  }
+}
+
+.mr-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-raised) 88%, transparent);
+  padding: 14px 15px 13px;
+  text-align: left;
+  transition:
+    border-color 0.3s ease,
+    opacity 0.3s ease,
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mr-node:hover {
+  border-color: var(--color-line-lit);
+  transform: translateY(-2px);
+}
+
+/* When one part is being read, everything unconnected to it recedes. This is
+   the only reason anything on the diagram ever dims. */
+.mr-node[data-related='false'] {
+  opacity: 0.34;
+}
+
+.mr-node__state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.mr-node__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--mr-tone, var(--color-ink-faint));
+}
+
+/* Period comes from the part's own measured activity. A part with no measured
+   activity, or one that is not answering, does not pulse. */
+@keyframes mr-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.28;
+    transform: scale(0.66);
+  }
+}
+
+.mr-node__dot[data-breathing='true'] {
+  animation: mr-breathe ease-in-out infinite;
+}
+
+.mr-node__name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+  color: var(--color-ink);
+  text-wrap: balance;
+}
+
+.mr-node__what {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-ink-dim);
+  text-wrap: pretty;
+}
+
+.mr-node__meter {
+  display: flex;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.mr-node__meter span {
+  height: 3px;
+  flex: 1;
+  background: var(--color-line-lit);
+}
+
+.mr-node__meter span[data-on='true'] {
+  background: var(--mr-tone, var(--color-ink-faint));
+}
+
+.mr-node__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--color-ink-faint);
+}
+
+.mr-node__foot b {
+  font-weight: 400;
+  color: var(--color-ink-dim);
+}
+
+/* An unmeasured figure is set in the flattest possible type. It should never
+   compete with a real one for attention. */
+.mr-unmeasured {
+  color: var(--color-ink-faint);
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.mr-narration {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  line-height: 1.22;
+  text-wrap: balance;
+  color: var(--color-ink);
+  font-size: clamp(1.5rem, 1.05rem + 2.2vw, 2.9rem);
+}
+
+.mr-narration em {
+  font-style: normal;
+  color: var(--color-ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-node__dot[data-breathing='true'] {
+    animation: none;
+  }
+  .mr-node:hover {
+    transform: none;
+  }
+  .mr-wires {
+    transition: none;
   }
 }
 

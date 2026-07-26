@@ -28,7 +28,7 @@ export default function Nav() {
           Sapphire<span className="text-sapphire">Alpha</span>
         </Link>
 
-        <div className="hidden items-center gap-7 md:flex">
+        <div className="hidden items-center gap-7 lg:flex">
           {ROUTES.map((route) => (
             <Link
               key={route.href}
@@ -49,7 +49,7 @@ export default function Nav() {
         {/* Small screens: the live desk is the one action worth keeping. */}
         <Link
           href="/dashboard"
-          className="border border-sapphire/45 px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] text-sapphire uppercase md:hidden"
+          className="border border-sapphire/45 px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] text-sapphire uppercase lg:hidden"
         >
           Desk
         </Link>

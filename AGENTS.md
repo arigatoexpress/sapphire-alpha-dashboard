@@ -88,11 +88,13 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
   - Next.js writes the OG image **without a file extension**; `backend/main.py` maps it to
     `image/png` explicitly, or unfurlers drop the preview.
 - Public build assets: `GET /_next/*` (fingerprinted, immutable cache)
-- Operator dashboard: `GET /dashboard`, `GET /dashboard/*` — auth-gated (`auth_or_public`)
+- Public observatory: `GET /dashboard`, `GET /dashboard/*` — anonymous read-only (`auth_or_public`)
 - Public: `GET /healthz`, `GET /api/health`
 - Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
-- Public/operator projections: `GET /api/v1/live`, `GET /api/v1/moss`, `GET /api/v1/transparency`
-- Legacy authenticated: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
+- Public compute projection: `GET /api/v1/live` (one undelayed numeric view for every reader)
+- Public fixed vault taxonomy: `GET /api/v1/vault-map` (no private metadata); raw `GET /vault/rag-map` remains authenticated
+- Narrow public/operator projections: `GET /api/v1/moss`, `GET /api/v1/transparency`
+- Legacy reads with anonymous sanitizers: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
 
 ## Widget data sources
 The `/api/v1/widgets` endpoint aggregates:
@@ -101,7 +103,10 @@ The `/api/v1/widgets` endpoint aggregates:
 - Wallet / PnL (`~/ops-state/rh-chain/skin-book.json` or `DASHBOARD_SKIN_BOOK`).
 - Telegram approval queue (`~/ops-state/telegram-bot/pending_queue.json`, `decisions.jsonl`).
 - Recent signals (`~/ops-state/rh-chain/signals.json` or `DASHBOARD_SIGNALS_JSON`).
-- DeFi Report clips (`~/Knowledge/3-Resources/Clippings/*.md`). With `TDR_PRO_LIVE=1`, Cloud Run falls back to fetching the public RSS feed directly.
+- Explicit multi-source research clips from `DASHBOARD_RESEARCH_CLIPS_JSON`. Unknown
+  sources are rejected, candidates are capped at two clips per analyst, actual feed
+  share is capped at 25%, and absence stays empty—there is no fabricated or
+  single-source fallback.
 - TradingView webhook status/log (`TV_WEBHOOK_URL`, `DASHBOARD_TV_LOG`).
 - Business health probes (`GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`).
 
@@ -119,7 +124,7 @@ The `/api/v1/transparency` endpoint serves the trade-rail explanation ledger (`~
 - `TV_WEBHOOK_STATUS`, `TV_WEBHOOK_URL`, `TV_LAST_PING`, `TV_PENDING_ALERTS`
   - `TV_WEBHOOK_URL` should be the **base origin** of the receiver (no path); the dashboard probes `<url>/webhook/health` and proxies `<url>/alerts`.
 - `GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`
-- `TDR_PRO_LIVE`
+- `DASHBOARD_RESEARCH_CLIPS_JSON`
 - `TELEMETRY_STORE`, `TELEMETRY_INGEST_SECRET`, `MOSS_TELEMETRY_INGEST_SECRET`
 - `TELEMETRY_FIRESTORE_DATABASE`, `MOSS_TELEMETRY_FIRESTORE_COLLECTION`
 

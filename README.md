@@ -4,8 +4,8 @@ Two surfaces at **[sapphirealpha.xyz](https://sapphirealpha.xyz)**, shipped as o
 
 | Path | Surface | Access |
 | --- | --- | --- |
-| `/` | **Marketing site** (`web/`) — the front door: architecture, trading, security, on-chain, about | Anonymous |
-| `/dashboard` | **Observatory** (`frontend/`) — live view of distributed compute, agent activity, Robinhood Chain research, and verified system events | Auth-gated |
+| `/` | **Machine Room** (`web/`) — a plain-language live view of the system plus its measured architecture and research | Anonymous |
+| `/dashboard` | **Observatory** (`frontend/`) — the deeper live view of distributed compute, agent activity, Robinhood Chain research, and verified system events | Anonymous |
 
 FastAPI + a statically exported Next.js site + a React/Vite SPA. The application has no trading or infrastructure actuation routes.
 
@@ -29,7 +29,7 @@ Two rules keep it honest:
 The site is a static export (`output: 'export'`) — prerendered HTML with no Next.js server,
 fully readable with JavaScript disabled, served straight from the FastAPI container.
 
-## Signal Loom architecture
+## Signal Routes architecture
 
 ```text
 home-mesh raw observations
@@ -42,21 +42,26 @@ local semantic projector
        v
 Cloud Run signed ingest -> Firestore latest + bounded history
        |
-       +--> delayed public projection
-       +--> authenticated operator projection
+       +--> one undelayed compute projection
+       +--> narrowly sanitized capital and legacy projections
        v
-Signal Loom + agents + research + evidence ledger
+Signal Routes + agents + research + evidence ledger
 ```
 
-The animation is data-backed. Link width and speed come from observed activity; color comes from signal class and health. A quiet link does not animate. Missing sources render `not observed`, `warming`, `stale`, or `offline`—never synthetic market activity.
+Each measured route has its own row, endpoints, status, latency, and event rate. Routes
+never cross and nothing moves for decoration. Missing sources render `not observed`,
+`warming`, `stale`, or `offline`—never synthetic market activity.
 
 ## Privacy boundary
 
-Public telemetry may contain semantic roles, status and load bands, bucketed freshness/latency/activity, bounded agent presence, research feed state, paper-strategy count, decision-gate class, and execution mode.
+Public compute telemetry contains semantic roles, status, measured load, freshness and
+latency, and measured link activity where the collector can observe it. An unobservable
+rate is `null`, never a made-up zero. Agent presence, research feed state,
+paper-strategy count, decision-gate class, and execution mode are also public.
 
 It rejects hostnames, addresses, ports, endpoints, paths, credentials, prompts, wallet/account material, balances, positions, orders, raw errors, and unknown fields. The local projector and server both enforce the boundary.
 
-MOSS uses a separate, stricter lane so the general Signal Loom stays wallet-blind.
+MOSS uses a separate, stricter lane so the general Signal Routes view stays wallet-blind.
 Authenticated operators may see a masked identity and exact decimal-string balances;
 the anonymous projection withholds identity, bands USDm capital, reduces ETH to
 present/empty, and exposes freshness rather than exact block height.
@@ -64,11 +69,14 @@ present/empty, and exposes freshness rather than exact block height.
 ## APIs
 
 - `POST /api/v1/telemetry` — HMAC-signed, replay-protected semantic snapshots, 64 KiB maximum
-- `GET /api/v1/live` — delayed aggregate public view or bounded authenticated operator view
+- `GET /api/v1/live` — anonymous, undelayed compute telemetry with measured numbers
 - `POST /api/v1/moss/telemetry` — separately signed, masked MOSS/MegaETH observation
 - `GET /api/v1/moss` — banded anonymous asset state or exact authenticated operator view
+- `GET /api/v1/vault-map` — fixed public topic taxonomy; no titles, paths, counts, mount state, or note content
 - `GET /api/health` — public service liveness
-- Legacy `/api/v1/widgets` and `/api/fleet` remain during migration, but the observatory does not treat their deploy-time state as live truth.
+- Raw `GET /vault/rag-map` remains authenticated. Legacy `/api/v1/widgets` and
+  `/api/fleet` remain during migration with anonymous sanitizers, but the
+  observatory does not treat their deploy-time state as live truth.
 
 ## Local development
 
@@ -100,7 +108,12 @@ MOSS_TELEMETRY_INGEST_SECRET=replace-with-a-distinct-32-plus-character-secret \
 PYTHONPATH=backend:. python -m telemetry.moss_collector --push
 ```
 
-Optional local-only probe variables (`SAPPHIRE_EDGE_PROBE`, `SAPPHIRE_COMPUTE_PROBE`, `SAPPHIRE_MARKETS_PROBE`, `SAPPHIRE_ARCHIVE_PROBE`) add measured RTT to the corresponding semantic link. Probe addresses are never included in the snapshot; missing measurements remain `not observed`.
+Two optional local-only probe variables match the RTTs the Mac collector can
+actually measure: `SAPPHIRE_EDGE_PROBE` for public edge → orchestration and
+`SAPPHIRE_GPU_GATEWAY_PROBE` for orchestration → the first healthy compute tier.
+Probe addresses are never included in the snapshot. The remaining semantic
+links have no addressable RTT source and remain `not observed`; feed timestamp
+lag is freshness, not network latency.
 
 ```bash
 cd frontend
@@ -111,11 +124,19 @@ npm run build
 ## Verification
 
 ```bash
-PYTHONPATH=backend:. pytest -q
-cd frontend && npm run build
+PYTHONPATH=backend:. backend/.venv/bin/python -m pytest backend/tests -q
+npm --prefix frontend test
+npm --prefix frontend run typecheck:shared
+npm --prefix frontend run build
+npm --prefix web test
+npm --prefix web run build
 ```
 
-Golden tests cover signature validation, timestamp skew, nonce replay, sequence ordering, schema bounds, non-finite numbers, public projection, sensitive-field rejection, missing-source honesty, local-projector fidelity, and the MOSS operator/public privacy split.
+Golden tests cover signature validation, timestamp skew, nonce replay, sequence
+ordering, schema bounds, non-finite numbers, sensitive-field rejection,
+measurement provenance, missing-source honesty, local-projector fidelity, the
+sanitized vault map, narration, responsive non-overlap, and the MOSS
+operator/public privacy split.
 
 ## Deployment gate
 
@@ -147,6 +168,11 @@ Without a scheduled publisher the live feed goes stale and the site advertises a
 days-old snapshot. `telemetry/run_publisher.sh` sources the ingest secret from
 `~/.sapphire/sapphirealpha-telemetry.env` (never from the plist) and pushes a
 merged snapshot; the LaunchAgent runs it every 5 minutes.
+
+The publisher never retries an unknown rate as zero. During a producer/backend
+schema transition, an older backend may reject the honest nullable payload; in
+that case the prior accepted snapshot remains visible until the backend is
+upgraded rather than being replaced with invented quiet traffic.
 
 ```bash
 cp infra/com.sapphire.alpha-telemetry-publisher.plist ~/Library/LaunchAgents/

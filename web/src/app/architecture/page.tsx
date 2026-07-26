@@ -33,8 +33,9 @@ const LAYERS = [
   {
     term: 'Public edge',
     body:
-      'Cloud Run serves this site, the API, and a delayed projection of desk state. It is ' +
-      'the only internet-reachable surface, and it can read nothing it was not pushed.',
+      'Cloud Run serves this site, the architecture telemetry API, and separate ' +
+      'privacy-bounded capital summaries. It is the only internet-reachable surface, ' +
+      'and it can read nothing it was not pushed.',
   },
 ]
 

@@ -2,7 +2,6 @@ import os
 import subprocess
 import sys
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ["AUTH_USERNAME"] = "testuser"
@@ -55,9 +54,16 @@ def test_api_health_public():
     assert r.json()["status"] == "ok"
 
 
-def test_widgets_requires_auth():
+def test_widgets_get_is_anonymous_but_sanitized():
     r = client.get("/api/v1/widgets")
-    assert r.status_code == 401
+    assert r.status_code == 200
+    assert r.json()["public_view"] is True
+
+
+def test_widgets_non_get_still_requires_auth():
+    r = client.post("/api/v1/widgets")
+    assert r.status_code in (401, 405)
+    assert r.status_code != 200
 
 
 def test_widgets_with_auth():
@@ -67,7 +73,7 @@ def test_widgets_with_auth():
     assert "gate" in data
     assert "telegram_queue" in data
     assert "recent_signals" in data
-    assert "defi_report" in data
+    assert "research" in data
     assert "tradingview" in data
     assert "system_health" in data
 

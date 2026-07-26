@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "observed_at": null,
+  "sequence": null,
+  "summary": {
+    "state": "not observed",
+    "active_agents": null,
+    "events_per_min": null,
+    "verified_today": null,
+    "attention": null
+  },
+  "nodes": [],
+  "links": [],
+  "agents": [],
+  "markets": {
+    "network": "Robinhood Chain",
+    "status": "offline",
+    "feed_age_s": null,
+    "events_per_min": null,
+    "paper_strategies": null,
+    "decision_gate": "off",
+    "execution": "off"
+  },
+  "events": [],
+  "status": "offline",
+  "freshness_s": null,
+  "served_at": "2026-07-25T22:30:00+00:00"
+}

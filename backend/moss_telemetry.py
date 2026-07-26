@@ -1,6 +1,6 @@
 """Dedicated, replay-protected telemetry for the private local MOSS observer.
 
-The general Signal Loom contract intentionally rejects wallet and balance fields.
+The general Signal Routes contract intentionally rejects wallet and balance fields.
 This separate boundary retains exact decimal strings for authenticated operators
 and emits a non-fingerprinting public projection.
 """

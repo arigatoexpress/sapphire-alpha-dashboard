@@ -26,7 +26,7 @@ def _sample_snapshot(agent_id: str, node_id: str, sequence: int) -> dict:
                 "zone": "edge",
                 "label": node_id,
                 "status": "healthy",
-                "load_band": "low",
+                "load": "low",
                 "activity_rate": 1.0,
                 "freshness_s": 0.0,
             }
@@ -65,7 +65,9 @@ def test_merge_unions_agents_nodes_and_links():
     assert {n["id"] for n in merged["nodes"]} == {"mac-node", "win-node"}
     assert merged["sequence"] == 201
     assert merged["summary"]["active_agents"] == 2
-    assert merged["summary"]["attention"] == 2
+    assert merged["summary"]["events_per_min"] is None
+    assert merged["summary"]["verified_today"] is None
+    assert merged["summary"]["attention"] is None
 
 
 def test_merge_prefers_later_observation():

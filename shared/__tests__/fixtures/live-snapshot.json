@@ -1,0 +1,618 @@
+{
+  "version": 1,
+  "observed_at": "2026-07-25T22:26:16.581294+00:00",
+  "sequence": 1785018376689960201,
+  "summary": {
+    "state": "degraded",
+    "active_agents": 9,
+    "events_per_min": null,
+    "verified_today": null,
+    "attention": null
+  },
+  "nodes": [
+    {
+      "id": "public-edge",
+      "zone": "edge",
+      "label": "Public edge",
+      "status": "healthy",
+      "load": "low",
+      "activity_rate": null,
+      "freshness_s": 0.0
+    },
+    {
+      "id": "orchestration",
+      "zone": "orchestration",
+      "label": "Orchestration",
+      "status": "down",
+      "load": "medium",
+      "activity_rate": null,
+      "freshness_s": 9262.541
+    },
+    {
+      "id": "gpu-compute",
+      "zone": "compute",
+      "label": "GPU compute",
+      "status": "healthy",
+      "load": "medium",
+      "activity_rate": null,
+      "freshness_s": 99.541
+    },
+    {
+      "id": "intelligence",
+      "zone": "intelligence",
+      "label": "Agent intelligence",
+      "status": "down",
+      "load": "idle",
+      "activity_rate": 0.0,
+      "freshness_s": 84359.831
+    },
+    {
+      "id": "markets",
+      "zone": "markets",
+      "label": "Robinhood Chain",
+      "status": "healthy",
+      "load": "high",
+      "activity_rate": 599.0,
+      "freshness_s": 1.541
+    },
+    {
+      "id": "archive",
+      "zone": "archive",
+      "label": "Knowledge archive",
+      "status": "down",
+      "load": "medium",
+      "activity_rate": null,
+      "freshness_s": 9262.541
+    },
+    {
+      "id": "win-workhorse",
+      "zone": "compute",
+      "label": "Windows workhorse",
+      "status": "healthy",
+      "load": "idle",
+      "activity_rate": null,
+      "freshness_s": 0.0
+    },
+    {
+      "id": "agent-worker",
+      "zone": "intelligence",
+      "label": "Agent worker",
+      "status": "healthy",
+      "load": "idle",
+      "activity_rate": null,
+      "freshness_s": 58.581
+    },
+    {
+      "id": "telegram-bot",
+      "zone": "edge",
+      "label": "Telegram command bot",
+      "status": "healthy",
+      "load": "medium",
+      "activity_rate": null,
+      "freshness_s": 134.581
+    },
+    {
+      "id": "ollama-inference",
+      "zone": "compute",
+      "label": "Ollama inference",
+      "status": "healthy",
+      "load": "medium",
+      "activity_rate": null,
+      "freshness_s": 0.0
+    },
+    {
+      "id": "knowledge-archive",
+      "zone": "archive",
+      "label": "Knowledge archive",
+      "status": "healthy",
+      "load": "medium",
+      "activity_rate": null,
+      "freshness_s": 58.581
+    }
+  ],
+  "links": [
+    {
+      "source": "public-edge",
+      "target": "orchestration",
+      "status": "down",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "network"
+    },
+    {
+      "source": "orchestration",
+      "target": "gpu-compute",
+      "status": "healthy",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "agent"
+    },
+    {
+      "source": "gpu-compute",
+      "target": "intelligence",
+      "status": "down",
+      "latency_ms": null,
+      "event_rate": 0.0,
+      "signal_class": "agent"
+    },
+    {
+      "source": "intelligence",
+      "target": "markets",
+      "status": "healthy",
+      "latency_ms": null,
+      "event_rate": 599.0,
+      "signal_class": "market"
+    },
+    {
+      "source": "intelligence",
+      "target": "archive",
+      "status": "down",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "archive"
+    },
+    {
+      "source": "telegram-bot",
+      "target": "agent-worker",
+      "status": "healthy",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "agent"
+    },
+    {
+      "source": "agent-worker",
+      "target": "ollama-inference",
+      "status": "healthy",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "agent"
+    },
+    {
+      "source": "ollama-inference",
+      "target": "win-workhorse",
+      "status": "healthy",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "network"
+    },
+    {
+      "source": "agent-worker",
+      "target": "knowledge-archive",
+      "status": "healthy",
+      "latency_ms": null,
+      "event_rate": null,
+      "signal_class": "archive"
+    }
+  ],
+  "agents": [
+    {
+      "id": "code",
+      "role": "code",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-24T23:00:06.234671+00:00"
+    },
+    {
+      "id": "code-edit",
+      "role": "code-edit",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-24T23:00:08.226340+00:00"
+    },
+    {
+      "id": "coder",
+      "role": "coder",
+      "state": "offline",
+      "activity": "Capability route unavailable",
+      "verification": "not_applicable",
+      "provider_class": "unassigned",
+      "updated_at": "2026-07-24T22:59:00.910189+00:00"
+    },
+    {
+      "id": "deep-reasoning",
+      "role": "deep-reasoning",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-24T23:00:10.068935+00:00"
+    },
+    {
+      "id": "embed",
+      "role": "embed",
+      "state": "offline",
+      "activity": "Capability route unavailable",
+      "verification": "not_applicable",
+      "provider_class": "unassigned",
+      "updated_at": "2026-07-24T22:59:27.137681+00:00"
+    },
+    {
+      "id": "embeddings",
+      "role": "embeddings",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-24T23:00:13.810526+00:00"
+    },
+    {
+      "id": "fast",
+      "role": "fast",
+      "state": "offline",
+      "activity": "Capability route unavailable",
+      "verification": "not_applicable",
+      "provider_class": "unassigned",
+      "updated_at": "2026-07-24T22:59:04.608983+00:00"
+    },
+    {
+      "id": "fast-triage",
+      "role": "fast-triage",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-24T23:00:11.949277+00:00"
+    },
+    {
+      "id": "long-context",
+      "role": "long-context",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "cloud reasoning",
+      "updated_at": "2026-07-24T22:59:25.408953+00:00"
+    },
+    {
+      "id": "reasoning",
+      "role": "reasoning",
+      "state": "offline",
+      "activity": "Capability route unavailable",
+      "verification": "not_applicable",
+      "provider_class": "unassigned",
+      "updated_at": "2026-07-24T22:59:21.636365+00:00"
+    },
+    {
+      "id": "review",
+      "role": "review",
+      "state": "offline",
+      "activity": "Capability route unavailable",
+      "verification": "not_applicable",
+      "provider_class": "unassigned",
+      "updated_at": "2026-07-24T22:59:23.576869+00:00"
+    },
+    {
+      "id": "vision",
+      "role": "vision",
+      "state": "offline",
+      "activity": "Capability route selected",
+      "verification": "not_applicable",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-24T23:00:15.710600+00:00"
+    },
+    {
+      "id": "chain-poll",
+      "role": "Chain Poll",
+      "state": "blocked",
+      "activity": "Awaiting recovery from 1 check",
+      "verification": "pending",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "orderflow",
+      "role": "Orderflow",
+      "state": "blocked",
+      "activity": "Awaiting recovery from 1 check",
+      "verification": "pending",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "feed-listen",
+      "role": "Feed Listen",
+      "state": "working",
+      "activity": "Observing live research signals",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "clean-watchlist",
+      "role": "Clean Watchlist",
+      "state": "working",
+      "activity": "Observing live research signals",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "fresh-decay",
+      "role": "Fresh Decay",
+      "state": "working",
+      "activity": "Observing live research signals",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "metrics-advisory",
+      "role": "Metrics Advisory",
+      "state": "working",
+      "activity": "Observing live research signals",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "social-signal",
+      "role": "Social Signal",
+      "state": "working",
+      "activity": "Observing live research signals",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "visualizer-serve",
+      "role": "Visualizer Serve",
+      "state": "working",
+      "activity": "Observing live research signals",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:21.000362+00:00"
+    },
+    {
+      "id": "gpu-workhorse",
+      "role": "GPU workhorse",
+      "state": "working",
+      "activity": "NVIDIA GeForce RTX 5070 Ti util 0.0% | mem 6.0% | temp 28.0C",
+      "verification": "verified",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-25T22:26:16.581294+00:00"
+    },
+    {
+      "id": "agent-worker",
+      "role": "Agent worker",
+      "state": "idle",
+      "activity": "Release canonical-worker-v6 | tasks=16 pass=2 fail=14",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:25:18+00:00"
+    },
+    {
+      "id": "telegram-command-bot",
+      "role": "Telegram command bot",
+      "state": "working",
+      "activity": "Pending commands: 4 | armed=halted",
+      "verification": "verified",
+      "provider_class": "local CPU",
+      "updated_at": "2026-07-25T22:24:02+00:00"
+    },
+    {
+      "id": "ollama-inference-host",
+      "role": "Ollama inference host",
+      "state": "working",
+      "activity": "1 loaded models | 25 available | VRAM 14.4 GB",
+      "verification": "verified",
+      "provider_class": "local GPU",
+      "updated_at": "2026-07-25T22:26:16.581294+00:00"
+    }
+  ],
+  "markets": {
+    "network": "Robinhood Chain",
+    "status": "current",
+    "feed_age_s": 1.541,
+    "events_per_min": 599.0,
+    "paper_strategies": null,
+    "decision_gate": "telegram",
+    "execution": "off"
+  },
+  "events": [
+    {
+      "id": "win-ollama-1785018376",
+      "observed_at": "2026-07-25T22:26:16.581294+00:00",
+      "event_class": "agent",
+      "source": "compute",
+      "target": "compute",
+      "label": "Ollama serving 1 model(s)",
+      "status": "verified"
+    },
+    {
+      "id": "win-gpu-1785018376",
+      "observed_at": "2026-07-25T22:26:16.581294+00:00",
+      "event_class": "agent",
+      "source": "compute",
+      "target": "compute",
+      "label": "GPU NVIDIA GeForce RTX 5070 Ti observed",
+      "status": "verified"
+    },
+    {
+      "id": "win-pause-1785018376",
+      "observed_at": "2026-07-25T22:26:16.581294+00:00",
+      "event_class": "reliability",
+      "source": "compute",
+      "target": "compute",
+      "label": "Autonomous trading pause sentinel present",
+      "status": "verified"
+    },
+    {
+      "id": "market-1785018375",
+      "observed_at": "2026-07-25T22:26:15.541362+00:00",
+      "event_class": "market",
+      "source": "markets",
+      "target": "intelligence",
+      "label": "Market activity observed",
+      "status": "observed"
+    },
+    {
+      "id": "archive-1785018375",
+      "observed_at": "2026-07-25T22:26:15.541362+00:00",
+      "event_class": "archive",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Knowledge cycle recorded",
+      "status": "verified"
+    },
+    {
+      "id": "win-worker-1785018376",
+      "observed_at": "2026-07-25T22:25:18+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Agent worker idle | 16 tasks tracked",
+      "status": "verified"
+    },
+    {
+      "id": "win-tg-1785018376",
+      "observed_at": "2026-07-25T22:24:02+00:00",
+      "event_class": "agent",
+      "source": "edge",
+      "target": "intelligence",
+      "label": "Telegram bot heartbeat observed",
+      "status": "verified"
+    },
+    {
+      "id": "presence-15",
+      "observed_at": "2026-07-24T23:00:15.710600+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-14",
+      "observed_at": "2026-07-24T23:00:13.810526+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-13",
+      "observed_at": "2026-07-24T23:00:11.949277+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-12",
+      "observed_at": "2026-07-24T23:00:10.068935+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-11",
+      "observed_at": "2026-07-24T23:00:08.226340+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-10",
+      "observed_at": "2026-07-24T23:00:06.234671+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-9",
+      "observed_at": "2026-07-24T22:59:27.137681+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route unavailable",
+      "status": "degraded"
+    },
+    {
+      "id": "presence-8",
+      "observed_at": "2026-07-24T22:59:25.408953+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-7",
+      "observed_at": "2026-07-24T22:59:23.576869+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route unavailable",
+      "status": "degraded"
+    },
+    {
+      "id": "presence-6",
+      "observed_at": "2026-07-24T22:59:21.636365+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route unavailable",
+      "status": "degraded"
+    },
+    {
+      "id": "presence-5",
+      "observed_at": "2026-07-24T22:59:19.797901+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-4",
+      "observed_at": "2026-07-24T22:59:04.608983+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route unavailable",
+      "status": "degraded"
+    },
+    {
+      "id": "presence-3",
+      "observed_at": "2026-07-24T22:59:00.910189+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route unavailable",
+      "status": "degraded"
+    },
+    {
+      "id": "presence-2",
+      "observed_at": "2026-07-18T00:39:28.058607+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    },
+    {
+      "id": "presence-1",
+      "observed_at": "2026-07-18T00:25:25.592825+00:00",
+      "event_class": "agent",
+      "source": "intelligence",
+      "target": "archive",
+      "label": "Capability route selected",
+      "status": "observed"
+    }
+  ],
+  "status": "live",
+  "freshness_s": 4.2,
+  "served_at": "2026-07-25T22:26:16.581294+00:00",
+  "received_at": "2026-07-25T22:26:16.581294+00:00"
+}

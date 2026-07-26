@@ -133,8 +133,9 @@ export default function Trading() {
             </p>
             <div className="mt-5 space-y-4 text-sm leading-relaxed text-ink-dim">
               <p>
-                Figures shown publicly are delayed and generalized. Exact balances, position
-                sizes, and limits are operator-only and never appear in an anonymous response.
+                Exact balances, current holdings, sizes, and limits are excluded from
+                anonymous responses. Public architecture telemetry is a separate contract
+                and contains no capital state.
               </p>
               <p>
                 Trading involves risk of loss. Past behaviour of any system described here
