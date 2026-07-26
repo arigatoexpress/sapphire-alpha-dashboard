@@ -10,8 +10,8 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import emptyFixture from '../../../shared/__tests__/fixtures/empty-snapshot.json'
-import App, { MarketPanel, SafetyRail } from '../App'
-import type { LiveSnapshot } from '../types'
+import App, { AgentPanel, MarketPanel, SafetyRail } from '../App'
+import type { LiveAgent, LiveSnapshot } from '../types'
 
 const markup = renderToStaticMarkup(<App />)
 
@@ -118,5 +118,50 @@ describe('with nothing observed', () => {
 
   it('narrates the absence in a full sentence', () => {
     expect(markup).toContain('Waiting for the first report to arrive')
+  })
+})
+
+describe('system component visibility', () => {
+  it('shows every observed component and puts live work ahead of offline routes', () => {
+    const offline: LiveAgent[] = Array.from({ length: 13 }, (_, index) => ({
+      id: `offline-route-${index}`,
+      role: `Offline route ${index}`,
+      state: 'offline',
+      activity: `offline activity ${index}`,
+      verification: 'not_applicable',
+      provider_class: 'unassigned',
+      updated_at: '2026-07-24T12:00:00+00:00',
+    }))
+    const live: LiveAgent[] = [
+      {
+        id: 'live-source-one',
+        role: 'Live source one',
+        state: 'working',
+        activity: 'reporting with source errors',
+        verification: 'pending',
+        provider_class: 'local CPU',
+        updated_at: '2026-07-26T12:00:00+00:00',
+      },
+      {
+        id: 'live-source-two',
+        role: 'Live source two',
+        state: 'working',
+        activity: 'observing live signals',
+        verification: 'verified',
+        provider_class: 'local CPU',
+        updated_at: '2026-07-26T12:00:00+00:00',
+      },
+    ]
+
+    const panel = renderToStaticMarkup(
+      <AgentPanel agents={[...offline, ...live]} observed />,
+    )
+
+    expect(panel).toContain('offline activity 0')
+    expect(panel).toContain('offline activity 12')
+    expect(panel).toContain('reporting with source errors')
+    expect(panel.indexOf('reporting with source errors')).toBeLessThan(
+      panel.indexOf('offline activity 0'),
+    )
   })
 })
