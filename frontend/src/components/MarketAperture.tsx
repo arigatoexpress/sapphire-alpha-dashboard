@@ -70,7 +70,7 @@ export function MarketAperture({ snapshot }: { snapshot: LiveSnapshot | null }) 
 
       <div className="aperture-telemetry" aria-label="Current system summary">
         <div>
-          <span>Agents working</span>
+          <span>Task agents active</span>
           <strong>{formatCount(snapshot?.summary.active_agents)}</strong>
         </div>
         <div>

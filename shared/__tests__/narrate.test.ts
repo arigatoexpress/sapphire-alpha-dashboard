@@ -100,12 +100,12 @@ describe('narrate — healthy', () => {
       tone: 'healthy',
       sentences: [
         'The busiest measured connection links the home graphics card to the trading desk at about 44 events a minute.',
-        'Three agents are working.',
+        'Three task agents are active.',
         'Nothing is waiting on you.',
       ],
       text:
         'The busiest measured connection links the home graphics card to the trading desk at about 44 events a minute. ' +
-        'Three agents are working. Nothing is waiting on you.',
+        'Three task agents are active. Nothing is waiting on you.',
     })
   })
 
@@ -156,8 +156,12 @@ describe('narrate — healthy', () => {
         { id: 'ollama-inference-host', role: 'service', state: 'working', activity: 'serving', verification: 'verified', provider_class: 'local GPU', updated_at: '2026-07-25T22:00:00+00:00' },
       ],
     })
-    expect(narrate(servicesOnly).sentences).toContain('No agents are working right now.')
-    expect(narrate(servicesOnly).text).not.toContain('Two agents are working.')
+    expect(narrate(servicesOnly).sentences).toContain(
+      'No task agents are active right now.',
+    )
+    expect(narrate(servicesOnly).text).not.toContain(
+      'Two task agents are active.',
+    )
   })
 
   it('uses a plural verb for plural node names', () => {
@@ -185,7 +189,9 @@ describe('narrate — healthy', () => {
     expect(narrate(backgroundTraffic).sentences[0]).toBe(
       'The busiest measured connection links the thinking agents to the trading desk at about 599 events a minute.',
     )
-    expect(narrate(backgroundTraffic).sentences).toContain('No agents are working right now.')
+    expect(narrate(backgroundTraffic).sentences).toContain(
+      'No task agents are active right now.',
+    )
     expect(narrate(backgroundTraffic).text).not.toContain('sending work')
   })
 })
@@ -216,13 +222,13 @@ describe('narrate — degraded', () => {
       tone: 'degraded',
       sentences: [
         'The busiest measured connection links the home graphics card to the trading desk at about 12 events a minute.',
-        'One agent is working.',
+        'One task agent is active.',
         'Two parts are not reporting: the knowledge archive and the job scheduler.',
         'Three things are waiting for a person to decide.',
       ],
       text:
         'The busiest measured connection links the home graphics card to the trading desk at about 12 events a minute. ' +
-        'One agent is working. ' +
+        'One task agent is active. ' +
         'Two parts are not reporting: the knowledge archive and the job scheduler. ' +
         'Three things are waiting for a person to decide.',
     })
@@ -312,7 +318,9 @@ describe('narrate — never asserts what the data does not support', () => {
         { id: 'coder', role: 'coder', state: 'idle', activity: 'x', verification: 'pending', provider_class: 'local GPU', updated_at: '2026-07-25T22:00:00+00:00' },
       ],
     })
-    expect(narrate(idle).sentences).toContain('No agents are working right now.')
+    expect(narrate(idle).sentences).toContain(
+      'No task agents are active right now.',
+    )
   })
 
   it('never renders a raw slug id in a sentence', () => {

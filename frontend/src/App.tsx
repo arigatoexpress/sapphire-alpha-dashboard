@@ -279,10 +279,10 @@ function AgentPanel({ agents, observed }: { agents: LiveAgent[]; observed: boole
   const working = agents.filter((agent) => agent.state === 'working').length
 
   return (
-    <Panel label="Agent presence">
+    <Panel label="System components">
       <PanelHeading
-        eyebrow="Agent presence"
-        title="Who is working"
+        eyebrow="System components"
+        title="What is running"
         right={<Count>{observed ? `${working} / ${agents.length}` : NOT_OBSERVED}</Count>}
       />
       <div className="divide-y divide-line">
@@ -318,7 +318,11 @@ function AgentPanel({ agents, observed }: { agents: LiveAgent[]; observed: boole
         ) : (
           <div className="p-6">
             <Empty
-              label={observed ? 'No agents were present in this report' : 'No agent report has arrived yet'}
+              label={
+                observed
+                  ? 'No system components were present in this report'
+                  : 'No component report has arrived yet'
+              }
             />
           </div>
         )}

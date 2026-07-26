@@ -49,6 +49,14 @@ describe('the market aperture', () => {
     expect(markup).toContain('Cycle model')
   })
 
+  it('labels the classified task-agent count without conflating it with services', () => {
+    expect(markup).toContain('Task agents active')
+    expect(markup).not.toContain('Agents working')
+    expect(markup).toContain('System components')
+    expect(markup).toContain('What is running')
+    expect(markup).not.toContain('Agent presence')
+  })
+
   it('keeps advisory research visibly outside execution authority', () => {
     expect(markup).toContain('Evidence, not authority')
     expect(markup).toContain('Execution stays outside this lens')
@@ -89,7 +97,7 @@ describe('with nothing observed', () => {
        reading before the first fetch. None of them may invent one. */
     expect(markup).toContain('not observed')
     expect(markup).not.toContain('0 / 0')
-    expect(markup).toContain('No agent report has arrived yet')
+    expect(markup).toContain('No component report has arrived yet')
     expect(markup).toContain('No event report has arrived yet')
   })
 
