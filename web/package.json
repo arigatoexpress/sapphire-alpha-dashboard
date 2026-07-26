@@ -6,7 +6,9 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "gray-matter": "4.0.3",
@@ -23,6 +25,7 @@
     "@types/react-dom": "19.1.9",
     "@types/sanitize-html": "2.16.1",
     "tailwindcss": "4.3.3",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "4.1.10"
   }
 }

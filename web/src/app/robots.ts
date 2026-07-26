@@ -9,9 +9,9 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        // The operator dashboard and the API are not crawlable surfaces. They
-        // are auth-gated regardless — this just keeps them out of indexes.
-        disallow: ['/dashboard', '/api/', '/vault/', '/miniapp'],
+        // The anonymous dashboard is a public surface. Internal data and
+        // compatibility endpoints remain out of indexes.
+        disallow: ['/api/', '/vault/', '/miniapp'],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

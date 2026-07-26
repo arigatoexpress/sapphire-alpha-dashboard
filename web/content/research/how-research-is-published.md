@@ -34,9 +34,9 @@ Every published report answers these, in this order.
 
 ## What is withheld
 
-Current positions, sizing, and exact figures are operator-only and do not appear in published research.
+Current holdings, sizing, and exact capital figures do not appear in published research.
 
-This is not coyness. A public real-time book invites front-running, and the same masking rules that govern the live system dashboard govern this page: addresses are truncated before they leave the process, exact balances are banded, and the public projection lags the operator view.
+This is not coyness. A public real-time book invites front-running. The live architecture feed is a separate contract: it reports how the system is operating and rejects wallet identifiers and capital fields at ingest. The separate capital surface remains banded, while current holdings and sizes are simply absent from anonymous responses.
 
 What that leaves is the part that was always the valuable part — the method, and closed calls scored against falsifiers committed in advance. A framework you can apply to your own holdings is worth more than a ticker you have no way to check.
 

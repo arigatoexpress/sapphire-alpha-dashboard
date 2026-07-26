@@ -107,9 +107,9 @@ export default function OnChain() {
             Public balance and deployment figures are rounded into bands. Exact values are
             operator-only, because an exact figure plus a public ledger is an identity.
           </Row>
-          <Row term="Delay" status={<Verified>enforced</Verified>}>
-            The public projection lags the operator view. Live position state is not a
-            spectator sport, and a real-time feed is a front-running invitation.
+          <Row term="Omission" status={<Verified>enforced</Verified>}>
+            Current holdings and sizes are absent from anonymous responses rather than
+            shifted onto a delayed feed. A live public book would invite front-running.
           </Row>
           <Row term="Registry" status={<Verified>enforced</Verified>}>
             Only wallets in the designated registry can be traded against. The registry links

@@ -140,9 +140,9 @@ export default function Research() {
           <Eyebrow>What is withheld, and why</Eyebrow>
           <div className="mt-6 grid gap-8 md:grid-cols-2">
             <p className="text-sm leading-relaxed text-ink-dim">
-              Current positions, sizing, and exact figures are operator-only. A public,
-              real-time book is a front-running invitation, and the same masking rules that
-              govern the live desk govern this page.
+              Current holdings, sizing, and exact capital figures are excluded from this
+              corpus. The public architecture feed is a separate contract and contains none
+              of them; a real-time public book would invite front-running.
             </p>
             <p className="text-sm leading-relaxed text-ink-dim">
               What that leaves is the part worth reading anyway: the framework, and closed
