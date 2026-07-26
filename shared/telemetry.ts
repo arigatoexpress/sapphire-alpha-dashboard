@@ -193,8 +193,10 @@ export interface LiveDesk {
     /** Compatibility alias for pending_review. */
     pending: number | null
     pending_review: number | null
+    /** Active, individually approved trades not yet resolved by execution. */
     approved_awaiting_execution: number | null
     eligible_execution: number | null
+    /** Active individual approvals currently rejected by policy. */
     blocked: number | null
     /** Pending proposals that already fail policy and should not consume human attention. */
     pending_policy_blocked?: number | null

@@ -83,9 +83,9 @@ describe('decision cockpit', () => {
     expect(markup).toContain('>Halted<')
     expect(markup).toContain('Awaiting review')
     expect(markup).toContain('Blocked before review')
-    expect(markup).toContain('Approved unresolved')
+    expect(markup).toContain('Approved, active')
     expect(markup).toContain('Execution eligible')
-    expect(markup).toContain('Blocked by policy')
+    expect(markup).toContain('Approved but blocked')
   })
 
   it('shows the evidence behind each validation conflict', () => {

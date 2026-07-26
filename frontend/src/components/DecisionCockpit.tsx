@@ -162,10 +162,10 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
   const queue = [
     { label: 'Awaiting review', value: desk?.decisions.pending_review ?? NOT_OBSERVED },
     { label: 'Blocked before review', value: desk?.decisions.pending_policy_blocked ?? NOT_OBSERVED },
-    { label: 'Approved unresolved', value: desk?.decisions.approved_awaiting_execution ?? NOT_OBSERVED },
+    { label: 'Approved, active', value: desk?.decisions.approved_awaiting_execution ?? NOT_OBSERVED },
     { label: 'Execution eligible', value: desk?.decisions.eligible_execution ?? NOT_OBSERVED },
     {
-      label: 'Blocked by policy',
+      label: 'Approved but blocked',
       value: desk?.decisions.blocked ?? NOT_OBSERVED,
       blocked: (desk?.decisions.blocked ?? 0) > 0,
     },
