@@ -559,6 +559,31 @@
   color: var(--color-sapphire);
 }
 
+.strategy-ledger .is-untrusted {
+  color: var(--color-degraded);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.strategy-ledger li.is-untrusted-track {
+  opacity: 0.88;
+  background: color-mix(in srgb, var(--color-degraded) 4%, transparent);
+}
+
+.strategy-status-untrusted {
+  border-color: var(--color-degraded) !important;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      var(--color-degraded),
+      var(--color-degraded) 1px,
+      transparent 1px,
+      transparent 3px
+    ) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-degraded) 10%, transparent) !important;
+}
+
 .strategy-status {
   width: 8px;
   height: 8px;
