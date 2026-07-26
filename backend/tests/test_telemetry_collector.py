@@ -239,6 +239,11 @@ def test_service_daemons_do_not_count_as_active_agents_and_degradation_propagate
     assert snapshot["summary"]["active_agents"] == 0
     assert intelligence["status"] == "degraded"
     assert snapshot["summary"]["state"] == "degraded"
+    projected = {agent["role"]: agent for agent in snapshot["agents"]}
+    for role in ("Chain Poll", "Orderflow"):
+        assert projected[role]["state"] == "working"
+        assert projected[role]["activity"] == "Reporting with source errors"
+        assert projected[role]["verification"] == "pending"
 
 
 def test_default_edge_probe_targets_the_public_api_health_route(monkeypatch):

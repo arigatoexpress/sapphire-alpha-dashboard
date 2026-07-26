@@ -717,6 +717,12 @@ def test_windows_links_publish_only_observed_values(tmp_path, monkeypatch):
     assert archive["latency_ms"] is None
     assert archive["event_rate"] == 0.2
 
+    worker = next(agent for agent in snapshot["agents"] if agent["id"] == "agent-worker")
+    assert "2 lifetime tasks" in worker["activity"]
+    assert "2 completed tasks" in worker["activity"]
+    assert "0 failed tasks" in worker["activity"]
+    assert "check" not in worker["activity"]
+
 
 def test_windows_alive_heartbeat_is_not_worker_handoff_traffic(tmp_path, monkeypatch):
     home, worker, telegram = _windows_sources(tmp_path)

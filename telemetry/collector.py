@@ -363,10 +363,16 @@ def build_snapshot(
             {
                 "id": _agent_id(label, index),
                 "role": label,
-                "state": "working" if status == "healthy" else "blocked" if status == "degraded" else "offline",
+                # A degraded observer with a fresh state file is still running;
+                # its health belongs in verification and the intelligence-node
+                # aggregate. Calling it blocked made recovered RPC throttles
+                # look like dead workers even while they published new state.
+                "state": "working" if status in {"healthy", "degraded"} else "offline",
                 "activity": (
                     "Observing live research signals"
                     if status == "healthy"
+                    else "Reporting with source errors"
+                    if status == "degraded"
                     else "Awaiting source recovery"
                 ),
                 "verification": "verified" if status == "healthy" else "failed" if status == "down" else "pending",
