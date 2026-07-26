@@ -67,6 +67,7 @@ jobs:
             architecture/index.html \
             trading/index.html \
             security/index.html \
+            proof/index.html \
             onchain/index.html \
             about/index.html \
             robots.txt \

@@ -89,6 +89,36 @@ export default function Home() {
 
       <Rule />
 
+      {/* ---------------- Proof ledger ---------------- */}
+      <section className="mx-auto max-w-6xl px-6" aria-labelledby="proof-heading">
+        <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20">
+          <div>
+            <Eyebrow>The control contract</Eyebrow>
+            <h2
+              id="proof-heading"
+              className="mt-4 font-display text-3xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-5xl"
+            >
+              See where intelligence ends and authority begins.
+            </h2>
+          </div>
+          <div>
+            <p className="text-base leading-relaxed text-ink-dim md:text-lg">
+              Follow a decision from observation through validation, authorization,
+              execution, and reconciliation. Then inspect the exact failure behavior,
+              operating modes, public endpoints, and disclosure boundary.
+            </p>
+            <Link
+              href="/proof/"
+              className="mt-8 inline-flex border border-sapphire/60 px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-sapphire uppercase transition-colors hover:bg-sapphire hover:text-void"
+            >
+              Open the proof ledger →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <Rule />
+
       {/* ---------------- Capabilities ---------------- */}
       <section className="mx-auto max-w-6xl px-6" aria-labelledby="capabilities-heading">
         <Eyebrow>What it does</Eyebrow>
