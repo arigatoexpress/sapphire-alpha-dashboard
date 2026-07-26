@@ -139,13 +139,12 @@ export default function About() {
             </p>
 
             <div className="mt-10 flex flex-wrap justify-center gap-4">
-              <a
-                href="https://github.com/arigatoexpress"
-                rel="noopener noreferrer"
+              <Link
+                href="/research/"
                 className="border border-sapphire bg-sapphire px-6 py-3 font-mono text-[12px] tracking-[0.14em] text-void uppercase transition-colors hover:bg-transparent hover:text-sapphire"
               >
-                GitHub → arigatoexpress
-              </a>
+                Read the research
+              </Link>
               <Link
                 href="/architecture/"
                 className="border border-line-lit px-6 py-3 font-mono text-[12px] tracking-[0.14em] text-ink-dim uppercase transition-colors hover:border-sapphire hover:text-ink"

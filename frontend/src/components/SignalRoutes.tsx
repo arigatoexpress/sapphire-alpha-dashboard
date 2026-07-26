@@ -80,7 +80,8 @@ export function SignalRoutes({
                       {described.plainName}
                     </strong>
                     <span
-                      aria-label={node.status}
+                      role="img"
+                      aria-label={`${described.plainName} status: ${node.status}`}
                       className={`route-status status-${node.status}`}
                     />
                   </div>

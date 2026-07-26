@@ -141,6 +141,11 @@ The app exposes `GET /healthz` (public). Note: Cloud Run's Google Front End inte
 - No wallet identifier is exposed anonymously, including a masked one.
 - Exact MOSS balances and masked identity are operator-only; the public view receives funding/freshness bands.
 - No real names, exact public balances, chat IDs, or positions are exposed.
+- No personal attribution or named research inputs appear in public copy, metadata,
+  source-visible static content, or application bundles. Public research describes
+  analytical lenses and evidence standards only; the identity and input hierarchy stay private.
+- Never place a vault-derived map or knowledge export in `frontend/public`. The only
+  public knowledge surface is the fixed, non-derived taxonomy from `/api/v1/vault-map`.
 - Aggregate metrics and synthetic identifiers only.
 - Telegram proposals/decisions are sanitized: PII keys (`chat_id`, `user_id`, `username`, etc.) are dropped before serialization.
 

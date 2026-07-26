@@ -6,8 +6,8 @@ import { getReports } from '@/lib/research'
 export const metadata: Metadata = {
   title: 'Research',
   description:
-    "Ari's investment mandate tested against cycle, liquidity, crypto structure, AI, " +
-    'and protocol-fundamentals evidence. Framework and retrospective — never the live book.',
+    'A private investment mandate tested against cycle, liquidity, market structure, ' +
+    'technology, and protocol-fundamentals evidence. Framework and retrospective — never the live book.',
   alternates: { canonical: '/research/' },
 }
 
@@ -44,7 +44,7 @@ export default function Research() {
       <PageHeader
         eyebrow="Research"
         title="Positions are private. The reasoning is not."
-        lede="Ari’s thesis is the mandate. Cowen leads the current cycle view; Hayes, Bankless, Limitless, and Nadeau challenge bounded parts of it. Every claim needs independent evidence and a falsifier. The live book stays operator-only."
+        lede="The investment mandate stays private. Published research exposes the framework, evidence, and falsifiers—not personal attribution, private inputs, positions, or execution authority."
       />
 
       <section className="mx-auto max-w-6xl px-6 pt-14" aria-labelledby="standard-heading">

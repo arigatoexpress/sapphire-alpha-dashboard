@@ -38,11 +38,10 @@ export type {
 /**
  * The MOSS wallet observation as this desk receives it.
  *
- * Capital is the one figure the site publishes as a band rather than a number
- * (Ari, 2026-07-25 — decision D1 in the design). That is a property of the
- * page, not of a viewer: there is no sign-in here and no view of this dashboard
- * shows an exact balance, so the exact-value fields are deliberately not
- * modelled. The band is the whole contract.
+ * Capital is the one figure the site publishes as a band rather than a number.
+ * That is a property of the page, not of a viewer: there is no sign-in here and
+ * no view of this dashboard shows an exact balance, so exact-value fields are
+ * deliberately not modelled. The band is the whole contract.
  */
 export interface MossSnapshot {
   version: number

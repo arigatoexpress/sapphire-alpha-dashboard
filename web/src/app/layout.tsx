@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Space_Grotesk, Inter, JetBrains_Mono } from 'next/font/google'
+import { Space_Grotesk, Inter, JetBrains_Mono, Newsreader } from 'next/font/google'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
 import './globals.css'
@@ -24,6 +24,13 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   weight: ['400', '500', '700'],
   variable: '--font-jetbrains-mono',
+  display: 'swap',
+})
+
+const newsreader = Newsreader({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-newsreader',
   display: 'swap',
 })
 
@@ -111,7 +118,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable} ${newsreader.variable}`}
     >
       <body className="min-h-screen antialiased">
         <script
