@@ -18,6 +18,10 @@
     "react-dom": "19.1.1",
     "sanitize-html": "2.17.6"
   },
+  "overrides": {
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.18.1",
