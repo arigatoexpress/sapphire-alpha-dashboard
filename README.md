@@ -29,7 +29,7 @@ Two rules keep it honest:
 The site is a static export (`output: 'export'`) — prerendered HTML with no Next.js server,
 fully readable with JavaScript disabled, served straight from the FastAPI container.
 
-## Signal Loom architecture
+## Signal Routes architecture
 
 ```text
 home-mesh raw observations
@@ -45,10 +45,12 @@ Cloud Run signed ingest -> Firestore latest + bounded history
        +--> one undelayed compute projection
        +--> narrowly sanitized capital and legacy projections
        v
-Signal Loom + agents + research + evidence ledger
+Signal Routes + agents + research + evidence ledger
 ```
 
-The animation is data-backed. Link width and speed come from observed activity; color comes from signal class and health. A quiet link does not animate. Missing sources render `not observed`, `warming`, `stale`, or `offline`—never synthetic market activity.
+Each measured route has its own row, endpoints, status, latency, and event rate. Routes
+never cross and nothing moves for decoration. Missing sources render `not observed`,
+`warming`, `stale`, or `offline`—never synthetic market activity.
 
 ## Privacy boundary
 
@@ -59,7 +61,7 @@ paper-strategy count, decision-gate class, and execution mode are also public.
 
 It rejects hostnames, addresses, ports, endpoints, paths, credentials, prompts, wallet/account material, balances, positions, orders, raw errors, and unknown fields. The local projector and server both enforce the boundary.
 
-MOSS uses a separate, stricter lane so the general Signal Loom stays wallet-blind.
+MOSS uses a separate, stricter lane so the general Signal Routes view stays wallet-blind.
 Authenticated operators may see a masked identity and exact decimal-string balances;
 the anonymous projection withholds identity, bands USDm capital, reduces ETH to
 present/empty, and exposes freshness rather than exact block height.

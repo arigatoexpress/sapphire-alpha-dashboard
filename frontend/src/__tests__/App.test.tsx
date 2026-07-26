@@ -17,7 +17,13 @@ const markup = renderToStaticMarkup(<App />)
 
 describe('no gate', () => {
   it('renders the desk without asking for anything', () => {
-    expect(markup).toContain('See the system think')
+    expect(markup).toContain('Machine Room')
+    expect(markup).toContain('Ari’s thesis is the mandate')
+    expect(markup).toContain('Cowen')
+    expect(markup).toContain('Hayes')
+    expect(markup).toContain('Bankless')
+    expect(markup).toContain('Limitless')
+    expect(markup).toContain('Nadeau')
   })
 
   it.each([

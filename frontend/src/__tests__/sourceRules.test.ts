@@ -3,7 +3,7 @@
  * rendering test would not catch because the code in question silently does
  * nothing.
  *
- * 1. **Dead band keys.** `types.ts` and `SignalLoom.tsx` read `node.load_band`,
+ * 1. **Dead band keys.** `types.ts` and the old topology view read `node.load_band`,
  *    `node.activity_band` and `link.latency_band` for months after the backend
  *    stopped serving any of them. TypeScript was no help: a hand-maintained
  *    local copy of the payload type declared the fields, so every read was
@@ -63,7 +63,7 @@ describe('the source scan itself', () => {
   it('finds the desk source', () => {
     expect(FILES.length).toBeGreaterThanOrEqual(8)
     expect(FILES.map((file) => file.path)).toContain('App.tsx')
-    expect(FILES.map((file) => file.path)).toContain('components/SignalLoom.tsx')
+    expect(FILES.map((file) => file.path)).toContain('components/SignalRoutes.tsx')
     expect(FILES.map((file) => file.path)).toContain('types.ts')
   })
 

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { narrate, type Narration } from '@shared/narrate'
 import { describeAgent, describeNode } from '@shared/vocabulary'
-import { SignalLoom } from './components/SignalLoom'
+import { SignalRoutes } from './components/SignalRoutes'
 import { LiveClock } from './components/LiveClock'
 import { ShieldIcon } from './components/icons'
 import {
@@ -38,10 +38,10 @@ import type {
 } from './types'
 
 const SECTIONS = [
-  { href: '#loom', label: 'Loom' },
+  { href: '#doctrine', label: 'Doctrine' },
+  { href: '#routes', label: 'Routes' },
   { href: '#assets', label: 'Assets' },
   { href: '#fleet', label: 'Fleet' },
-  { href: '#activity', label: 'Activity' },
 ]
 
 export default function App() {
@@ -60,7 +60,7 @@ export default function App() {
 
       {/* --- Top bar --------------------------------------------------- */}
       <header className="sticky top-0 z-50 border-b border-line bg-void/85 backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between gap-6 px-6">
+        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between gap-6 px-5 md:px-7">
           <a
             href="/"
             className="flex shrink-0 items-center gap-2.5 font-mono text-[13px] tracking-[0.18em] text-ink uppercase"
@@ -93,39 +93,49 @@ export default function App() {
         </div>
       </header>
 
-      <main id="top" className="mx-auto max-w-[1480px] px-6 pt-14 pb-24">
+      <main id="top" className="mx-auto max-w-[1320px] px-5 pt-9 pb-24 md:px-7 md:pt-12">
         {/* --- Hero ---------------------------------------------------- */}
-        <section className="grid items-end gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="grid items-end gap-8 border-b border-line pb-9 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="rise">
-            <Eyebrow>Operator desk</Eyebrow>
-            <h1 className="mt-5 font-display text-5xl leading-[0.95] font-semibold tracking-[-0.035em] text-balance md:text-7xl">
-              See the system think.
+            <Eyebrow>Public operating record</Eyebrow>
+            <h1 className="mt-4 font-display text-4xl leading-none font-semibold tracking-[-0.04em] text-balance md:text-6xl">
+              Machine Room
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-ink-dim text-pretty md:text-lg">
-              Every machine, every connection between them, and every reading they
-              report — as it arrives, in full, with nothing summarised on the way out.
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-ink-dim text-pretty">
+              What is alive, what is measured, what is allowed to act, and what is
+              waiting for a person. No proxy numbers and no private control surface.
             </p>
           </div>
 
           <div
-            className="rise grid grid-cols-2 gap-6 border-t border-line-lit pt-6 sm:grid-cols-4"
+            className="rise grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-4"
             style={{ animationDelay: '120ms' }}
             aria-label="Current system summary"
           >
-            <Metric label="Agents working" value={formatCount(snapshot?.summary.active_agents)} />
-            <Metric label="Events" value={formatRate(snapshot?.summary.events_per_min)} />
-            <Metric
-              label="Verified today"
-              value={formatCount(snapshot?.summary.verified_today)}
-              tone={snapshot?.summary.verified_today ? 'verified' : 'neutral'}
-            />
-            <Metric
-              label="Waiting on you"
-              value={formatCount(snapshot?.summary.attention)}
-              tone={snapshot?.summary.attention ? 'degraded' : 'neutral'}
-            />
+            <div className="bg-void p-4">
+              <Metric label="Agents working" value={formatCount(snapshot?.summary.active_agents)} />
+            </div>
+            <div className="bg-void p-4">
+              <Metric label="Events / min" value={formatRate(snapshot?.summary.events_per_min)} />
+            </div>
+            <div className="bg-void p-4">
+              <Metric
+                label="Verified today"
+                value={formatCount(snapshot?.summary.verified_today)}
+                tone={snapshot?.summary.verified_today ? 'verified' : 'neutral'}
+              />
+            </div>
+            <div className="bg-void p-4">
+              <Metric
+                label="Human gates"
+                value={formatCount(snapshot?.summary.attention)}
+                tone={snapshot?.summary.attention ? 'degraded' : 'neutral'}
+              />
+            </div>
           </div>
         </section>
+
+        <ResearchDoctrine />
 
         <Narrator narration={narration} />
 
@@ -148,8 +158,8 @@ export default function App() {
 
         <SafetyRail snapshot={snapshot} />
 
-        <div id="loom" className="mt-6 scroll-mt-24">
-          <SignalLoom
+        <div id="routes" className="mt-6 scroll-mt-24">
+          <SignalRoutes
             nodes={snapshot?.nodes ?? []}
             links={snapshot?.links ?? []}
             status={status}
@@ -177,12 +187,12 @@ export default function App() {
         </div>
 
         {/* --- Policy -------------------------------------------------- */}
-        <section className="mt-16 border border-line-lit bg-raised/40 px-7 py-12 md:px-12">
+        <section className="mt-12 border-t border-line pt-9">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
             <div>
-              <Eyebrow>What you are looking at</Eyebrow>
-              <h2 className="mt-4 font-display text-2xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-3xl">
-                One view. The real numbers, or the words “not measured”.
+              <Eyebrow>Measurement contract</Eyebrow>
+              <h2 className="mt-4 font-display text-2xl leading-tight font-semibold tracking-[-0.02em] text-balance">
+                A number is observed, or it is absent.
               </h2>
             </div>
             <div className="space-y-4 text-base leading-relaxed text-ink-dim">
@@ -209,7 +219,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-[1480px] flex-col gap-2 px-6 py-6 font-mono text-[11px] text-ink-faint sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex max-w-[1320px] flex-col gap-2 px-5 py-6 font-mono text-[11px] text-ink-faint sm:flex-row sm:items-center sm:justify-between md:px-7">
           <span>Sapphire Alpha · evidence before action</span>
           <span className="text-ink-dim">
             This page only reads. It cannot place a trade or change a setting.
@@ -217,6 +227,85 @@ export default function App() {
         </div>
       </footer>
     </div>
+  )
+}
+
+function ResearchDoctrine() {
+  const advisers = [
+    { name: 'Hayes', scope: 'liquidity countercase' },
+    { name: 'Bankless', scope: 'crypto structure' },
+    { name: 'Limitless', scope: 'AI frontier' },
+    { name: 'Nadeau', scope: 'fundamentals only' },
+  ]
+
+  return (
+    <section
+      id="doctrine"
+      aria-labelledby="doctrine-title"
+      className="mt-8 scroll-mt-24 overflow-hidden border border-line-lit bg-raised/45"
+    >
+      <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="border-b border-line px-6 py-7 lg:border-r lg:border-b-0 md:px-8">
+          <Eyebrow>Investment doctrine</Eyebrow>
+          <h2
+            id="doctrine-title"
+            className="mt-4 max-w-md font-display text-3xl leading-[1.05] font-semibold tracking-[-0.035em] text-ink md:text-4xl"
+          >
+            Ari’s thesis is the mandate.
+          </h2>
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-dim">
+            Analysts challenge the thesis with evidence. They do not write conviction,
+            change the mandate, or authorize execution.
+          </p>
+        </div>
+
+        <div>
+          <div className="grid gap-px bg-line sm:grid-cols-2">
+            <div className="bg-void px-6 py-5">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
+                Current cycle posture
+              </p>
+              <p className="mt-2 font-display text-lg font-semibold text-ink">
+                Late-cycle · capital preservation
+              </p>
+            </div>
+            <div className="bg-void px-6 py-5">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
+                Primary cycle lens
+              </p>
+              <p className="mt-2 font-display text-lg font-semibold text-sapphire">
+                Benjamin Cowen
+              </p>
+            </div>
+          </div>
+
+          <div className="px-6 py-5">
+            <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
+              Advisory lenses
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {advisers.map((adviser) => (
+                <div
+                  key={adviser.name}
+                  className="flex items-baseline justify-between gap-3 border-t border-line py-2.5"
+                >
+                  <strong className="font-display text-sm font-semibold text-ink">
+                    {adviser.name}
+                  </strong>
+                  <span className="text-right font-mono text-[10px] text-ink-faint">
+                    {adviser.scope}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
+              Any analyst claim needs two independent primary sources and a written
+              falsifier. One analyst can supply at most 25% of an evidence packet.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -240,7 +329,7 @@ function Narrator({ narration }: { narration: Narration | null }) {
     <section
       aria-label="What the system is doing right now"
       aria-live="polite"
-      className={`mt-10 border-l-2 bg-raised/40 px-6 py-5 ${
+      className={`mt-6 border-l-2 bg-raised/40 px-6 py-5 ${
         narration ? NARRATION_EDGE[narration.tone] : NARRATION_EDGE.empty
       }`}
     >
@@ -374,9 +463,9 @@ export function MarketPanel({ snapshot }: { snapshot: LiveSnapshot | null }) {
         </div>
 
         <p className="mt-6 text-[13px] leading-relaxed text-ink-faint">
-          The desk watches live prices and writes down what it would have done. Execution is
-          a separate system with its own pause, sizing, and mandate checks; this page cannot
-          operate any of them.
+          Ari’s checked-in thesis owns conviction. Cowen is the primary cycle lens; Hayes,
+          Bankless, Limitless, and Nadeau contribute bounded, attributed evidence. Execution
+          remains a separate system with pause, sizing, and mandate checks.
         </p>
       </div>
     </Panel>

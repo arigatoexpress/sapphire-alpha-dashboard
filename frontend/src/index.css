@@ -16,178 +16,126 @@
    Edit ../../shared/theme.css, never here. */
 @import '../../shared/theme.css';
 
-/* ---------------------------------------------------------------------------
-   Signal Loom.
+/* Signal paths are rows, not a free-form graph. Every route gets its own
+   reading lane, so labels and connections cannot collide at any viewport. */
 
-   The topology viz drives styling through class names generated at render time
-   (`status-degraded`, `is-moving`, `signal-market`), applied to SVG elements.
-   Utility classes cannot express that, so it keeps hand-written CSS — bound to
-   the shared tokens rather than to literals, so it recolours with the system.
+.route-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.85fr) minmax(260px, 1.55fr) minmax(150px, 0.85fr);
+  align-items: center;
+  gap: 28px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-void) 76%, transparent);
+}
 
-   Geometry is NOT here. Every coordinate comes from `src/desk/loomGeometry.ts`
-   and `@shared/loomLayout`, which is what makes the no-overlapping-labels
-   guarantee testable. The two font sizes below are the one place this file and
-   that one have to agree: `DEFAULT_LOOM_METRICS` estimates 7.6px per label
-   character and 6.2px per subtext character, which are deliberately wide
-   estimates for 12px display type and 10px mono. Changing a size here without
-   changing the metrics there would let labels collide again.
-   --------------------------------------------------------------------------- */
+.route-row:last-child {
+  border-bottom: 0;
+}
 
-.loom {
-  width: 100%;
+.route-endpoint {
+  min-width: 0;
+}
+
+.route-endpoint strong {
   display: block;
-  overflow: visible;
+  overflow: hidden;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.link-bed {
-  fill: none;
-  stroke: var(--color-line);
-  stroke-width: calc(var(--flow-width) * 1px + 3px);
+.route-endpoint-target {
+  text-align: right;
 }
 
-.link-current {
-  fill: none;
-  stroke: var(--color-sapphire);
-  stroke-width: calc(var(--flow-width) * 1px);
-  stroke-linecap: round;
-  stroke-dasharray: 8 16;
+.route-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-/* Signal class tints. Sapphire stays the default; the others are held close to
-   it so the loom reads as one instrument rather than a pie chart. */
-.signal-agent .link-current { stroke: var(--color-sapphire); }
-.signal-network .link-current { stroke: #4aa8d8; }
-.signal-market .link-current { stroke: #7c8cf0; }
-.signal-archive .link-current { stroke: #6f59a9; }
-.signal-reliability .link-current { stroke: var(--color-sapphire-deep); }
-
-/* Motion is a measurement. `is-moving` is set only when the edge reports an
-   event rate above zero, and `--flow-duration` is derived from that rate, so a
-   fast edge visibly cycles faster than a slow one. An edge with no traffic — or
-   no reading at all — gets `is-still` and does not animate. Nothing on this
-   page moves to imply activity the snapshot does not report. */
-.loom-link.is-moving .link-current {
-  animation: current-flow var(--flow-duration) linear infinite;
+.route-track {
+  position: relative;
+  height: 1px;
+  margin-top: 9px;
+  background: var(--color-line-lit);
 }
 
-.loom-link.is-still .link-current {
-  stroke-dasharray: none;
-  opacity: 0.25;
+.route-track span {
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 3px;
+  background: var(--color-sapphire);
+  transform-origin: left center;
 }
 
-/* Health overrides win over signal class — a degraded link must look degraded
-   regardless of what kind of traffic it carries. */
-.loom-link.status-degraded .link-current { stroke: var(--color-degraded); }
-.loom-link.status-down .link-current { stroke: var(--color-failed); opacity: 0.55; }
+.route-track::after {
+  position: absolute;
+  top: -4px;
+  right: -1px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--color-sapphire);
+  content: '';
+}
 
-@keyframes current-flow {
-  to {
-    stroke-dashoffset: -48;
+.route-row.signal-network .route-track span { background: #4aa8d8; }
+.route-row.signal-network .route-track::after { border-left-color: #4aa8d8; }
+.route-row.signal-market .route-track span { background: #7c8cf0; }
+.route-row.signal-market .route-track::after { border-left-color: #7c8cf0; }
+.route-row.signal-archive .route-track span { background: #8067be; }
+.route-row.signal-archive .route-track::after { border-left-color: #8067be; }
+.route-row.signal-reliability .route-track span { background: var(--color-sapphire-deep); }
+.route-row.signal-reliability .route-track::after { border-left-color: var(--color-sapphire-deep); }
+.route-row.status-degraded .route-track span { background: var(--color-degraded); }
+.route-row.status-degraded .route-track::after { border-left-color: var(--color-degraded); }
+.route-row.status-down .route-track span { background: var(--color-failed); opacity: 0.55; }
+.route-row.status-down .route-track::after { border-left-color: var(--color-failed); opacity: 0.55; }
+
+.route-status {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  background: var(--color-sapphire);
+}
+
+.route-status.status-degraded { background: var(--color-degraded); }
+.route-status.status-down { background: var(--color-failed); }
+.route-status.status-unknown { background: var(--color-ink-faint); }
+
+@media (max-width: 720px) {
+  .route-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 18px 20px;
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .loom-link .link-current {
-    animation: none !important;
+  .route-row > div:nth-child(2) {
+    display: contents;
   }
-}
 
-.node-halo {
-  fill: var(--color-raised);
-  stroke: var(--color-line-lit);
-  stroke-width: 1;
-}
+  .route-row > div:nth-child(2) > div:first-child,
+  .route-row > div:nth-child(2) > div:last-child {
+    grid-column: 1 / -1;
+    order: 3;
+  }
 
-.node-core { fill: var(--color-sapphire); }
-.loom-node.status-degraded .node-core { fill: var(--color-degraded); }
-.loom-node.status-down .node-core { fill: var(--color-failed); }
-.loom-node.status-unknown .node-core { fill: var(--color-ink-faint); }
+  .route-track {
+    width: 34px;
+    margin: 0;
+  }
 
-/* --- Label field ---------------------------------------------------------
-   Names and readings live in packed boxes below the graph, not at fixed
-   offsets beside each node. Three nodes share the `compute` zone; drawing
-   their labels near their dots is what made the text pile up. */
-
-.loom-box rect {
-  fill: var(--color-raised);
-  stroke: var(--color-line);
-  stroke-width: 1;
-}
-
-.box-label {
-  font: 600 12px var(--font-display);
-  fill: var(--color-ink);
-}
-
-.box-sub {
-  font: 400 10px var(--font-mono);
-  fill: var(--color-ink-faint);
-}
-
-.loom-leader {
-  fill: none;
-  stroke: var(--color-line-lit);
-  stroke-width: 1;
-  opacity: 0.5;
-}
-
-/* Hovering anything highlights the node, its label and its edges together, and
-   fades the rest. It is the only way to follow one machine through a graph this
-   dense, and it is driven by the pointer rather than by a timer. */
-.loom-node.is-dim,
-.loom-box.is-dim,
-.loom-leader.is-dim,
-.loom-link.is-dim {
-  opacity: 0.18;
-}
-
-.loom-box.is-hot rect {
-  stroke: var(--color-sapphire);
-}
-
-.loom-node:focus,
-.loom-box:focus {
-  outline: none;
-}
-
-.loom-node:focus .node-halo,
-.loom-box:focus rect {
-  stroke: var(--color-sapphire);
-  stroke-width: 2;
-}
-
-.loom-node,
-.loom-box,
-.loom-leader,
-.loom-link {
-  transition: opacity 0.18s ease;
-}
-
-.loom-node,
-.loom-box {
-  cursor: default;
-}
-
-.legend-swatch {
-  width: 18px;
-  height: 4px;
-  overflow: visible;
-}
-
-.legend-swatch .link-current {
-  stroke-dasharray: none;
-  stroke-width: 3px;
-}
-
-#arrow path {
-  fill: currentColor;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loom-node,
-  .loom-box,
-  .loom-leader,
-  .loom-link {
-    transition: none;
+  .route-endpoint strong {
+    white-space: normal;
   }
 }

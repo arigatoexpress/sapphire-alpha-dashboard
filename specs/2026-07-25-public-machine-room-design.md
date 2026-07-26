@@ -37,8 +37,8 @@ markets{} network, status, feed_age_s, paper_strategies, decision_gate, executio
 events[]  (already unredacted in both views)
 ```
 
-That is a live architecture graph with per-edge latency and event rate. Nobody has to invent a
-data model. The work is to stop hiding it and start drawing it.
+That is a live route ledger with per-link latency and event rate. Nobody has to invent a
+data model. The work is to stop hiding it and render every route in a lane that stays legible.
 
 ## 2. Decisions (Ari, 2026-07-25)
 
@@ -49,14 +49,16 @@ data model. The work is to stop hiding it and start drawing it.
 | D3 | **Hero on `/`, depth on `/dashboard`.** Two renderers, one shared data contract and one shared vocabulary. |
 | D4 | **Kimi implements from a written brief; Ari dispatches; Claude verifies and lands.** |
 | D5 | **x402 is future, not now.** Design the public vault endpoint so a paid/programmatic tier can be added later without rework. Build no payment code in this cycle. |
+| D6 | **Ari's thesis is the mandate.** Cowen is the primary current-cycle lens; Hayes, Bankless, Limitless, and Nadeau have bounded advisory domains. No analyst can set conviction or authorize execution. |
+| D7 | **The dashboard is a route ledger, not a free-form graph.** Each link owns a non-crossing row at every viewport; no SVG geometry or decorative motion. |
 
 Wallet identity needs no decision: it is masked at *ingest* (`moss_telemetry.py:101`, regex-validated
 `identity_masked`), so no address exists in the payload to leak. Un-redaction cannot expose it.
 
 ## 3. Architecture
 
-Three pure modules in `shared/`, consumed by both surfaces. The hard part of this project is
-**legibility**, and legibility is logic, not styling — so it goes where it can be unit-tested.
+Three pure modules in `shared/` are consumed by both surfaces. The dashboard adds a
+table-like route renderer whose DOM order is the non-overlap guarantee.
 
 ```
 shared/
@@ -64,22 +66,20 @@ shared/
   telemetry.ts     one TS type mirroring the un-redacted snapshot. Single source of truth.
   vocabulary.ts    node/link/agent id -> { plainName, oneLiner }. Both surfaces say the same words.
   narrate.ts       pure: snapshot -> English sentences. THE normie feature.
-  loomLayout.ts    pure: labels + width -> non-overlapping positions. THE fix for R2.
 ```
 
 **Why pure functions:** "make it understandable for normies" is untestable as a styling goal and
 trivially testable as `narrate(snapshot) === "The home GPU is answering the trading desk. Three
-agents are working. Nothing is waiting on you."` Same for overlap: `loomLayout` returns boxes, and
-the test asserts no two boxes intersect. Neither needs a browser, and neither can be "fixed" by
-eyeballing it until it looks okay at one window size.
+agents are working. Nothing is waiting on you."` Route legibility is structural: one route per
+row, with endpoint, status, rate, and latency cells. There are no coordinates to collide.
 
 **Renderers:**
 
 - `web/src/components/MachineRoom.tsx` — the landing hero. Full-bleed live graph, client-side
   fetch + poll against `/api/v1/live`. `web/` is `output: 'export'` (static), so this must be a
   client component with no server dependency (`AGENTS.md`: never add a route handler to `web/`).
-- `frontend/src/components/SignalLoom.tsx` — rebuilt on `loomLayout`, dense operator view, same
-  vocabulary and narration.
+- `frontend/src/components/SignalRoutes.tsx` — dense operator route ledger, same vocabulary
+  and narration, with exact measurements or `not observed`.
 
 Both import from `shared/` via tsconfig path aliases. No new package, no build orchestration.
 
@@ -123,9 +123,10 @@ visitor, all of which are testable via `narrate`/`vocabulary`:
 - a narrator strip states, in one English sentence, what the system is doing right now;
 - nothing on screen requires knowing what MOSS, RAG, a tier probe, or a killswitch is.
 
-### W5 — Signal Loom overlap
-Rebuild on `loomLayout`. Verified by the non-intersection unit test at several widths, not by
-screenshot review.
+### W5 — Replace the overlapping graph
+Delete `SignalLoom`, its geometry helper, resize hook, and SVG paths. Render `SignalRoutes`
+as one semantic row per observed link. Verify row content in unit tests and inspect the real
+build at 320 / 768 / 1440 widths.
 
 ### W6 — Sanitized public vault map
 New generator emitting a topic/cluster graph from `~/Knowledge` with **no** personal identifiers:
@@ -156,15 +157,15 @@ Golden evals **before** the refactor, per the charter.
 - non-GET without credentials still 401s; ingest still rejects a bad HMAC;
 - the sanitized vault map contains no PII from a seeded fixture.
 
-**TypeScript (add `vitest` to `frontend/`; it already runs Vite):**
+**TypeScript (`vitest` in `frontend/`):**
 - `narrate()` golden cases: healthy / degraded / stale / empty snapshots → expected sentences;
-- `loomLayout()` non-intersection across widths 320 / 768 / 1440 with worst-case label lengths;
+- `SignalRoutes` renders every route exactly once, includes source/target, rate and latency,
+  and contains no SVG or animated path;
 - `vocabulary` totality: every node and link id present in a real snapshot has an entry, so a new
   node can never silently render as a raw hostname.
 
-One new dev dependency (`vitest`). Justified: W4 and W5 are the deliverable, and without it their
-correctness is a matter of opinion. No Playwright — the pure-function design makes a browser
-unnecessary.
+Browser checks at 320 / 768 / 1440 remain mandatory because the failure being replaced was
+visual: overlapping text and crossing paths.
 
 ## 6. Sequencing
 
