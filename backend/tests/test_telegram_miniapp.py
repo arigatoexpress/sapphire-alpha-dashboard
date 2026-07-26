@@ -219,6 +219,7 @@ def test_summary_missing_local_inbox_is_not_observed(env, client, tmp_path):
     assert "bot_token" not in dumped
     assert "polling" not in dumped
     assert "live" not in dumped
+    assert resp.headers["cache-control"] == "no-store"
 
 
 def test_summary_projects_observed_decision_context(env, client, tmp_path):
@@ -311,6 +312,7 @@ def test_decisions_missing_local_history_is_not_observed(env, client, tmp_path):
         "count": None,
         "observed_at": None,
     }
+    assert resp.headers["cache-control"] == "no-store"
     # There must be NO mutating decision endpoint — approvals stay on the bot rail.
     assert client.post(
         "/api/tg/decisions", headers={"Authorization": f"tma {make_init_data()}"}
@@ -390,6 +392,7 @@ def test_decisions_returns_recent_outcomes_newest_first(env, client, tmp_path):
 def test_miniapp_page_public(client):
     resp = client.get("/miniapp")
     assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "no-store"
     html = resp.text
     assert "telegram-web-app.js" in html
     for phrase in (
