@@ -733,6 +733,14 @@ def build_snapshot(
     bot_message_rate = _telegram_handoff_rate_per_min(agent_worker_dir, now=now)
     archive_completion_rate = _directory_rate_per_min(agent_worker_dir / "done", now=now)
     inference_latency_ms = ps.get("latency_ms")
+    worker_provider = (
+        "local GPU"
+        if gpu_healthy and (
+            "gpu" in str(hb.get("model", "")).lower()
+            or (_nonnegative_int(ps.get("vram_bytes")) or 0) > 0
+        )
+        else "local CPU"
+    )
 
     nodes = [
         {
@@ -801,15 +809,19 @@ def build_snapshot(
         _agent(
             role="Agent worker",
             state=worker_state,
-            activity=" | ".join(
-                (
+            activity=(
+                f"{worker_state} now | lifetime: {tasks_total} total, "
+                f"{pass_count} completed, {fail_count} failed"
+                if None not in (tasks_total, pass_count, fail_count)
+                else " | ".join((
+                    f"{worker_state} now",
                     _count_text(tasks_total, "lifetime task"),
                     _count_text(pass_count, "completed task"),
                     _count_text(fail_count, "failed task"),
-                )
+                ))
             ),
             verification="verified" if worker_status == "healthy" else "pending" if worker_status == "degraded" else "failed",
-            provider="local GPU" if "gpu" in str(hb.get("model", "")).lower() else "local CPU",
+            provider=worker_provider,
             updated_at=_ts_iso(now - hb_age_s),
             index=0,
         ),
