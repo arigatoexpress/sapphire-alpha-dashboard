@@ -83,7 +83,7 @@ def test_merge_unions_agents_nodes_and_links():
     assert merged["summary"]["active_agents"] == 1
     assert merged["summary"]["events_per_min"] is None
     assert merged["summary"]["verified_today"] is None
-    assert merged["summary"]["attention"] is None
+    assert merged["summary"]["attention"] == 0
 
 
 def test_merge_prefers_later_observation():
@@ -113,9 +113,17 @@ def test_merge_uses_windows_decision_projection():
         "execution": "halted",
         "validation": {"oos_pass": 0, "oos_total": 7, "conflicts": 1},
         "feeds": {"fresh": 7, "total": 7},
+        "decisions": {
+            "pending": 2,
+            "pending_review": 2,
+            "approved_awaiting_execution": 14,
+            "eligible_execution": 0,
+            "blocked": 14,
+        },
     })
     merged = _merge_snapshots(mac, win)
     assert merged["desk"] == win["desk"]
+    assert merged["summary"]["attention"] == 2
 
 
 def test_merge_does_not_count_windows_services_as_active_agents():

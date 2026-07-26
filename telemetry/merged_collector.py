@@ -174,6 +174,19 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
     active = mac_summary.get("active_agents")
     if not isinstance(active, int) or isinstance(active, bool):
         active = None
+    win_desk = win.get("desk")
+    decisions = win_desk.get("decisions") if isinstance(win_desk, dict) else None
+    attention = (
+        decisions.get("pending_review")
+        if isinstance(decisions, dict)
+        else None
+    )
+    if (
+        not isinstance(attention, int)
+        or isinstance(attention, bool)
+        or not 0 <= attention <= 1_000
+    ):
+        attention = None
     merged["summary"] = {
         "state": (
             "degraded"
@@ -183,7 +196,7 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
         "active_agents": None if active is None else min(active, 100),
         "events_per_min": None,
         "verified_today": None,
-        "attention": None,
+        "attention": attention,
     }
 
     # Sequence must increase across pushes
@@ -194,8 +207,8 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
         if isinstance(observed, str)
     ]
     merged["observed_at"] = max(observations) if observations else mac.get("observed_at")
-    if isinstance(win.get("desk"), dict):
-        merged["desk"] = copy.deepcopy(win["desk"])
+    if isinstance(win_desk, dict):
+        merged["desk"] = copy.deepcopy(win_desk)
     return merged
 
 
