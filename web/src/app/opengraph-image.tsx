@@ -77,7 +77,7 @@ export default function OpengraphImage() {
               lineHeight: 1.4,
             }}
           >
-            Autonomous trading and agent infrastructure. Every figure ships with the command
+            Market research and bounded agent infrastructure. Every figure ships with the command
             that reproduces it.
           </div>
         </div>

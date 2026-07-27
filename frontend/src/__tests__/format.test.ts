@@ -8,6 +8,7 @@ import {
   formatExecutionHeadline,
   formatLatency,
   formatNewRisk,
+  formatObservedAt,
   formatPercent,
   formatPosture,
   formatRate,
@@ -71,6 +72,14 @@ describe('formatAge', () => {
     expect(formatAge(99.5)).toBe('2m ago')
     expect(formatAge(9262)).toBe('3h ago')
     expect(formatAge(84360)).toBe('1d ago')
+  })
+})
+
+describe('formatObservedAt', () => {
+  it('includes the date and UTC zone rather than an ambiguous clock', () => {
+    expect(formatObservedAt('2026-07-27T16:31:00Z')).toBe('2026-07-27 16:31:00Z')
+    expect(formatObservedAt(null)).toBe(NOT_OBSERVED)
+    expect(formatObservedAt('invalid')).toBe(NOT_OBSERVED)
   })
 })
 

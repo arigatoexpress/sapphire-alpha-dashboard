@@ -1,627 +1,796 @@
-import { useMemo } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { narrate, type Narration } from '@shared/narrate'
+import { useMemo, useState } from 'react'
+import type { KeyboardEvent } from 'react'
+import { narrate } from '@shared/narrate'
 import { describeAgent, describeNode } from '@shared/vocabulary'
-import { SignalRoutes } from './components/SignalRoutes'
-import { MarketAperture } from './components/MarketAperture'
-import { DecisionCockpit } from './components/DecisionCockpit'
-import { EvidenceWatch } from './components/EvidenceWatch'
-import { LiveClock } from './components/LiveClock'
-import { ShieldIcon } from './components/icons'
-import {
-  Count,
-  Dot,
-  Empty,
-  Eyebrow,
-  Metric,
-  Notice,
-  Panel,
-  PanelHeading,
-  StatusPill,
-  toneFor,
-  toneText,
-} from './components/ui'
+import { useFleet } from './hooks/useFleet'
 import { useLiveTelemetry } from './hooks/useLiveTelemetry'
 import { useMossSnapshot } from './hooks/useMossSnapshot'
-import { useFleet } from './hooks/useFleet'
 import { usePublicWidgets } from './hooks/usePublicWidgets'
 import {
   formatAge,
   formatClockTime,
   formatCount,
-  formatRate,
+  formatObservedAt,
   NOT_OBSERVED,
 } from './desk/format'
 import type {
   FleetCounts,
   FleetData,
-  LiveAgent,
   LiveEvent,
   LiveSnapshot,
   MossSnapshot,
+  PublicWidgets,
 } from './types'
 
+type EvidenceTone = 'current' | 'held' | 'degraded' | 'unknown'
+
+interface EvidenceSegment {
+  id: string
+  label: string
+  value: string
+  source: string
+  observedAt: string
+  freshness: string
+  authority: string
+  uncertainty: string
+  tone: EvidenceTone
+}
+
+interface AttentionItem {
+  label: string
+  detail: string
+  tone: EvidenceTone
+}
+
 const SECTIONS = [
-  { href: '#doctrine', label: 'Outlook' },
-  { href: '#decisions', label: 'Decisions' },
+  { href: '#attention', label: 'Attention' },
+  { href: '#timeline', label: 'Changed' },
+  { href: '#authority', label: 'Authority' },
   { href: '#evidence', label: 'Evidence' },
-  { href: '#assets', label: 'Assets' },
-  { href: '#system', label: 'System' },
 ]
 
-export default function App() {
-  const { snapshot, error, loading } = useLiveTelemetry()
-  const { snapshot: mossSnapshot, error: mossError } = useMossSnapshot()
-  const { fleet, error: fleetError } = useFleet()
-  const { widgets, error: widgetsError } = usePublicWidgets()
-
-  const status = snapshot?.status ?? (loading ? 'warming' : 'offline')
-  const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
-
-  return (
-    <div className="min-h-screen">
-      <div className="aurora" aria-hidden="true" />
-      <div className="field" aria-hidden="true" />
-      <div className="grain" aria-hidden="true" />
-
-      {/* --- Top bar --------------------------------------------------- */}
-      <header className="sticky top-0 z-50 border-b border-line bg-void/85 backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between gap-6 px-5 md:px-7">
-          <a
-            href="/"
-            className="flex shrink-0 items-center gap-2.5 font-mono text-[13px] tracking-[0.18em] text-ink uppercase"
-          >
-            <ShieldIcon className="w-4 text-sapphire" />
-            Sapphire<span className="text-sapphire">Alpha</span>
-          </a>
-
-          <nav className="hidden items-center gap-6 lg:flex" aria-label="Sections">
-            {SECTIONS.map((section) => (
-              <a
-                key={section.href}
-                href={section.href}
-                className="underline-grow font-mono text-[12px] tracking-[0.1em] text-ink-dim uppercase transition-colors hover:text-ink"
-              >
-                {section.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <StatusPill status={status} pulse={status === 'live'} />
-            <span className="tnum hidden font-mono text-[11px] text-ink-faint sm:inline">
-              {formatAge(snapshot?.freshness_s)}
-            </span>
-            <span className="tnum hidden font-mono text-[11px] text-ink-faint md:inline">
-              <LiveClock />
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main id="top" className="mx-auto max-w-[1320px] px-5 pt-9 pb-24 md:px-7 md:pt-12">
-        <MarketAperture snapshot={snapshot} />
-
-        <DecisionCockpit desk={snapshot?.desk ?? null} />
-
-        <Narrator narration={narration} />
-
-        {(error || snapshot?.status === 'stale') && (
-          <div className="mt-6 space-y-3">
-            {error && (
-              <Notice tone="failed">
-                {error}. The last reading that did arrive is still on screen, and it is
-                marked with the time it arrived.
-              </Notice>
-            )}
-            {snapshot?.status === 'stale' && (
-              <Notice tone="degraded">
-                This report is {formatAge(snapshot.freshness_s)}. Everything below describes
-                that moment, not this one.
-              </Notice>
-            )}
-          </div>
-        )}
-
-        <SafetyRail snapshot={snapshot} />
-
-        <EvidenceWatch widgets={widgets} error={widgetsError} />
-
-        <div id="assets" className="mt-6 scroll-mt-24">
-          <MossPanel snapshot={mossSnapshot} error={mossError} />
-        </div>
-
-        {/* System graph always open — this is the analysis surface, not a disclosure. */}
-        <section id="system" className="mt-8 scroll-mt-24" aria-labelledby="system-heading">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="font-mono text-[11px] tracking-[0.18em] text-sapphire uppercase">
-                System mesh
-              </p>
-              <h2
-                id="system-heading"
-                className="mt-2 font-display text-2xl font-semibold tracking-[-0.02em]"
-              >
-                Routes, agents, market feed, fleet
-              </h2>
-            </div>
-            <em className="font-mono text-[11px] text-ink-faint not-italic">
-              {snapshot?.nodes.length ?? 0} components · {snapshot?.links.length ?? 0} paths
-            </em>
-          </div>
-          <SignalRoutes
-            nodes={snapshot?.nodes ?? []}
-            links={snapshot?.links ?? []}
-            status={status}
-          />
-          <div className="mt-6">
-            <FleetPanel fleet={fleet} error={fleetError} />
-          </div>
-          <div id="activity" className="mt-6 grid gap-6 scroll-mt-24 xl:grid-cols-3">
-            <AgentPanel
-              agents={snapshot?.agents ?? []}
-              observed={Boolean(snapshot?.observed_at)}
-            />
-            <MarketPanel snapshot={snapshot} />
-            <EventLedger
-              events={snapshot?.events ?? []}
-              observed={Boolean(snapshot?.observed_at)}
-            />
-          </div>
-        </section>
-
-        {/* --- Policy -------------------------------------------------- */}
-        <section className="mt-12 border-t border-line pt-9">
-          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
-            <div>
-              <Eyebrow>Measurement contract</Eyebrow>
-              <h2 className="mt-4 font-display text-2xl leading-tight font-semibold tracking-[-0.02em] text-balance">
-                A number is observed, or it is absent.
-              </h2>
-            </div>
-            <div className="space-y-4 text-base leading-relaxed text-ink-dim">
-              <p>
-                Every figure on this page is the figure the machines reported, at the moment
-                they reported it. Nothing is delayed, rounded into an adjective, or held
-                back for a different kind of visitor.
-              </p>
-              <p>
-                Two things are deliberately absent rather than hidden behind something. The
-                exact wallet balance is never published — it appears as a band, and that is
-                the only number on the site treated that way. And no person, address, or
-                machine name appears anywhere; the parts of the system are named for what
-                they do.
-              </p>
-              <p>
-                Where a reading does not exist, the page says so. A blank is a blank:
-                round-trip times are unmeasured today because nothing is timing those hops
-                yet, and they will fill in by themselves when something does.
-              </p>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-[1320px] flex-col gap-2 px-5 py-6 font-mono text-[11px] text-ink-faint sm:flex-row sm:items-center sm:justify-between md:px-7">
-          <span>Sapphire Alpha · evidence before action</span>
-          <span className="text-ink-dim">
-            This page only reads. It cannot place a trade or change a setting.
-          </span>
-        </div>
-      </footer>
-    </div>
-  )
+function words(value: string | null | undefined) {
+  return value ? value.replace(/_/g, ' ') : NOT_OBSERVED
 }
 
-/* --- Narrator ----------------------------------------------------------- */
-
-const NARRATION_EDGE: Record<Narration['tone'], string> = {
-  healthy: 'border-l-sapphire',
-  degraded: 'border-l-degraded',
-  stale: 'border-l-degraded',
-  empty: 'border-l-line-lit',
-}
-
-/**
- * One English sentence about what is happening, from `@shared/narrate` — the
- * same function the landing page uses, so the two surfaces cannot describe the
- * same snapshot differently. It refuses to describe a stale snapshot in the
- * present tense, which is why nothing here re-words its output.
- */
-function Narrator({ narration }: { narration: Narration | null }) {
-  return (
-    <section
-      aria-label="What the system is doing right now"
-      aria-live="polite"
-      className={`mt-6 border-l-2 bg-raised/40 px-6 py-5 ${
-        narration ? NARRATION_EDGE[narration.tone] : NARRATION_EDGE.empty
-      }`}
-    >
-      <p className="text-base leading-relaxed text-ink text-pretty md:text-lg">
-        {narration?.text ?? 'Waiting for the first report to arrive.'}
-      </p>
-    </section>
-  )
-}
-
-/* --- Panels ------------------------------------------------------------- */
-
-export function SafetyRail({ snapshot }: { snapshot: LiveSnapshot | null }) {
-  const market = snapshot?.observed_at ? snapshot.markets : undefined
-  const execution = market?.execution ?? NOT_OBSERVED
-  const cells = [
-    // Execution being off is the safe state, so it reads as verified.
-    {
-      label: 'Execution',
-      value: execution,
-      tone: execution === 'off' ? 'verified' : execution === NOT_OBSERVED ? 'neutral' : 'degraded',
-    },
-    { label: 'Decision gate', value: market?.decision_gate ?? NOT_OBSERVED },
-    { label: 'Market feed', value: market?.status ?? NOT_OBSERVED },
-    { label: 'Snapshot', value: snapshot?.status ?? NOT_OBSERVED },
-    { label: 'Last report', value: formatAge(snapshot?.freshness_s) },
-  ] as const
-
-  return (
-    <section
-      aria-label="Safety and freshness rail"
-      className="mt-6 grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-5"
-    >
-      {cells.map((cell) => {
-        const tone = 'tone' in cell && cell.tone ? cell.tone : toneFor(cell.value)
-        return (
-          <div key={cell.label} className="bg-void px-5 py-4">
-            <p className="font-mono text-[11px] tracking-[0.14em] text-ink-faint uppercase">
-              {cell.label}
-            </p>
-            <p
-              className={`mt-2 font-mono text-[12px] tracking-[0.06em] uppercase ${
-                tone === 'neutral' ? 'text-ink' : toneText(tone)
-              }`}
-            >
-              {cell.value}
-            </p>
-          </div>
-        )
-      })}
-    </section>
-  )
-}
-
-const COMPONENT_STATE_ORDER: Record<string, number> = {
-  working: 0,
-  verifying: 1,
-  blocked: 2,
-  idle: 3,
-  offline: 4,
-}
-
-export function AgentPanel({ agents, observed }: { agents: LiveAgent[]; observed: boolean }) {
-  const working = agents.filter((agent) => agent.state === 'working').length
-  const ordered = [...agents].sort((left, right) => {
-    const stateDelta =
-      (COMPONENT_STATE_ORDER[left.state] ?? 5) -
-      (COMPONENT_STATE_ORDER[right.state] ?? 5)
-    return stateDelta || right.updated_at.localeCompare(left.updated_at)
-  })
-
-  return (
-    <Panel label="System components">
-      <PanelHeading
-        eyebrow="System components"
-        title="What is running"
-        right={
-          <Count>
-            {observed ? `${working} active · ${agents.length} total` : NOT_OBSERVED}
-          </Count>
-        }
-      />
-      <div className="divide-y divide-line">
-        {ordered.length ? (
-          ordered.map((agent, index) => {
-            const described = describeAgent(agent.id)
-            return (
-              <article key={`${agent.id}-${index}`} className="flex items-start gap-3 px-6 py-3.5">
-                <span className="pt-1.5">
-                  <Dot tone={toneFor(agent.state)} pulse={agent.state === 'working'} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <strong className="block truncate font-display text-sm font-semibold text-ink">
-                    {described.plainName}
-                  </strong>
-                  <p className="mt-0.5 truncate text-[13px] text-ink-dim">{agent.activity}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <span className="block font-mono text-[10px] text-ink-faint">
-                    {agent.provider_class}
-                  </span>
-                  <b
-                    className={`font-mono text-[10px] tracking-[0.1em] uppercase ${toneText(
-                      toneFor(agent.state),
-                    )}`}
-                  >
-                    {agent.state}
-                  </b>
-                </div>
-              </article>
-            )
-          })
-        ) : (
-          <div className="p-6">
-            <Empty
-              label={
-                observed
-                  ? 'No system components were present in this report'
-                  : 'No component report has arrived yet'
-              }
-            />
-          </div>
-        )}
-      </div>
-    </Panel>
-  )
-}
-
-export function MarketPanel({ snapshot }: { snapshot: LiveSnapshot | null }) {
-  const observed = Boolean(snapshot?.observed_at)
-  const market = observed ? snapshot?.markets : undefined
-  const marketNode = observed
-    ? snapshot?.nodes.find((node) => node.zone === 'markets')
-    : undefined
-
-  return (
-    <Panel label="Market research">
-      <PanelHeading
-        eyebrow="Market research"
-        title={marketNode ? describeNode(marketNode.id).plainName : 'Trading desk'}
-        right={<StatusPill status={market?.status} label={market?.status ?? NOT_OBSERVED} />}
-      />
-      <div className="px-6 py-5">
-        <div className="grid grid-cols-2 gap-5">
-          <Metric label="Events" value={formatRate(market?.events_per_min)} />
-          <Metric label="Feed age" value={formatAge(market?.feed_age_s)} />
-          <Metric label="Decision gate" value={market?.decision_gate ?? NOT_OBSERVED} />
-          <Metric
-            label="Execution"
-            value={market?.execution ?? NOT_OBSERVED}
-            tone={market?.execution === 'off' ? 'verified' : 'neutral'}
-          />
-        </div>
-
-        <p className="mt-6 text-[13px] leading-relaxed text-ink-faint">
-          Research forms a single probability for each binary market claim, then path bands
-          for price targets. Execution is a separate gated system — caps, kill switch, designated
-          capital only. No paper backtest scoreboards on this page.
-        </p>
-      </div>
-    </Panel>
-  )
-}
-
-function MossPanel({ snapshot, error }: { snapshot: MossSnapshot | null; error: string }) {
-  return (
-    <Panel label="MegaETH MOSS wallet observation">
-      <PanelHeading
-        eyebrow="Onchain assets · read only"
-        title="MegaETH / MOSS"
-        note="Watched through a passkey wallet that this dashboard can read and cannot spend from."
-        right={<StatusPill status={snapshot?.status} label={snapshot?.status ?? NOT_OBSERVED} />}
-      />
-      <div className="grid gap-6 px-6 py-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Funding" value={snapshot?.usdm_band ?? NOT_OBSERVED} />
-        <Metric label="Gas" value={snapshot?.eth_state ?? NOT_OBSERVED} />
-        <Metric
-          label="Observed"
-          value={snapshot?.observation_freshness ?? formatAge(snapshot?.freshness_s)}
-        />
-        <Metric
-          label="Authority"
-          value={snapshot?.authority ?? NOT_OBSERVED}
-          tone={snapshot?.authority ? 'verified' : 'neutral'}
-        />
-      </div>
-      <p className="border-t border-line px-6 py-4 text-[12px] leading-relaxed text-ink-faint">
-        Funding is the one figure published as a band rather than a number, and it is
-        banded for everyone — this page has no view that shows the exact balance.
-      </p>
-      {error ? (
-        <p className="border-t border-line px-6 py-4 font-mono text-[11px] text-failed">{error}</p>
-      ) : null}
-    </Panel>
-  )
+function observedTime(value: string | null | undefined) {
+  return formatObservedAt(value)
 }
 
 function isFleetCounts(fleet: FleetData | FleetCounts): fleet is FleetCounts {
   return !('counts' in fleet)
 }
 
-function FleetPanel({
-  fleet,
-  error,
-}: {
-  fleet: FleetData | FleetCounts | null
-  error: string
-}) {
-  const ageS = fleet?.snapshot_age_s ?? null
-  const stale = ageS != null && ageS >= 900
-  const leaseCount = fleet ? (isFleetCounts(fleet) ? fleet.leases : fleet.counts.leases) : null
-  const gateCount = fleet
-    ? isFleetCounts(fleet)
-      ? fleet.gates_open
-      : fleet.counts.gates_open
-    : null
-  const totalCount =
-    leaseCount === null && gateCount === null ? null : (leaseCount ?? 0) + (gateCount ?? 0)
-  const detail = fleet && !isFleetCounts(fleet) ? fleet : null
-  const oldestGateId = detail?.gates.length
-    ? detail.gates.reduce((a, b) => (b.age_hours > a.age_hours ? b : a)).id
-    : null
+function fleetCount(fleet: FleetData | FleetCounts | null, key: 'leases' | 'gates') {
+  if (!fleet) return null
+  if (isFleetCounts(fleet)) return key === 'leases' ? fleet.leases : fleet.gates_open
+  return key === 'leases' ? fleet.counts.leases : fleet.counts.gates_open
+}
+
+function toneForValue(value: string | null | undefined): EvidenceTone {
+  const normalized = String(value ?? '').toLowerCase()
+  if (!normalized || normalized === NOT_OBSERVED || normalized === 'unknown') return 'unknown'
+  if (['halted', 'off', 'gated', 'disarmed', 'read-only'].includes(normalized)) return 'held'
+  if (['stale', 'delayed', 'degraded', 'down', 'offline', 'failed'].includes(normalized)) {
+    return 'degraded'
+  }
+  if (['live', 'current', 'healthy', 'verified', 'working', 'recovered', 'observed'].includes(normalized)) {
+    return 'current'
+  }
+  return 'unknown'
+}
+
+export default function App() {
+  const { snapshot, error, loading } = useLiveTelemetry()
+  const { snapshot: moss, error: mossError } = useMossSnapshot()
+  const { fleet, error: fleetError } = useFleet()
+  const { widgets, error: widgetsError } = usePublicWidgets()
+
+  const execution = snapshot?.desk?.execution ?? snapshot?.markets.execution ?? null
+  const status = error ? 'unavailable' : (snapshot?.status ?? (loading ? 'warming' : 'not observed'))
+  const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
+  const gateCount = fleetCount(fleet, 'gates')
+  const leaseCount = fleetCount(fleet, 'leases')
+
+  const segments = useMemo(
+    () =>
+      buildEvidenceSegments({
+        snapshot,
+        widgets,
+        moss,
+        fleet,
+        execution,
+        errors: { live: error, widgets: widgetsError, fleet: fleetError, moss: mossError },
+      }),
+    [snapshot, widgets, moss, fleet, execution, error, widgetsError, fleetError, mossError],
+  )
+  const [activeId, setActiveId] = useState('snapshot')
+  const activeEvidence = segments.find((segment) => segment.id === activeId) ?? segments[0]
+
+  const attention = useMemo(
+    () =>
+      buildAttention({
+        snapshot,
+        widgets,
+        execution,
+        error,
+        widgetsError,
+        fleetError,
+        mossError,
+        gateCount,
+      }),
+    [
+      snapshot,
+      widgets,
+      execution,
+      error,
+      widgetsError,
+      fleetError,
+      mossError,
+      gateCount,
+    ],
+  )
+
+  const executionHeld = ['halted', 'off', 'gated'].includes(String(execution))
+  const headline = executionHeld
+    ? error
+      ? 'Telemetry unavailable.'
+      : 'Authority held.'
+    : error
+      ? 'Telemetry unavailable.'
+      : execution
+        ? `Execution ${words(execution)}.`
+        : 'Awaiting observed state.'
+  const executionDisplay =
+    error && execution ? `${words(execution)} · last report` : words(execution)
+  const attentionCount = attention.length
+    ? formatCount(attention.length)
+    : snapshot?.observed_at
+      ? '0'
+      : NOT_OBSERVED
 
   return (
-    <Panel id="fleet" label="Fleet coordination" className="scroll-mt-24">
-      <PanelHeading
-        eyebrow="Fleet coordination"
-        title="Agents at work, and what is waiting for a person"
-        right={
-          <div className="flex items-center gap-2">
-            {stale ? (
-              <span className="border border-degraded/50 px-2.5 py-1 font-mono text-[11px] text-degraded">
-                {formatAge(ageS)}
-              </span>
-            ) : null}
-            <Count>{formatCount(totalCount)}</Count>
-          </div>
-        }
-      />
+    <div className="observatory-shell" data-execution={execution ?? 'unknown'}>
+      <div className="observatory-glow" aria-hidden="true" />
 
-      <div className="grid gap-6 border-b border-line px-6 py-6 sm:grid-cols-3">
-        <Metric label="Agents holding a repo" value={formatCount(leaseCount)} />
-        <Metric label="Decisions open" value={formatCount(gateCount)} />
-        <Metric
-          label="Counted"
-          value={formatAge(ageS)}
-          tone={stale ? 'degraded' : 'neutral'}
-        />
-      </div>
-
-      {detail ? (
-        <div className="grid gap-px bg-line md:grid-cols-2">
-          <div className="bg-raised/40 px-6 py-5">
-            <Eyebrow>Repos being worked on</Eyebrow>
-            <div className="mt-4 space-y-px">
-              {detail.leases.length ? (
-                detail.leases.map((lease, index) => (
-                  <article
-                    key={`${lease.agent}-${index}`}
-                    className="flex items-start gap-3 border-b border-line py-3 last:border-0"
-                  >
-                    <span className="pt-1.5">
-                      <Dot tone="sapphire" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <strong className="block truncate font-display text-sm font-semibold text-ink">
-                        {lease.agent}
-                      </strong>
-                      <p className="truncate text-[13px] text-ink-dim">
-                        {lease.repo} · {lease.purpose}
-                      </p>
-                    </div>
-                    <span className="tnum shrink-0 font-mono text-[11px] text-ink-faint">
-                      until {formatClockTime(lease.expires_at)}
-                    </span>
-                  </article>
-                ))
-              ) : (
-                <Empty label="No agent is holding a repo" />
-              )}
-            </div>
-          </div>
-
-          <div className="bg-raised/40 px-6 py-5">
-            <Eyebrow>Waiting for a decision</Eyebrow>
-            <div className="mt-4 space-y-px">
-              {detail.gates.length ? (
-                detail.gates.map((gate) => (
-                  <article
-                    key={gate.id}
-                    className={`flex items-start gap-3 border-b border-line py-3 last:border-0 ${
-                      gate.id === oldestGateId ? 'border-l-2 border-l-degraded pl-3' : ''
-                    }`}
-                  >
-                    <span className="pt-1.5">
-                      <Dot tone={gate.status === 'open' ? 'degraded' : 'neutral'} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <strong className="block truncate font-display text-sm font-semibold text-ink">
-                        {gate.title}
-                      </strong>
-                      <p className="text-[13px] text-ink-dim">{gate.status}</p>
-                    </div>
-                    <span className="tnum shrink-0 font-mono text-[11px] text-ink-faint">
-                      {formatAge(gate.age_hours * 3600)}
-                    </span>
-                  </article>
-                ))
-              ) : (
-                <Empty label="Nothing is waiting for a decision" />
-              )}
-            </div>
-          </div>
+      <header className="observatory-header">
+        <a className="observatory-brand" href="/">
+          <span aria-hidden="true">◇</span>
+          Sapphire <b>Alpha</b>
+        </a>
+        <nav aria-label="Observatory sections">
+          {SECTIONS.map((section) => (
+            <a href={section.href} key={section.href}>
+              {section.label}
+            </a>
+          ))}
+        </nav>
+        <div className="observatory-header-state">
+          <span className={`state-dot state-dot--${toneForValue(status)}`} aria-hidden="true" />
+          <span>{status}</span>
+          <time>{error && snapshot ? `last report ${formatAge(snapshot.freshness_s)}` : formatAge(snapshot?.freshness_s)}</time>
         </div>
-      ) : (
-        <p className="px-6 py-5 text-[13px] leading-relaxed text-ink-faint">
-          The fleet feed carries counts. Which repo each agent is holding, and what each
-          open decision is about, are not part of it.
-        </p>
-      )}
+      </header>
 
-      {error ? (
-        <p className="border-t border-line px-6 py-4 font-mono text-[11px] text-failed">
-          {error}
-        </p>
-      ) : null}
-    </Panel>
+      <main className="observatory-main">
+        <section className="observatory-opening" aria-labelledby="observatory-title">
+          <div className="observatory-opening-copy">
+            <p className="observatory-kicker">Decision observatory · read only</p>
+            <h1 id="observatory-title">{headline}</h1>
+            <p className="observatory-lede">
+              What changed, what needs attention, and what is allowed to act—without
+              pretending an absent measurement exists.
+            </p>
+          </div>
+
+          <div className="observatory-opening-facts" aria-label="Current operating boundary">
+            <div>
+              <span>Execution</span>
+              <strong>{executionDisplay}</strong>
+            </div>
+            <div>
+              <span>Needs attention</span>
+              <strong>{attentionCount}</strong>
+            </div>
+            <div>
+              <span>Can act</span>
+              <strong>Read and review only</strong>
+            </div>
+          </div>
+        </section>
+
+        <EvidenceHorizon
+          segments={segments}
+          active={activeEvidence}
+          onSelect={setActiveId}
+        />
+
+        <div className="observatory-decision-grid">
+          <section id="attention" className="attention-panel" aria-labelledby="attention-title">
+            <div className="section-heading">
+              <p>01 · Needs attention</p>
+              <h2 id="attention-title">The shortest path to a truthful state.</h2>
+            </div>
+            {attention.length ? (
+              <ol className="attention-list">
+                {attention.map((item, index) => (
+                  <li key={`${item.label}-${index}`} data-tone={item.tone}>
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                    <div>
+                      <strong>{item.label}</strong>
+                      <p>{item.detail}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <div className="timeline-empty">
+                <span>{snapshot?.observed_at ? 'No urgent exception observed' : 'No report yet'}</span>
+                <p>
+                  {snapshot?.observed_at
+                    ? 'This is bounded to the current snapshot; it is not a claim that every subsystem is healthy.'
+                    : 'Waiting for the first report before counting exceptions.'}
+                </p>
+              </div>
+            )}
+            <p className="attention-boundary">
+              This surface cannot place a trade, clear a halt, change a cap, or approve
+              itself.
+            </p>
+          </section>
+
+          <section id="timeline" className="timeline-panel" aria-labelledby="timeline-title">
+            <div className="section-heading">
+              <p>02 · What changed</p>
+              <h2 id="timeline-title">Observed events, newest first.</h2>
+            </div>
+            <EventTimeline snapshot={snapshot} fallback={narration?.text} />
+          </section>
+        </div>
+
+        <section id="authority" className="authority-band" aria-labelledby="authority-title">
+          <div>
+            <p className="observatory-kicker">03 · Authority</p>
+            <h2 id="authority-title">Evidence may challenge. It may not authorize.</h2>
+          </div>
+          <dl>
+            <div>
+              <dt>Execution</dt>
+              <dd>{executionHeld ? 'No execution permitted' : words(execution)}</dd>
+            </div>
+            <div>
+              <dt>Decision gate</dt>
+              <dd>{words(snapshot?.markets.decision_gate)}</dd>
+            </div>
+            <div>
+              <dt>Research role</dt>
+              <dd>{words(widgets?.research.policy.research_role)}</dd>
+            </div>
+            <div>
+              <dt>Human gates</dt>
+              <dd>{formatCount(gateCount)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section id="evidence" className="evidence-ledger" aria-labelledby="evidence-title">
+          <div className="section-heading section-heading--wide">
+            <div>
+              <p>04 · Evidence</p>
+              <h2 id="evidence-title">The details stay available, not dominant.</h2>
+            </div>
+            <p>
+              Open a ledger only when the decision needs it. The top of the page stays
+              reserved for exceptions and authority.
+            </p>
+          </div>
+
+          <div className="evidence-disclosures">
+            <ResearchDisclosure widgets={widgets} />
+            <SystemDisclosure snapshot={snapshot} leaseCount={leaseCount} />
+            <AssetDisclosure
+              status={moss?.status}
+              funding={moss?.usdm_band}
+              authority={moss?.authority}
+            />
+          </div>
+        </section>
+
+        <section className="measurement-contract" aria-label="Measurement contract">
+          <p>Measurement contract</p>
+          <h2>A number is observed, or it is absent.</h2>
+          <div>
+            <p>
+              Every figure is tied to the report that supplied it. Missing source,
+              freshness, or authority makes the value unknown—not zero, safe, or live.
+            </p>
+            <p>
+              Capital remains banded. Identities, addresses, holdings, orders, and machine
+              names never enter this anonymous surface.
+            </p>
+          </div>
+        </section>
+      </main>
+
+      <footer className="observatory-footer">
+        <span>Sapphire Alpha · evidence before action</span>
+        <span>Anonymous · read only · no execution authority</span>
+      </footer>
+    </div>
   )
 }
 
-function EventLedger({ events, observed }: { events: LiveEvent[]; observed: boolean }) {
-  const reduceMotion = useReducedMotion()
+function EvidenceHorizon({
+  segments,
+  active,
+  onSelect,
+}: {
+  segments: EvidenceSegment[]
+  active: EvidenceSegment
+  onSelect: (id: string) => void
+}) {
+  function moveFocus(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const keyOffsets: Record<string, number> = {
+      ArrowRight: 1,
+      ArrowDown: 1,
+      ArrowLeft: -1,
+      ArrowUp: -1,
+    }
+    let nextIndex = index
+    if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = segments.length - 1
+    else if (event.key in keyOffsets) {
+      nextIndex = (index + keyOffsets[event.key] + segments.length) % segments.length
+    } else {
+      return
+    }
+    event.preventDefault()
+    onSelect(segments[nextIndex].id)
+    document.getElementById(`evidence-tab-${segments[nextIndex].id}`)?.focus()
+  }
+
   return (
-    <Panel label="Evidence ledger">
-      <PanelHeading eyebrow="Evidence ledger" title="What just happened" />
-      <div className="divide-y divide-line">
-        {/* The only entrance animation on the page, and it marks a real arrival:
-            a row fades in when a new event turns up in the snapshot. */}
-        <AnimatePresence initial={false}>
-          {events.length ? (
-            recentEvents(events)
-              .map((event) => (
-                <motion.article
-                  key={event.id}
-                  className="flex items-start gap-3 px-6 py-3.5"
-                  initial={reduceMotion ? false : { opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={reduceMotion ? { duration: 0 } : undefined}
-                >
-                  <time className="tnum shrink-0 pt-0.5 font-mono text-[11px] text-ink-faint">
-                    {formatClockTime(event.observed_at)}
-                  </time>
-                  <span className="pt-1.5">
-                    <Dot tone={toneFor(event.status)} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <strong className="block truncate font-display text-sm font-semibold text-ink">
-                      {event.label}
-                    </strong>
-                    <span className="block truncate font-mono text-[11px] text-ink-faint">
-                      {event.source} → {event.target}
-                    </span>
-                  </div>
-                  <b
-                    className={`shrink-0 font-mono text-[10px] tracking-[0.1em] uppercase ${toneText(
-                      toneFor(event.status),
-                    )}`}
-                  >
-                    {event.status}
-                  </b>
-                </motion.article>
-              ))
-          ) : (
-            <div className="p-6">
-              <Empty
-                label={
-                  observed
-                    ? 'Nothing happened during this report'
-                    : 'No event report has arrived yet'
-                }
-              />
-            </div>
-          )}
-        </AnimatePresence>
+    <section className="evidence-horizon" aria-labelledby="horizon-title">
+      <div className="evidence-horizon-heading">
+        <div>
+          <p>Evidence horizon</p>
+          <h2 id="horizon-title">Freshness and authority share one line.</h2>
+        </div>
+        <span>Focus a segment for provenance</span>
       </div>
-    </Panel>
+
+      <div className="evidence-horizon-track" role="tablist" aria-label="Evidence sources">
+        {segments.map((segment, index) => (
+          <button
+            key={segment.id}
+            id={`evidence-tab-${segment.id}`}
+            type="button"
+            role="tab"
+            aria-selected={segment.id === active.id}
+            aria-controls="evidence-horizon-detail"
+            tabIndex={segment.id === active.id ? 0 : -1}
+            data-tone={segment.tone}
+            onClick={() => onSelect(segment.id)}
+            onFocus={() => onSelect(segment.id)}
+            onKeyDown={(event) => moveFocus(event, index)}
+          >
+            <span>{segment.label}</span>
+            <strong>{segment.value}</strong>
+          </button>
+        ))}
+      </div>
+
+      <dl
+        id="evidence-horizon-detail"
+        className="evidence-horizon-detail"
+        role="tabpanel"
+        aria-labelledby={`evidence-tab-${active.id}`}
+        aria-live="polite"
+      >
+        <div>
+          <dt>Source</dt>
+          <dd>{active.source}</dd>
+        </div>
+        <div>
+          <dt>Observed</dt>
+          <dd>{active.observedAt}</dd>
+        </div>
+        <div>
+          <dt>Freshness</dt>
+          <dd>{active.freshness}</dd>
+        </div>
+        <div>
+          <dt>Authority</dt>
+          <dd>{active.authority}</dd>
+        </div>
+        <div>
+          <dt>Uncertainty</dt>
+          <dd>{active.uncertainty}</dd>
+        </div>
+      </dl>
+    </section>
   )
+}
+
+function EventTimeline({
+  snapshot,
+  fallback,
+}: {
+  snapshot: LiveSnapshot | null
+  fallback: string | undefined
+}) {
+  const events = recentEvents(snapshot?.events ?? []).slice(0, 5)
+
+  if (!events.length) {
+    return (
+      <div className="timeline-empty">
+        <span>{snapshot?.observed_at ? 'No events in this report' : 'No event report yet'}</span>
+        <p>{fallback ?? 'Waiting for the first observed event.'}</p>
+      </div>
+    )
+  }
+
+  return (
+    <ol className="event-timeline">
+      {events.map((event) => (
+        <li key={event.id} data-tone={toneForValue(event.status)}>
+          <time>{formatClockTime(event.observed_at)}</time>
+          <div>
+            <strong>{event.label}</strong>
+            <span>
+              {words(event.source)} → {words(event.target)}
+            </span>
+          </div>
+          <b>{event.status}</b>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
+  const clips = widgets?.research.clips ?? []
+  return (
+    <details>
+      <summary>
+        <span>Research record</span>
+        <strong>{clips.length ? `${clips.length} reviewed` : NOT_OBSERVED}</strong>
+      </summary>
+      <div className="disclosure-body">
+        {clips.length ? (
+          <ol className="plain-ledger">
+            {clips.slice(0, 6).map((clip) => (
+              <li key={clip.id}>
+                <time>{observedTime(clip.observed_at)}</time>
+                <strong>{clip.title}</strong>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>No reviewed evidence has been published in this observation.</p>
+        )}
+        <p className="disclosure-note">
+          Minimum checks: {formatCount(widgets?.research.policy.minimum_independent_checks)} ·
+          single-input cap:{' '}
+          {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}
+        </p>
+      </div>
+    </details>
+  )
+}
+
+function SystemDisclosure({
+  snapshot,
+  leaseCount,
+}: {
+  snapshot: LiveSnapshot | null
+  leaseCount: number | null
+}) {
+  const agents = [...(snapshot?.agents ?? [])].sort(
+    (left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at),
+  )
+  return (
+    <details>
+      <summary>
+        <span>System record</span>
+        <strong>
+          {snapshot?.observed_at
+            ? `${snapshot.nodes.length} components · ${formatCount(leaseCount)} repo holds`
+            : NOT_OBSERVED}
+        </strong>
+      </summary>
+      <div className="disclosure-body disclosure-columns">
+        <div>
+          <h3>Components</h3>
+          <ol className="plain-ledger">
+            {(snapshot?.nodes ?? []).slice(0, 8).map((node) => (
+              <li key={node.id}>
+                <span>{formatAge(node.freshness_s)}</span>
+                <strong>{describeNode(node.id).plainName}</strong>
+                <b>{node.status}</b>
+              </li>
+            ))}
+          </ol>
+          {!snapshot?.nodes.length ? <p>No component report has arrived yet.</p> : null}
+        </div>
+        <div>
+          <h3>Recent agent state</h3>
+          <ol className="plain-ledger">
+            {agents.slice(0, 8).map((agent) => (
+              <li key={agent.id}>
+                <time>{observedTime(agent.updated_at)}</time>
+                <strong>{describeAgent(agent.id).plainName}</strong>
+                <b>{agent.state}</b>
+              </li>
+            ))}
+          </ol>
+          {!agents.length ? <p>No agent report has arrived yet.</p> : null}
+        </div>
+      </div>
+    </details>
+  )
+}
+
+function AssetDisclosure({
+  status,
+  funding,
+  authority,
+}: {
+  status: string | undefined
+  funding: string | undefined
+  authority: string | undefined
+}) {
+  return (
+    <details>
+      <summary>
+        <span>On-chain observation</span>
+        <strong>{status ?? NOT_OBSERVED}</strong>
+      </summary>
+      <dl className="disclosure-body disclosure-stats">
+        <div>
+          <dt>Funding</dt>
+          <dd>{funding ?? NOT_OBSERVED}</dd>
+        </div>
+        <div>
+          <dt>Authority</dt>
+          <dd>{authority ?? NOT_OBSERVED}</dd>
+        </div>
+        <div>
+          <dt>Disclosure</dt>
+          <dd>Banded only</dd>
+        </div>
+      </dl>
+    </details>
+  )
+}
+
+export function buildEvidenceSegments({
+  snapshot,
+  widgets,
+  moss,
+  fleet,
+  execution,
+  errors,
+}: {
+  snapshot: LiveSnapshot | null
+  widgets: PublicWidgets | null
+  moss: MossSnapshot | null
+  fleet: FleetData | FleetCounts | null
+  execution: string | null
+  errors: { live: string; widgets: string; fleet: string; moss: string }
+}): EvidenceSegment[] {
+  const observed = observedTime(snapshot?.observed_at)
+  const freshness = formatAge(snapshot?.freshness_s)
+  const marketFreshness = formatAge(snapshot?.markets.feed_age_s)
+  const liveTone = (value: string | null | undefined) =>
+    errors.live ? 'degraded' as const : toneForValue(value)
+  const fleetObservedAt =
+    fleet && !isFleetCounts(fleet) ? observedTime(fleet.generated_at) : NOT_OBSERVED
+  const fleetFreshness = formatAge(fleet?.snapshot_age_s)
+  const leaseCount = fleetCount(fleet, 'leases')
+  const gateCount = fleetCount(fleet, 'gates')
+
+  return [
+    {
+      id: 'snapshot',
+      label: 'Snapshot',
+      value: snapshot?.status ?? NOT_OBSERVED,
+      source: '/api/v1/live',
+      observedAt: observed,
+      freshness,
+      authority: 'read only',
+      uncertainty: errors.live
+        ? snapshot
+          ? 'poll failed; value is from the last report'
+          : 'poll failed; no observation'
+        : snapshot
+          ? 'schema-validated projection'
+          : 'no observation',
+      tone: liveTone(snapshot?.status),
+    },
+    {
+      id: 'market',
+      label: 'Market feed',
+      value: snapshot?.markets.status ?? NOT_OBSERVED,
+      source: '/api/v1/live · markets',
+      observedAt: observed,
+      freshness: marketFreshness,
+      authority: 'evidence only',
+      uncertainty: errors.live
+        ? snapshot
+          ? 'poll failed; value is from the last report'
+          : 'poll failed; no market observation'
+        : snapshot?.markets.events_per_min == null
+          ? 'rate not measured'
+          : 'rate measured',
+      tone: liveTone(snapshot?.markets.status),
+    },
+    {
+      id: 'decisions',
+      label: 'Decision gate',
+      value: snapshot?.markets.decision_gate ?? NOT_OBSERVED,
+      source: '/api/v1/live · desk',
+      observedAt: observedTime(snapshot?.desk?.updated_at ?? snapshot?.observed_at),
+      freshness,
+      authority: 'human gate',
+      uncertainty: errors.live
+        ? snapshot?.desk
+          ? 'poll failed; value is from the last report'
+          : 'poll failed; no desk observation'
+        : snapshot?.desk
+          ? 'bounded public counts'
+          : 'no desk observation',
+      tone: liveTone(snapshot?.markets.decision_gate),
+    },
+    {
+      id: 'execution',
+      label: 'Execution',
+      value: words(execution),
+      source: '/api/v1/live · execution',
+      observedAt: observed,
+      freshness,
+      authority: ['halted', 'off', 'gated'].includes(String(execution))
+        ? 'no execution permitted'
+        : 'not established',
+      uncertainty: errors.live
+        ? execution
+          ? 'poll failed; value is from the last report'
+          : 'poll failed; no execution observation'
+        : execution
+          ? 'reported state'
+          : 'no execution observation',
+      tone: liveTone(execution),
+    },
+    {
+      id: 'research',
+      label: 'Research',
+      value: widgets
+        ? `${formatCount(widgets.research.clips.length)} reviewed`
+        : NOT_OBSERVED,
+      source: '/api/v1/widgets · research',
+      observedAt: observedTime(widgets?.rendered_at),
+      freshness: widgets?.rendered_at ? 'timestamp supplied; age not computed' : NOT_OBSERVED,
+      authority: 'cannot authorize execution',
+      uncertainty: errors.widgets
+        ? 'poll failed; value is from the last report'
+        : widgets
+          ? 'bounded reviewed clips; no freshness age'
+          : 'no watchboard observation',
+      tone: errors.widgets ? 'degraded' : 'unknown',
+    },
+    {
+      id: 'fleet',
+      label: 'Coordination',
+      value: fleet
+        ? `${formatCount(leaseCount)} holds · ${formatCount(gateCount)} gates`
+        : NOT_OBSERVED,
+      source: '/api/fleet',
+      observedAt: fleetObservedAt,
+      freshness: fleetFreshness,
+      authority: 'coordination only',
+      uncertainty: errors.fleet
+        ? 'poll failed; value is from the last report'
+        : fleet
+          ? isFleetCounts(fleet)
+            ? 'counts-only projection; observation time absent'
+            : 'sanitized fleet projection'
+          : 'no fleet observation',
+      tone: errors.fleet ? 'degraded' : fleet ? 'current' : 'unknown',
+    },
+    {
+      id: 'moss',
+      label: 'On-chain',
+      value: moss?.status ?? NOT_OBSERVED,
+      source: '/api/v1/moss',
+      observedAt: observedTime(moss?.served_at),
+      freshness: formatAge(moss?.freshness_s),
+      authority: moss?.authority ?? 'not established',
+      uncertainty: errors.moss
+        ? 'poll failed; value is from the last report'
+        : moss
+          ? 'banded public observation'
+          : 'no on-chain observation',
+      tone: errors.moss ? 'degraded' : toneForValue(moss?.status),
+    },
+  ]
+}
+
+function buildAttention({
+  snapshot,
+  widgets,
+  execution,
+  error,
+  widgetsError,
+  fleetError,
+  mossError,
+  gateCount,
+}: {
+  snapshot: LiveSnapshot | null
+  widgets: PublicWidgets | null
+  execution: string | null
+  error: string
+  widgetsError: string
+  fleetError: string
+  mossError: string
+  gateCount: number | null
+}): AttentionItem[] {
+  const items: AttentionItem[] = []
+
+  if (error) {
+    items.push({
+      label: 'Live telemetry is unavailable',
+      detail: 'Keep the last observed state visible, but do not describe it in the present tense.',
+      tone: 'degraded',
+    })
+  } else if (snapshot?.status === 'stale') {
+    items.push({
+      label: `Snapshot is ${formatAge(snapshot.freshness_s)}`,
+      detail: 'Every value below describes that older observation.',
+      tone: 'degraded',
+    })
+  }
+
+  if (widgets?.gate.killswitch) {
+    items.push({
+      label: 'Kill switch is engaged',
+      detail: 'Any entry path remains ineligible until a separate approved resume transition.',
+      tone: 'held',
+    })
+  } else if (['halted', 'off', 'gated'].includes(String(execution))) {
+    items.push({
+      label: 'Execution is held',
+      detail: 'No order path is permitted from this read-only surface.',
+      tone: 'held',
+    })
+  }
+
+  const blocked = snapshot?.desk?.decisions.blocked
+  if (blocked != null && blocked > 0) {
+    items.push({
+      label: `${blocked} ${blocked === 1 ? 'decision is' : 'decisions are'} policy-blocked`,
+      detail: 'A prior approval does not override the current policy state.',
+      tone: 'degraded',
+    })
+  }
+
+  if (gateCount != null && gateCount > 0) {
+    items.push({
+      label: `${gateCount} human ${gateCount === 1 ? 'gate is' : 'gates are'} open`,
+      detail: 'These remain decisions for a person; age and subject live in the fleet record.',
+      tone: 'held',
+    })
+  }
+
+  const peripheralErrors = [widgetsError, fleetError, mossError].filter(Boolean)
+  if (peripheralErrors.length) {
+    items.push({
+      label: `${peripheralErrors.length} supporting ${peripheralErrors.length === 1 ? 'feed is' : 'feeds are'} unavailable`,
+      detail: 'The missing feeds remain unknown and do not inherit freshness from live telemetry.',
+      tone: 'degraded',
+    })
+  }
+
+  return items.slice(0, 4)
 }
 
 export function recentEvents(events: LiveEvent[]) {

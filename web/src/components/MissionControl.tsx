@@ -2,267 +2,239 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import {
-  ConceptCards,
-  MethodFlow,
-  PathBandChart,
-  ProbabilityRing,
-} from '@/components/Visuals'
 
 type Live = {
   status?: string
+  observed_at?: string | null
   freshness_s?: number | null
   desk?: {
     execution?: string | null
     posture?: string | null
+    decisions?: {
+      pending_review?: number | null
+      blocked?: number | null
+    }
   }
-  summary?: { headline?: string }
+  markets?: {
+    status?: string | null
+    decision_gate?: string | null
+    execution?: string | null
+  }
 }
 
-function fmtAge(s: number | null | undefined) {
-  if (s == null || Number.isNaN(s)) return null
-  if (s < 60) return `${Math.round(s)}s ago`
-  if (s < 3600) return `${Math.round(s / 60)}m ago`
-  return `${Math.round(s / 3600)}h ago`
+function fmtAge(seconds: number | null | undefined) {
+  if (seconds == null || Number.isNaN(seconds)) return 'not observed'
+  if (seconds < 60) return `${Math.round(seconds)}s ago`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`
+  return `${Math.round(seconds / 3600)}h ago`
+}
+
+function fmtObservedAt(value: string | null | undefined) {
+  if (!value) return 'not observed'
+  const observed = new Date(value)
+  if (Number.isNaN(observed.getTime())) return 'not observed'
+  return observed.toISOString().replace('T', ' ').replace('.000Z', 'Z')
+}
+
+function words(value: string | null | undefined) {
+  return value ? value.replace(/_/g, ' ') : 'not observed'
+}
+
+function stateTone(value: string | null | undefined) {
+  const normalized = String(value ?? '').toLowerCase()
+  if (['live', 'current', 'verified'].includes(normalized)) return 'current'
+  if (['halted', 'off', 'gated', 'manual', 'telegram'].includes(normalized)) return 'held'
+  if (['stale', 'delayed', 'degraded', 'offline', 'failed'].includes(normalized)) {
+    return 'degraded'
+  }
+  return 'unknown'
 }
 
 export default function MissionControl() {
   const [live, setLive] = useState<Live | null>(null)
-  const [err, setErr] = useState<string | null>(null)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     let cancelled = false
     const pull = async () => {
       try {
-        const res = await fetch('/api/v1/live', { cache: 'no-store' })
-        if (!res.ok) throw new Error(`status ${res.status}`)
-        const data = (await res.json()) as Live
+        const response = await fetch('/api/v1/live', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`status ${response.status}`)
+        const data = (await response.json()) as Live
         if (!cancelled) {
           setLive(data)
-          setErr(null)
+          setError('')
         }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'offline')
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : 'unavailable')
+        }
       }
     }
     pull()
-    const id = window.setInterval(pull, 15_000)
+    const timer = window.setInterval(pull, 15_000)
     return () => {
       cancelled = true
-      window.clearInterval(id)
+      window.clearInterval(timer)
     }
   }, [])
 
-  const status = useMemo(() => {
-    const st = live?.status
-    const age = fmtAge(live?.freshness_s)
-    const exec = live?.desk?.execution
-    return { st, age, exec, headline: live?.summary?.headline }
-  }, [live])
+  const state = useMemo(() => {
+    const execution = live?.desk?.execution ?? live?.markets?.execution ?? null
+    const retained = Boolean(error && live)
+    return {
+      status: error ? 'unavailable' : (live?.status ?? 'not observed'),
+      observedAt: fmtObservedAt(live?.observed_at),
+      freshness: error ? (retained ? `poll failed · last report ${fmtAge(live?.freshness_s)}` : 'poll failed') : fmtAge(live?.freshness_s),
+      execution: words(execution),
+      executionTone: error ? (retained ? 'degraded' : 'unknown') : stateTone(execution),
+      market: words(live?.markets?.status),
+      gate: words(live?.markets?.decision_gate),
+      sourceTone: (value: string | null | undefined) =>
+        error ? (retained && value ? 'degraded' : 'unknown') : stateTone(value),
+    }
+  }, [live, error])
 
   return (
-    <div className="home-pro">
-      {/* Hero */}
-      <section className="home-hero" aria-label="Command desk">
-        <div className="home-hero-mesh" aria-hidden="true" />
-        <div className="home-hero-inner">
-          <p className="home-kicker">Sapphire Alpha · Command desk</p>
-          <h1>
-            Autonomous capital.
-            <span className="home-h1-sub">Markets researched. Trades gated. Inspectable.</span>
+    <div className="public-observatory">
+      <section className="public-hero" aria-labelledby="public-title">
+        <div className="public-hero-copy">
+          <p className="public-kicker">Sapphire Alpha · decision observatory</p>
+          <h1 id="public-title">
+            Evidence
+            <span>before action.</span>
           </h1>
-          <p className="home-lede">
-            We form clear market opinions from public data — one probability per event, path
-            bands for price targets — then run autonomous execution only on designated capital
-            under hard caps.
+          <p className="public-lede">
+            A market claim should show its source, its age, the authority it carries,
+            and what would prove it wrong. Sapphire makes that contract visible before
+            any designated execution rail can act.
           </p>
-          <div className="home-cta">
-            <Link href="/research/" className="btn-primary">
-              See today’s opinions
+          <div className="public-actions">
+            <Link href="/research/" className="public-action public-action--primary">
+              Read the evidence
             </Link>
-            <Link href="/dashboard" className="btn-secondary">
-              Live desk
+            <Link href="/dashboard" className="public-action">
+              Open the observatory
             </Link>
-            <Link href="/research/research-methodology/" className="btn-ghost">
-              How it works
-            </Link>
-          </div>
-
-          <div className="home-status" aria-label="System status">
-            <div>
-              <span>Telemetry</span>
-              <strong>
-                {err
-                  ? 'Unavailable'
-                  : status.st
-                    ? status.st.charAt(0).toUpperCase() + status.st.slice(1)
-                    : 'Connecting…'}
-              </strong>
-            </div>
-            <div>
-              <span>Last reading</span>
-              <strong>{status.age ?? '—'}</strong>
-            </div>
-            <div>
-              <span>Desk mode</span>
-              <strong>{status.exec ? String(status.exec) : 'See live desk'}</strong>
-            </div>
-            <div>
-              <span>Rails</span>
-              <strong>RH Agentic · MegaETH</strong>
-            </div>
           </div>
         </div>
-      </section>
 
-      {/* Visual concept explainer */}
-      <section className="home-section">
-        <div className="home-section-inner">
-          <p className="home-kicker">The idea in three pictures</p>
-          <h2>Clear enough to disagree with.</h2>
-          <p className="home-section-lede">
-            No multi-horizon odds for the same event. No fake backtest leaderboards. Just a
-            probability, a path, and a way to be wrong.
+        <div className="public-hero-horizon" aria-label="Current evidence horizon">
+          <div className="public-horizon-title">
+            <span>Evidence horizon</span>
+            <b>Read only</b>
+          </div>
+          {[
+            { label: 'Snapshot', value: state.status, tone: stateTone(state.status) },
+            { label: 'Last report', value: state.observedAt, tone: state.sourceTone(live?.observed_at) },
+            { label: 'Freshness', value: state.freshness, tone: state.sourceTone(live?.status) },
+            { label: 'Market feed', value: state.market, tone: state.sourceTone(live?.markets?.status) },
+            { label: 'Execution', value: state.execution, tone: state.executionTone },
+          ].map((item) => (
+            <div className="public-horizon-row" data-tone={item.tone} key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+          <p>
+            Source: <code>/api/v1/live</code> · authority: none · unknown stays unknown.
           </p>
-          <ConceptCards />
         </div>
       </section>
 
-      {/* Live sample viz from latest published book */}
-      <section className="home-section home-section--raised">
-        <div className="home-section-inner">
-          <p className="home-kicker">From the latest book</p>
-          <h2>What an opinion looks like.</h2>
-          <div className="home-viz-row">
-            <ProbabilityRing
-              p={0.51}
-              label="BTC cycle low is in"
-              sub="Single event P · residual 49%"
-            />
-            <ProbabilityRing
-              p={0.28}
-              label="US recession ≤12m"
-              sub="Lean no · confidence moderate"
-            />
-            <div className="home-viz-path-wrap">
-              <PathBandChart
-                asset="BTC"
-                horizon="medium · 90d path"
-                spot={65175}
-                bear={46926}
-                base={66500}
-                bull={85000}
-              />
-              <p className="home-viz-caption">
-                Path bands answer “where might price go?” — not “is the low in?” Those stay as
-                one number above.
-              </p>
-            </div>
-          </div>
-          <div className="home-method-cta" style={{ marginTop: '1.75rem' }}>
-            <Link href="/research/conjecture-2026-07-27/" className="btn-primary">
-              Full opinion book
-            </Link>
-            <Link href="/research/research-methodology/" className="btn-secondary">
-              Research methodology
-            </Link>
-          </div>
+      <section className="public-thesis" aria-labelledby="thesis-title">
+        <div>
+          <p className="public-kicker">The thesis</p>
+          <h2 id="thesis-title">Clear enough to disagree with.</h2>
         </div>
-      </section>
-
-      {/* Method flow */}
-      <section className="home-section">
-        <div className="home-section-inner">
-          <p className="home-kicker">How research works</p>
-          <h2>Speculate with discipline.</h2>
-          <p className="home-section-lede">
-            The system is allowed to conjecture on ambiguous markets — including dubiously —
-            but every claim is forced through data, a single event probability when binary, path
-            horizons only for targets, and a falsifier written in advance. Then it{' '}
-            <strong>scores itself</strong>, records wins and losses, and updates priors on a
-            schedule so the next cycle is smarter.
+        <div className="public-thesis-copy">
+          <p>
+            Sapphire separates the binary claim from the price path. An event gets one
+            probability at one timestamp. Bear, base, and bull belong to the path—not as
+            three incompatible probabilities for the same event.
           </p>
-          <MethodFlow />
-          <div className="home-method-cta" style={{ marginTop: '1.5rem' }}>
-            <Link href="/research/research-methodology/" className="btn-secondary">
-              Full learning charter
-            </Link>
-            <Link href="/research/" className="btn-ghost">
-              Calibration reports
-            </Link>
-          </div>
+          <Link href="/research/research-methodology/">Inspect the method →</Link>
         </div>
       </section>
 
-      {/* Rails */}
-      <section className="home-section home-section--raised">
-        <div className="home-section-inner">
-          <p className="home-kicker">Execution</p>
-          <h2>Two rails. Designated capital only.</h2>
-          <div className="home-pillars">
-            <article className="home-card home-card--glow">
-              <p className="home-card-kicker">Rail 01</p>
-              <h3>Robinhood Agentic</h3>
-              <p>
-                Free-reign equities, options, and crypto on the agentic account. Per-order and
-                daily caps. Settlement cash is a real gate — no fantasy liquidity.
-              </p>
-              <Link href="/trading/">Strategy design →</Link>
-            </article>
-            <article className="home-card home-card--glow-ice">
-              <p className="home-card-kicker">Rail 02</p>
-              <h3>MegaETH · MOSS</h3>
-              <p>
-                Passkey session keys for USDm on MegaETH. Transfer-first lab scope, hard daily
-                spend, no private keys in model context.
-              </p>
-              <Link href="/onchain/">On-chain design →</Link>
-            </article>
-            <article className="home-card">
-              <p className="home-card-kicker">Always</p>
-              <h3>Kill switch</h3>
-              <p>
-                Caps the strategy cannot argue with. A human can always pause. Client money never
-                shares these rails.
-              </p>
-              <Link href="/dashboard">Open live desk →</Link>
-            </article>
-          </div>
+      <section className="public-method" aria-labelledby="method-title">
+        <div className="public-method-heading">
+          <p className="public-kicker">How a claim travels</p>
+          <h2 id="method-title">The record is the product.</h2>
         </div>
+        <ol>
+          {[
+            ['01', 'Observe', 'Cite the source and the moment it was retrieved.'],
+            ['02', 'Form', 'One event probability; path bands stay separate.'],
+            ['03', 'Falsify', 'Write the failure condition before the outcome.'],
+            ['04', 'Gate', 'Evidence may propose. Policy and people hold authority.'],
+            ['05', 'Score', 'Resolve the event, publish the error, update the prior.'],
+          ].map(([index, title, body]) => (
+            <li key={index}>
+              <span>{index}</span>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </li>
+          ))}
+        </ol>
       </section>
 
-      {/* Scope */}
-      <section className="home-section">
-        <div className="home-section-inner home-scope">
+      <section className="public-state" aria-labelledby="state-title">
+        <div className="public-state-copy">
+          <p className="public-kicker">Current boundary</p>
+          <h2 id="state-title">
+            Authority held.
+            <span>No execution is available from this page.</span>
+          </h2>
+          <p>
+            The public observatory is anonymous and read only. It cannot place a trade,
+            approve a proposal, clear a kill switch, increase a cap, or reveal a private
+            holding.
+          </p>
+        </div>
+        <dl>
           <div>
-            <p className="home-kicker">Scope</p>
-            <h2>What we will and will not claim.</h2>
+            <dt>Execution</dt>
+            <dd data-tone={state.executionTone}>{state.execution}</dd>
           </div>
-          <div className="home-scope-grid">
-            <div>
-              <h3>We publish</h3>
-              <ul>
-                <li>Event probabilities as of a timestamp</li>
-                <li>Price path bands (short / medium / long)</li>
-                <li>Evidence, drivers, and falsifiers</li>
-                <li>Architecture and execution design</li>
-              </ul>
-            </div>
-            <div>
-              <h3>We do not publish</h3>
-              <ul>
-                <li>Live balances or private holdings</li>
-                <li>Paper backtest “strategy” leaderboards</li>
-                <li>Guaranteed returns or hit rates</li>
-                <li>Advice for outside capital</li>
-              </ul>
-            </div>
+          <div>
+            <dt>Decision gate</dt>
+            <dd>{state.gate}</dd>
           </div>
-          <p className="home-disclaimer">
-            Not investment advice. Opinions are for designated test and agentic capital only.
-            Past calibration does not guarantee future accuracy.
-          </p>
+          <div>
+            <dt>Capital</dt>
+            <dd>Designated rails only</dd>
+          </div>
+          <div>
+            <dt>Public authority</dt>
+            <dd>None</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="public-entry" aria-labelledby="entry-title">
+        <div>
+          <p className="public-kicker">Enter the record</p>
+          <h2 id="entry-title">Read the latest claim, then inspect the system that holds it.</h2>
         </div>
+        <div className="public-entry-links">
+          <Link href="/research/conjecture-2026-07-27/">
+            <span>Latest opinion book</span>
+            <b>Evidence, probability, path, falsifier →</b>
+          </Link>
+          <Link href="/proof/">
+            <span>Authority contract</span>
+            <b>Proposal, mandate, intent, execution →</b>
+          </Link>
+          <Link href="/dashboard">
+            <span>Live observatory</span>
+            <b>What changed, needs attention, can act →</b>
+          </Link>
+        </div>
+        <p className="public-disclaimer">
+          Not investment advice. No guaranteed returns, private positions, or paper
+          backtest leaderboards are published here.
+        </p>
       </section>
     </div>
   )
