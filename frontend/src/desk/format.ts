@@ -76,6 +76,161 @@ export function formatClockTime(iso: string | null | undefined): string {
   })
 }
 
+/** Percentage with a single decimal when needed. Absence stays words. */
+export function formatPercent(value: number | null | undefined, digits = 1): string {
+  if (absent(value)) return NOT_OBSERVED
+  return `${(value as number).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  })}%`
+}
+
+/** Signed percentage for live/replay marks. Always shows a sign when measured. */
+export function formatSignedPercent(value: number | null | undefined, digits = 1): string {
+  if (absent(value)) return NOT_OBSERVED
+  const n = value as number
+  const body = Math.abs(n).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  })
+  return `${n > 0 ? '+' : n < 0 ? '-' : ''}${body}%`
+}
+
+/** Signed percentage points (gap between live and replay). */
+export function formatSignedPoints(value: number | null | undefined, digits = 1): string {
+  if (absent(value)) return NOT_OBSERVED
+  const n = value as number
+  const body = Math.abs(n).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  })
+  return `${n > 0 ? '+' : n < 0 ? '-' : ''}${body}pp`
+}
+
+/** Ratio that never fabricates a zero from a missing part. */
+export function formatRatio(
+  part: number | null | undefined,
+  total: number | null | undefined,
+  suffix = '',
+): string {
+  if (absent(part) || absent(total)) return NOT_OBSERVED
+  return `${part} / ${total}${suffix}`
+}
+
+/**
+ * Desk execution mode — the single most load-bearing word on the decision surface.
+ * Each mode is a distinct claim; never collapse halted into off.
+ */
+export function formatExecution(
+  execution: 'halted' | 'off' | 'gated' | 'unknown' | null | undefined,
+): string {
+  switch (execution) {
+    case 'halted':
+      return 'Halted'
+    case 'off':
+      return 'Off'
+    case 'gated':
+      return 'Gated'
+    case 'unknown':
+    case null:
+    case undefined:
+      return NOT_OBSERVED
+    default:
+      return NOT_OBSERVED
+  }
+}
+
+/** One-line operator sentence for the execution mode. */
+export function formatExecutionHeadline(
+  execution: 'halted' | 'off' | 'gated' | 'unknown' | null | undefined,
+): string {
+  switch (execution) {
+    case 'halted':
+      return 'Execution is halted.'
+    case 'off':
+      return 'Trading stays off.'
+    case 'gated':
+      return 'Trading is gated.'
+    case 'unknown':
+    case null:
+    case undefined:
+      return 'Waiting for desk state.'
+    default:
+      return 'Waiting for desk state.'
+  }
+}
+
+export function formatPosture(
+  posture:
+    | 'capital_preservation'
+    | 'selective_risk'
+    | 'risk_seeking'
+    | 'neutral'
+    | 'unknown'
+    | null
+    | undefined,
+): string {
+  switch (posture) {
+    case 'capital_preservation':
+      return 'Capital preservation'
+    case 'selective_risk':
+      return 'Selective risk'
+    case 'risk_seeking':
+      return 'Risk seeking'
+    case 'neutral':
+      return 'Neutral'
+    default:
+      return NOT_OBSERVED
+  }
+}
+
+export function formatNewRisk(
+  risk: 'available' | 'restricted' | 'blocked' | 'unknown' | null | undefined,
+): string {
+  switch (risk) {
+    case 'available':
+      return 'Available'
+    case 'restricted':
+      return 'Restricted'
+    case 'blocked':
+      return 'Blocked'
+    default:
+      return NOT_OBSERVED
+  }
+}
+
+/** Visual tone key for execution mode (maps onto status chips). */
+export function executionTone(
+  execution: 'halted' | 'off' | 'gated' | 'unknown' | null | undefined,
+): 'ice' | 'sapphire' | 'degraded' | 'neutral' {
+  switch (execution) {
+    case 'halted':
+      return 'ice'
+    case 'gated':
+      return 'sapphire'
+    case 'off':
+      return 'degraded'
+    default:
+      return 'neutral'
+  }
+}
+
+/** Visual tone for order-runway / new-risk. */
+export function riskTone(
+  risk: 'available' | 'restricted' | 'blocked' | 'unknown' | null | undefined,
+): 'sapphire' | 'degraded' | 'failed' | 'neutral' {
+  switch (risk) {
+    case 'available':
+      return 'sapphire'
+    case 'restricted':
+      return 'degraded'
+    case 'blocked':
+      return 'failed'
+    default:
+      return 'neutral'
+  }
+}
+
 export interface FlowProfile {
   /** True only when the edge is actually carrying events. */
   moving: boolean

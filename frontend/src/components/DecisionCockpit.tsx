@@ -1,37 +1,20 @@
 import type { LiveDesk, PublicTrack } from '../types'
-import { formatAge, NOT_OBSERVED } from '../desk/format'
+import {
+  executionTone,
+  formatAge,
+  formatExecution,
+  formatExecutionHeadline,
+  formatNewRisk,
+  formatPercent,
+  formatPosture,
+  formatRatio,
+  formatSignedPercent,
+  formatSignedPoints,
+  NOT_OBSERVED,
+  riskTone,
+} from '../desk/format'
 
 type ValidationConflict = NonNullable<LiveDesk['validation']['conflict_details']>[number]
-
-const POSTURES: Record<LiveDesk['posture'], string> = {
-  capital_preservation: 'Capital preservation',
-  selective_risk: 'Selective risk',
-  risk_seeking: 'Risk seeking',
-  neutral: 'Neutral',
-  unknown: NOT_OBSERVED,
-}
-
-function ratio(part: number | null, total: number | null, suffix = '') {
-  if (part === null || total === null) return NOT_OBSERVED
-  return `${part} / ${total}${suffix}`
-}
-
-function percent(value: number | null | undefined) {
-  if (value === null || value === undefined) return NOT_OBSERVED
-  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
-}
-
-function signedPercent(value: number) {
-  return `${value >= 0 ? '+' : ''}${value.toLocaleString(undefined, {
-    maximumFractionDigits: 1,
-  })}%`
-}
-
-function signedPoints(value: number) {
-  return `${value >= 0 ? '+' : ''}${value.toLocaleString(undefined, {
-    maximumFractionDigits: 1,
-  })}pp`
-}
 
 function displayDate(value: string | null | undefined) {
   if (!value) return null
@@ -52,12 +35,6 @@ function remainingDays(desk: LiveDesk | null) {
     return null
   }
   return Math.max(0, required - qualified)
-}
-
-function headline(desk: LiveDesk | null) {
-  if (!desk || desk.execution === 'unknown') return 'Waiting for desk state.'
-  if (desk.execution === 'gated') return 'Trading is gated.'
-  return 'Trading stays off.'
 }
 
 function nextAction(desk: LiveDesk | null) {
@@ -149,16 +126,37 @@ function releaseBlockers(desk: LiveDesk | null) {
   return blockers
 }
 
+function ModeChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: 'ice' | 'sapphire' | 'degraded' | 'failed' | 'neutral'
+}) {
+  return (
+    <div className={`mode-chip mode-chip--${tone}`}>
+      <span>{label}</span>
+      <strong className="tnum">{value}</strong>
+    </div>
+  )
+}
+
 export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
   const used = desk?.risk?.realized_drawdown_pct
   const limit = desk?.risk?.drawdown_limit_pct
   const runwayFill = used !== null && used !== undefined && limit
     ? Math.min(100, Math.max(0, used * 100 / limit))
     : 0
+  const runwayCritical = runwayFill >= 90
+  const runwayElevated = runwayFill >= 70
+  const execTone = executionTone(desk?.execution)
+  const newRiskTone = riskTone(desk?.risk?.new_risk)
   const gates = [
     {
       label: 'Data',
-      value: desk ? ratio(desk.feeds.fresh, desk.feeds.total, ' current') : NOT_OBSERVED,
+      value: desk ? formatRatio(desk.feeds.fresh, desk.feeds.total, ' current') : NOT_OBSERVED,
       state: desk && desk.feeds.fresh === desk.feeds.total ? 'pass' : 'hold',
     },
     {
@@ -168,13 +166,13 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
     },
     {
       label: 'OOS',
-      value: desk ? ratio(desk.validation.oos_pass, desk.validation.oos_total, ' pass') : NOT_OBSERVED,
+      value: desk ? formatRatio(desk.validation.oos_pass, desk.validation.oos_total, ' pass') : NOT_OBSERVED,
       state: (desk?.validation.oos_pass ?? 0) > 0 ? 'pass' : 'hold',
     },
     {
       label: 'Sealed trial',
       value: desk?.experiment
-        ? ratio(desk.experiment.qualified_days, desk.experiment.required_days)
+        ? formatRatio(desk.experiment.qualified_days, desk.experiment.required_days)
         : NOT_OBSERVED,
       state:
         desk?.experiment?.qualified_days === desk?.experiment?.required_days
@@ -183,12 +181,7 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
     },
     {
       label: 'Order runway',
-      value:
-        desk?.risk?.new_risk === 'available'
-          ? 'Available'
-          : desk?.risk?.new_risk === 'unknown' || !desk?.risk
-            ? NOT_OBSERVED
-            : 'Restricted',
+      value: formatNewRisk(desk?.risk?.new_risk),
       state: desk?.risk?.new_risk === 'available' ? 'pass' : 'hold',
     },
     {
@@ -219,10 +212,9 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
     },
     {
       label: 'Execution',
-      value: desk?.execution === 'unknown' || !desk
-        ? NOT_OBSERVED
-        : desk.execution[0].toUpperCase() + desk.execution.slice(1),
+      value: formatExecution(desk?.execution),
       protected: desk?.execution === 'halted' || desk?.execution === 'off',
+      gated: desk?.execution === 'gated',
     },
   ]
 
@@ -231,11 +223,43 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
       id="decisions"
       aria-labelledby="decision-title"
       className="decision-cockpit scroll-mt-24"
+      data-execution={desk?.execution ?? 'unknown'}
+      data-risk={desk?.risk?.new_risk ?? 'unknown'}
     >
+      {/* Mode strip: execution · risk · posture at a glance */}
+      <div className="execution-mode-strip" aria-label="Execution mode">
+        <ModeChip
+          label="Execution"
+          value={formatExecution(desk?.execution)}
+          tone={execTone}
+        />
+        <ModeChip
+          label="Order runway"
+          value={formatNewRisk(desk?.risk?.new_risk)}
+          tone={newRiskTone === 'failed' ? 'failed' : newRiskTone === 'degraded' ? 'degraded' : newRiskTone === 'sapphire' ? 'sapphire' : 'neutral'}
+        />
+        <ModeChip
+          label="Posture"
+          value={formatPosture(desk?.posture)}
+          tone="neutral"
+        />
+        <ModeChip
+          label="Authority"
+          value={
+            desk?.leader === 'credible'
+              ? 'Earned'
+              : desk?.leader === 'none'
+                ? 'Withheld'
+                : NOT_OBSERVED
+          }
+          tone={desk?.leader === 'credible' ? 'sapphire' : desk?.leader === 'none' ? 'ice' : 'neutral'}
+        />
+      </div>
+
       <div className="decision-head">
         <div>
           <span className="decision-index">READINESS / CAPITAL RUNWAY</span>
-          <h2 id="decision-title">{headline(desk)}</h2>
+          <h2 id="decision-title">{formatExecutionHeadline(desk?.execution)}</h2>
         </div>
         <div className="decision-next">
           <span>Release conditions</span>
@@ -245,30 +269,33 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
               {blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
             </ul>
           ) : null}
-          <small>{desk ? POSTURES[desk.posture] : NOT_OBSERVED}</small>
+          <small>{formatPosture(desk?.posture)}</small>
         </div>
       </div>
       <div className="readiness-readouts">
-        <div className="capital-runway">
+        <div className={`capital-runway${runwayCritical ? ' is-critical' : runwayElevated ? ' is-elevated' : ''}`}>
           <div className="readout-label">
             <span>Loss allowance</span>
-            <strong>{percent(used)} used</strong>
+            <strong className="tnum">{formatPercent(used)} used</strong>
           </div>
-          <div className="runway-track" aria-label={`${percent(used)} of ${percent(limit)} loss limit used`}>
+          <div
+            className="runway-track"
+            aria-label={`${formatPercent(used)} of ${formatPercent(limit)} loss limit used`}
+          >
             <span style={{ width: `${runwayFill}%` }} />
             <i style={{ left: `${runwayFill}%` }} />
           </div>
           <div className="runway-scale">
             <span>0</span>
-            <strong>{percent(desk?.risk?.budget_remaining_pct)} remains</strong>
-            <span>{percent(limit)} stop</span>
+            <strong className="tnum">{formatPercent(desk?.risk?.budget_remaining_pct)} remains</strong>
+            <span className="tnum">{formatPercent(limit)} stop</span>
           </div>
         </div>
         <div className="trial-clock">
           <span>Sealed trial</span>
-          <strong>
+          <strong className="tnum">
             {desk?.experiment
-              ? ratio(desk.experiment.qualified_days, desk.experiment.required_days)
+              ? formatRatio(desk.experiment.qualified_days, desk.experiment.required_days)
               : NOT_OBSERVED}
           </strong>
           <p>
@@ -323,16 +350,20 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
                     aria-label={`${track.status}${untrusted ? ', untrusted' : ''}, observed ${formatAge(track.freshness_s)}`}
                   />
                   <strong>{track.strategy}</strong>
-                  <span className={returnClass}>
-                    {signedPercent(track.live_return_pct)} live
+                  <span className={`tnum ${returnClass ?? ''}`}>
+                    {formatSignedPercent(track.live_return_pct)} live
                     {untrusted ? ' · untrusted' : ''}
                   </span>
-                  <span>{conflict ? `${signedPercent(conflict.replay_return_pct)} replay` : 'Replay not matched'}</span>
+                  <span className="tnum">
+                    {conflict
+                      ? `${formatSignedPercent(conflict.replay_return_pct)} replay`
+                      : 'Replay not matched'}
+                  </span>
                   <div>
-                    <span>{track.green_days} / {track.target_days}</span>
+                    <span className="tnum">{track.green_days} / {track.target_days}</span>
                     <i aria-hidden="true"><b style={{ width: `${progress}%` }} /></i>
                   </div>
-                  <span>{track.open_count} open</span>
+                  <span className="tnum">{track.open_count} open</span>
                   <b className={untrusted || track.status === 'stale' ? 'is-warning' : ''}>
                     <span>{quality}</span>
                     <small>{formatAge(track.freshness_s)}</small>
@@ -375,9 +406,9 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
                 <div className="validation-gap" aria-hidden="true">
                   <i style={{ width: `${Math.max(4, item.gap_pp * 100 / maxConflictGap)}%` }} />
                 </div>
-                <span>{signedPercent(item.live_return_pct)} live</span>
-                <span>{signedPercent(item.replay_return_pct)} replay</span>
-                <b>{signedPoints(item.gap_pp)}</b>
+                <span className="tnum">{formatSignedPercent(item.live_return_pct)} live</span>
+                <span className="tnum">{formatSignedPercent(item.replay_return_pct)} replay</span>
+                <b className="tnum">{formatSignedPoints(item.gap_pp)}</b>
               </li>
             ))}
           </ol>
@@ -388,7 +419,7 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
           <li key={gate.label} className={`gate-${gate.state}`}>
             <i aria-hidden="true" />
             <span>{gate.label}</span>
-            <strong>{gate.value}</strong>
+            <strong className="tnum">{gate.value}</strong>
           </li>
         ))}
       </ol>
@@ -399,13 +430,15 @@ export function DecisionCockpit({ desk }: { desk: LiveDesk | null }) {
             className={
               cell.blocked
                 ? 'is-blocked'
-                : cell.protected
-                  ? 'is-protected'
-                  : undefined
+                : cell.gated
+                  ? 'is-gated'
+                  : cell.protected
+                    ? 'is-protected'
+                    : undefined
             }
           >
             <span>{String(index + 1).padStart(2, '0')} · {cell.label}</span>
-            <strong>{cell.value}</strong>
+            <strong className="tnum">{cell.value}</strong>
           </div>
         ))}
       </div>

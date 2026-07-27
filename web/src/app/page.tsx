@@ -54,6 +54,44 @@ export default function Home() {
 
       <Rule />
 
+      {/* ---------------- Live research strip ---------------- */}
+      <section className="mx-auto max-w-6xl px-6" aria-labelledby="live-research-heading">
+        <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-end lg:gap-16">
+          <div>
+            <Eyebrow>System opinions</Eyebrow>
+            <h2
+              id="live-research-heading"
+              className="mt-4 font-display text-3xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-5xl"
+            >
+              Predictions, portfolio multi-lens, and falsifiers — published.
+            </h2>
+          </div>
+          <div>
+            <p className="text-base leading-relaxed text-ink-dim md:text-lg">
+              The desk does not only stream architecture telemetry. It forms multi-horizon
+              market opinions, scores the book with quant and narrative lenses, and writes
+              research with falsifiers committed in advance.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href="/research/"
+                className="border border-sapphire bg-sapphire px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-void uppercase transition-colors hover:bg-transparent hover:text-sapphire"
+              >
+                Open research →
+              </Link>
+              <Link
+                href="/trading/"
+                className="border border-line-lit px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-ink-dim uppercase transition-colors hover:border-sapphire hover:text-ink"
+              >
+                Execution rails
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Rule />
+
       {/* ---------------- Metrics ---------------- */}
       <section
         className="mx-auto max-w-6xl px-6"

@@ -213,36 +213,46 @@ export default function MachineRoom() {
       data-precision={view.precision ?? 'none'}
     >
       {/* ---- status line ---- */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p className="flex items-center gap-2.5 font-mono text-[11px] tracking-[0.18em] uppercase">
-          <span
-            aria-hidden="true"
-            className="inline-block h-1.5 w-1.5 shrink-0"
-            style={{
-              background:
-                view.mode === 'live'
-                  ? 'var(--color-sapphire)'
-                  : view.mode === 'unreachable'
-                    ? 'var(--color-failed)'
-                    : 'var(--color-degraded)',
-            }}
-          />
-          <span
-            style={{
-              color:
-                view.mode === 'live'
-                  ? 'var(--color-sapphire)'
-                  : view.mode === 'unreachable'
-                    ? 'var(--color-failed)'
-                    : 'var(--color-degraded)',
-            }}
-          >
-            {view.statusWord}
-          </span>
-          <span className="text-ink-faint">
-            {view.age.measured ? `· reading taken ${view.age.text}` : '· no reading yet'}
-          </span>
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex items-center gap-2.5 font-mono text-[11px] tracking-[0.18em] uppercase">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 shrink-0"
+              style={{
+                background:
+                  view.mode === 'live'
+                    ? 'var(--color-sapphire)'
+                    : view.mode === 'unreachable'
+                      ? 'var(--color-failed)'
+                      : 'var(--color-degraded)',
+              }}
+            />
+            <span
+              style={{
+                color:
+                  view.mode === 'live'
+                    ? 'var(--color-sapphire)'
+                    : view.mode === 'unreachable'
+                      ? 'var(--color-failed)'
+                      : 'var(--color-degraded)',
+              }}
+            >
+              {view.statusWord}
+            </span>
+            <span className="text-ink-faint">
+              {view.age.measured ? `· reading taken ${view.age.text}` : '· no reading yet'}
+            </span>
+          </p>
+          {view.hasReading && (
+            <span
+              className={`status-chip status-chip--${view.execution.tone === 'neutral' ? 'sapphire' : view.execution.tone}`}
+            >
+              <span className="status-chip__dot" aria-hidden="true" />
+              Desk {view.execution.desk}
+            </span>
+          )}
+        </div>
         <div className="text-right font-mono text-[11px] leading-relaxed text-ink-faint">
           <p>{view.detailNote}</p>
           <p>this page asks the system again every {POLL_MS / 1000} seconds</p>
@@ -366,14 +376,31 @@ export default function MachineRoom() {
         ))}
       </dl>
 
-      {/* ---- money, in one sentence ---- */}
-      <p className="mt-6 border-l-2 border-line-lit pl-4 text-[15px] leading-relaxed text-ink-dim">
-        <span className="font-mono text-[10px] tracking-[0.18em] text-ink-faint uppercase">
-          Money
-        </span>
-        <br />
-        {view.money}
-      </p>
+      {/* ---- execution + money ---- */}
+      <div className="mr-execution mt-8" data-tone={view.execution.tone}>
+        <div className="mr-execution__strip" aria-label="Execution state">
+          <div className={`mr-execution__chip mr-execution__chip--${view.execution.tone}`}>
+            <span>Desk</span>
+            <strong>{view.execution.desk}</strong>
+          </div>
+          <div className="mr-execution__chip">
+            <span>Market rail</span>
+            <strong>{view.execution.rail}</strong>
+          </div>
+          <div className="mr-execution__chip">
+            <span>Approval</span>
+            <strong>{view.execution.gate}</strong>
+          </div>
+        </div>
+        <p className="mr-execution__money">
+          <span className="font-mono text-[10px] tracking-[0.18em] text-ink-faint uppercase">
+            Money
+          </span>
+          <span className="mt-2 block text-[15px] leading-relaxed text-ink-dim text-pretty">
+            {view.money}
+          </span>
+        </p>
+      </div>
 
       {/* ---- how to read it ---- */}
       <div className="mt-12 grid gap-x-10 gap-y-6 border-t border-line pt-8 sm:grid-cols-2 lg:grid-cols-4">

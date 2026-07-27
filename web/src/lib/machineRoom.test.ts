@@ -505,8 +505,11 @@ describe('money — the claim a stranger most needs to be true', () => {
   it('says plainly that nothing is being traded, from the supplied fields', () => {
     const view = machineView(snapshot)
     expect(snapshot.markets.execution).toBe('off')
-    expect(view.money).toContain('No trades are being placed at all.')
+    expect(view.money).toContain('market rail')
     expect(view.money).toContain('A person has to approve')
+    // Desk and rail are distinct claims — both appear when both are measured.
+    expect(view.execution.desk).toMatch(/Halted|Off|Gated|No reading/)
+    expect(view.execution.rail).toBe('Rail off')
   })
 
   it('uses the strategy count supplied by the report rather than a site constant', () => {
@@ -530,6 +533,13 @@ describe('money — the claim a stranger most needs to be true', () => {
 
   it('claims nothing at all with no reading', () => {
     expect(moneySentence(null)).toBe('Nothing about trading has been measured yet.')
+  })
+
+  it('keeps desk halted distinct from market rail off', () => {
+    const desk = { ...snapshot.desk, execution: 'halted' as const }
+    const text = moneySentence({ ...snapshot.markets, execution: 'off' }, desk)
+    expect(text).toContain('execution is halted')
+    expect(text).toContain('market rail')
   })
 })
 

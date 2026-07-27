@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
+  executionTone,
   flowProfile,
   formatAge,
   formatCount,
+  formatExecution,
+  formatExecutionHeadline,
   formatLatency,
+  formatNewRisk,
+  formatPercent,
+  formatPosture,
   formatRate,
+  formatSignedPercent,
+  formatSignedPoints,
   NOT_MEASURED,
   NOT_OBSERVED,
+  riskTone,
 } from '../desk/format'
 import { liveSnapshot } from './fixture'
 
@@ -104,6 +113,41 @@ describe('flowProfile', () => {
       expect(profile.durationS).toBeGreaterThanOrEqual(2.2)
       expect(profile.durationS).toBeLessThanOrEqual(12)
     }
+  })
+})
+
+describe('desk execution and risk formatters', () => {
+  it('keeps halted, gated, and off as distinct claims', () => {
+    expect(formatExecution('halted')).toBe('Halted')
+    expect(formatExecution('gated')).toBe('Gated')
+    expect(formatExecution('off')).toBe('Off')
+    expect(formatExecution('unknown')).toBe(NOT_OBSERVED)
+    expect(formatExecutionHeadline('halted')).toBe('Execution is halted.')
+    expect(formatExecutionHeadline('off')).toBe('Trading stays off.')
+    expect(formatExecutionHeadline('gated')).toBe('Trading is gated.')
+    expect(formatExecutionHeadline(null)).toBe('Waiting for desk state.')
+    expect(executionTone('halted')).toBe('ice')
+    expect(executionTone('gated')).toBe('sapphire')
+    expect(executionTone('off')).toBe('degraded')
+  })
+
+  it('formats posture and runway risk without inventing availability', () => {
+    expect(formatPosture('capital_preservation')).toBe('Capital preservation')
+    expect(formatNewRisk('restricted')).toBe('Restricted')
+    expect(formatNewRisk('available')).toBe('Available')
+    expect(formatNewRisk(null)).toBe(NOT_OBSERVED)
+    expect(riskTone('restricted')).toBe('degraded')
+    expect(riskTone('blocked')).toBe('failed')
+    expect(riskTone('available')).toBe('sapphire')
+  })
+
+  it('formats signed marks with an explicit sign and no fabricated zero', () => {
+    expect(formatPercent(24)).toBe('24%')
+    expect(formatPercent(null)).toBe(NOT_OBSERVED)
+    expect(formatSignedPercent(176.01)).toBe('+176%')
+    expect(formatSignedPercent(-7.82)).toBe('-7.8%')
+    expect(formatSignedPercent(null)).toBe(NOT_OBSERVED)
+    expect(formatSignedPoints(183.83)).toBe('+183.8pp')
   })
 })
 

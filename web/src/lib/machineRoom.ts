@@ -748,21 +748,37 @@ export function loadSteps(load: NodeLoad | null): number {
 }
 
 /**
- * What is happening with money, in one sentence, from the real market fields.
- * This is the single most load-bearing claim on the page for a stranger, so it
- * is assembled from `execution` and `decision_gate` rather than written down.
+ * What is happening with money, in one sentence, from the real market fields
+ * and — when present — the public desk execution mode.
+ *
+ * Desk `halted` / `gated` / `off` is the authority claim; markets.execution is
+ * the rail mode (off / paper / gated). They are different fields and stay distinct.
  */
 export function moneySentence(
   markets: LiveSnapshot['markets'] | null,
+  desk: LiveSnapshot['desk'] | null = null,
 ): string {
-  if (!markets) return 'Nothing about trading has been measured yet.'
+  if (!markets && !desk) return 'Nothing about trading has been measured yet.'
 
-  const execution =
+  const deskMode =
+    desk?.execution === 'halted'
+      ? 'The desk reports execution is halted.'
+      : desk?.execution === 'gated'
+        ? 'The desk reports trading is gated — a person must clear the gate before anything real.'
+        : desk?.execution === 'off'
+          ? 'The desk reports trading is off.'
+          : null
+
+  if (!markets) {
+    return deskMode ?? 'Nothing about trading has been measured yet.'
+  }
+
+  const rail =
     markets.execution === 'off'
-      ? 'No trades are being placed at all.'
+      ? 'No trades are being placed on the market rail.'
       : markets.execution === 'paper'
         ? 'Trades are being written down as practice, with no real money behind them.'
-        : 'Trades are placed only after a person has approved them.'
+        : 'Trades on the market rail are placed only after a person has approved them.'
 
   const gate =
     markets.decision_gate === 'off'
@@ -774,7 +790,26 @@ export function moneySentence(
       ? ` ${markets.paper_strategies} ${markets.paper_strategies === 1 ? 'strategy is' : 'strategies are'} being practised on paper.`
       : ''
 
-  return `${execution} ${gate}${practising}`
+  if (deskMode) {
+    return `${deskMode} ${rail} ${gate}${practising}`
+  }
+  return `${rail} ${gate}${practising}`
+}
+
+/** Short plain-English label for the public desk execution mode. */
+export function deskExecutionWord(
+  execution: LiveSnapshot['desk']['execution'] | null | undefined,
+): string {
+  switch (execution) {
+    case 'halted':
+      return 'Halted'
+    case 'gated':
+      return 'Gated'
+    case 'off':
+      return 'Off'
+    default:
+      return 'No reading'
+  }
 }
 
 /* -------------------------------------------------------------------- layout */
@@ -894,6 +929,17 @@ export interface MachineVital {
 
 export type MachineMode = 'live' | 'stale' | 'waiting' | 'unreachable'
 
+export interface ExecutionStrip {
+  /** Desk execution mode label (Halted / Gated / Off / No reading). */
+  desk: string
+  /** Market rail mode label. */
+  rail: string
+  /** Decision gate label. */
+  gate: string
+  /** Tone key for the desk chip. */
+  tone: 'ice' | 'sapphire' | 'degraded' | 'neutral'
+}
+
 export interface MachineView {
   mode: MachineMode
   /** True once a real snapshot has been read. False = the map, with no readings. */
@@ -910,6 +956,8 @@ export interface MachineView {
   links: MachineLinkView[]
   vitals: MachineVital[]
   money: string
+  /** Instrument strip for desk / rail / gate. Always present. */
+  execution: ExecutionStrip
   /** Ids that reached the screen without a plain-English name. Should be empty. */
   unnamed: string[]
 }
@@ -1184,6 +1232,36 @@ export function machineView(
           ? 'Cannot reach it'
           : 'Waiting for a reading'
 
+  const deskExec = observedSnapshot?.desk?.execution ?? null
+  const markets = observedSnapshot?.markets ?? null
+  const executionStrip: ExecutionStrip = {
+    desk: deskExecutionWord(deskExec),
+    rail:
+      markets?.execution === 'off'
+        ? 'Rail off'
+        : markets?.execution === 'paper'
+          ? 'Paper only'
+          : markets?.execution === 'gated'
+            ? 'Rail gated'
+            : 'No reading',
+    gate:
+      markets?.decision_gate === 'telegram'
+        ? 'Telegram gate'
+        : markets?.decision_gate === 'manual'
+          ? 'Manual gate'
+          : markets?.decision_gate === 'off'
+            ? 'Gate off'
+            : 'No reading',
+    tone:
+      deskExec === 'halted'
+        ? 'ice'
+        : deskExec === 'gated'
+          ? 'sapphire'
+          : deskExec === 'off'
+            ? 'degraded'
+            : 'neutral',
+  }
+
   return {
     mode,
     hasReading: hasObservation,
@@ -1200,7 +1278,8 @@ export function machineView(
     nodes,
     links,
     vitals: vitalsFrom(observedSnapshot, precision),
-    money: moneySentence(observedSnapshot?.markets ?? null),
+    money: moneySentence(markets, observedSnapshot?.desk ?? null),
+    execution: executionStrip,
     unnamed,
   }
 }

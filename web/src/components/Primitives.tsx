@@ -14,6 +14,28 @@ export function Verified({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * Categorical state chip. Colour is meaning only — ice for halt, sapphire for
+ * armed/gated, degraded for off/hold, failed for hard stop, verified for
+ * independently checked claims.
+ */
+export function StatusChip({
+  children,
+  tone = 'neutral',
+}: {
+  children: ReactNode
+  tone?: 'ice' | 'sapphire' | 'degraded' | 'failed' | 'verified' | 'neutral'
+}) {
+  const className =
+    tone === 'neutral' ? 'status-chip' : `status-chip status-chip--${tone}`
+  return (
+    <span className={className}>
+      <span className="status-chip__dot" aria-hidden="true" />
+      {children}
+    </span>
+  )
+}
+
 /** Small mono label used above every section and stat. */
 export function Eyebrow({ children }: { children: ReactNode }) {
   return (
