@@ -505,7 +505,7 @@ body {
 }
 @media (min-width: 900px) {
   .viz-flow {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
   }
 }
 .viz-flow li {

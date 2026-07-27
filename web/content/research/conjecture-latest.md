@@ -3,7 +3,7 @@ title: Market opinions — events and path forecasts
 description: Point-in-time event probabilities, short/med/long path forecasts, data quality, drivers, and written falsifiers.
 date: 2026-07-27
 tags: [conjecture, crypto, macro, commodities, predictions, trade-calls]
-publish: true
+publish: false
 ---
 
 # Market opinions — 2026-07-27

@@ -6,7 +6,7 @@ const markup = renderToStaticMarkup(<Home />)
 
 describe('professional homepage', () => {
   it('states a clear value proposition', () => {
-    expect(markup).toContain('Markets, researched')
+    expect(markup).toMatch(/Markets researched|Autonomous capital/)
     expect(markup).toContain('See today’s opinions')
     expect(markup).toContain('Live desk')
   })
@@ -16,6 +16,8 @@ describe('professional homepage', () => {
     expect(markup).toContain('Event probability')
     expect(markup).toContain('Path bands')
     expect(markup).toContain('Falsifier first')
+    expect(markup).toContain('scores itself')
+    expect(markup).toContain('Learn')
     expect(markup).toContain('Robinhood Agentic')
     expect(markup).toContain('MegaETH')
     expect(markup).toContain('Research methodology')

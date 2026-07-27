@@ -87,8 +87,9 @@ export function MethodFlow() {
     { n: '01', t: 'Observe', d: 'Public market data' },
     { n: '02', t: 'Event P', d: 'One number as-of now' },
     { n: '03', t: 'Path', d: 'S / M / L targets' },
-    { n: '04', t: 'Falsify', d: 'Written before outcome' },
-    { n: '05', t: 'Act', d: 'Gated designated rails' },
+    { n: '04', t: 'Score', d: 'Brier · path hit-rate' },
+    { n: '05', t: 'Learn', d: 'Priors · lessons · notes' },
+    { n: '06', t: 'Act', d: 'Gated designated rails' },
   ]
   return (
     <ol className="viz-flow" aria-label="Research method">

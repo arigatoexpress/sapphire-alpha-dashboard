@@ -63,13 +63,13 @@ export default function MissionControl() {
   return (
     <div className="home-pro">
       {/* Hero */}
-      <section className="home-hero">
+      <section className="home-hero" aria-label="Command desk">
         <div className="home-hero-mesh" aria-hidden="true" />
         <div className="home-hero-inner">
-          <p className="home-kicker">Sapphire Alpha</p>
+          <p className="home-kicker">Sapphire Alpha · Command desk</p>
           <h1>
-            Markets, researched.
-            <span className="home-h1-sub">Trades, gated. Everything inspectable.</span>
+            Autonomous capital.
+            <span className="home-h1-sub">Markets researched. Trades gated. Inspectable.</span>
           </h1>
           <p className="home-lede">
             We form clear market opinions from public data — one probability per event, path
@@ -178,9 +178,19 @@ export default function MissionControl() {
           <p className="home-section-lede">
             The system is allowed to conjecture on ambiguous markets — including dubiously —
             but every claim is forced through data, a single event probability when binary, path
-            horizons only for targets, and a falsifier written in advance.
+            horizons only for targets, and a falsifier written in advance. Then it{' '}
+            <strong>scores itself</strong>, records wins and losses, and updates priors on a
+            schedule so the next cycle is smarter.
           </p>
           <MethodFlow />
+          <div className="home-method-cta" style={{ marginTop: '1.5rem' }}>
+            <Link href="/research/research-methodology/" className="btn-secondary">
+              Full learning charter
+            </Link>
+            <Link href="/research/" className="btn-ghost">
+              Calibration reports
+            </Link>
+          </div>
         </div>
       </section>
 
