@@ -37,13 +37,13 @@ const newsreader = Newsreader({
 import { SITE_URL } from '@/lib/site'
 
 const DESCRIPTION =
-  'Sapphire Alpha builds autonomous trading and agent infrastructure that proves its own claims. ' +
-  'Every figure on this site ships with the command that reproduces it.'
+  'Sapphire Alpha is a sovereign multi-rail trading plant — Robinhood Agentic free-reign, ' +
+  'Super Heavy orchestration, VPIN risk, and L2 settlement. Instrument-grade control surface.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Sapphire Alpha — verifiable autonomous infrastructure',
+    default: 'Sapphire Alpha — sovereign trading plant',
     template: '%s — Sapphire Alpha',
   },
   description: DESCRIPTION,
@@ -64,13 +64,13 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'Sapphire Alpha',
-    title: 'Sapphire Alpha — verifiable autonomous infrastructure',
+    title: 'Sapphire Alpha — sovereign trading plant',
     description: DESCRIPTION,
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sapphire Alpha — verifiable autonomous infrastructure',
+    title: 'Sapphire Alpha — sovereign trading plant',
     description: DESCRIPTION,
   },
   robots: {

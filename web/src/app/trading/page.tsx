@@ -55,14 +55,14 @@ const RAILS = [
     term: 'Free-reign easy',
     body:
       'When armed, the policy layer auto-approves brokerage (and designated L2 tracks) ' +
-      'through the same ledger a human approval uses. Tickets clip to the lane cap; ' +
-      'oversized intent is resized, not rejected for being slightly over.',
+      'through the same ledger a human approval uses. Account-scale envelopes — not ' +
+      'toy ticket sizes. Oversized intent clips to the lane cap instead of bouncing.',
   },
   {
-    term: 'Per-trade & daily caps',
+    term: 'Account-scale envelopes',
     body:
-      'Verified, thesis, and L2 lanes each carry their own notional ceiling. Cumulative ' +
-      'deployment is bounded per day. Caps are configuration the strategy cannot raise.',
+      'Verified / thesis / L2 lanes share a large daily envelope sized for the full ' +
+      'agentic book. Hard stops remain kill switch + wallet fence only.',
   },
   {
     term: 'Per-venue positions',

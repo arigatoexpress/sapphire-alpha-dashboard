@@ -11,6 +11,40 @@ body {
   font-feature-settings: 'cv05' 1, 'ss01' 1;
 }
 
+/* Command desk atmosphere — instrument, not brochure */
+.desk-glow {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, color-mix(in srgb, var(--color-sapphire) 22%, transparent), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 10%, color-mix(in srgb, var(--color-violet) 12%, transparent), transparent 50%),
+    radial-gradient(ellipse 50% 30% at 50% 100%, color-mix(in srgb, var(--color-verified) 6%, transparent), transparent 45%);
+}
+
+.desk-grid {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-line) 80%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-line) 80%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 92%);
+  opacity: 0.35;
+}
+
+.desk-flow-line {
+  stroke-dasharray: 8 10;
+  animation: desk-flow 2.4s linear infinite;
+}
+
+@keyframes desk-flow {
+  to {
+    stroke-dashoffset: -36;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk-flow-line {
+    animation: none;
+  }
+}
+
 /* Exact flow along a live link. Duration is set inline from the numeric rate
    supplied by the report, so speed is data rather than decoration. */
 @keyframes flow {

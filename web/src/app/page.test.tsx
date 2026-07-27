@@ -4,21 +4,24 @@ import Home from './page'
 
 const markup = renderToStaticMarkup(<Home />)
 
-describe('the public market aperture', () => {
-  it('opens with Sapphire Alpha’s current decision posture', () => {
-    expect(markup).toContain('data-market-aperture="true"')
-    expect(markup).toContain('Preserve optionality.')
-    expect(markup).toContain('The mandate sets conviction')
-    expect(markup).toContain('Cycle model')
+describe('sovereign command desk home', () => {
+  it('opens as an instrument surface for the trading plant', () => {
+    expect(markup).toContain('Sovereign trading plant')
+    expect(markup).toContain('Autonomous capital.')
+    expect(markup).toContain('Instrument-grade control')
+    expect(markup).toContain('Open live desk')
   })
 
-  it('keeps research evidence separate from execution', () => {
-    expect(markup).toContain('Evidence, not authority')
-    expect(markup).toContain('Execution stays outside this lens')
+  it('exposes analysis lenses into research, strategy, plant, and desk', () => {
+    expect(markup).toContain('Analyze the whole system')
+    expect(markup).toContain('Portfolio multi-lens')
+    expect(markup).toContain('Free-reign agentic')
+    expect(markup).toContain('Living plant map')
+    expect(markup).toContain('Operator desk')
   })
 
   it('does not fall back to the previous generic trust slogan', () => {
-    expect(markup).not.toContain('Verify,')
+    expect(markup).not.toContain("don't trust")
     expect(markup).not.toContain('don’t trust')
   })
 })

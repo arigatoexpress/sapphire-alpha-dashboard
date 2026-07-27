@@ -4,8 +4,8 @@ export const SITE_URL = 'https://sapphirealpha.xyz'
 
 export const SITE_NAME = 'Sapphire Alpha'
 
-export const SITE_TAGLINE = 'Verify, don’t trust.'
+export const SITE_TAGLINE = 'Autonomous capital. Instrument-grade control.'
 
 export const SITE_DESCRIPTION =
-  'Sapphire Alpha builds autonomous trading and agent infrastructure that proves its own claims. ' +
-  'Every figure on this site ships with the command that reproduces it.'
+  'Sapphire Alpha is a sovereign multi-rail trading plant — Robinhood Agentic free-reign, ' +
+  'Super Heavy orchestration, VPIN risk, and L2 settlement on designated capital only.'

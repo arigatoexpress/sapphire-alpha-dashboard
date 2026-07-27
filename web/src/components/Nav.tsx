@@ -1,12 +1,12 @@
 import Link from 'next/link'
 
 export const ROUTES = [
-  { href: '/architecture/', label: 'Architecture' },
-  { href: '/trading/', label: 'Trading' },
-  { href: '/security/', label: 'Security' },
-  { href: '/proof/', label: 'Proof' },
-  { href: '/onchain/', label: 'On-Chain' },
+  { href: '/trading/', label: 'Strategy' },
+  { href: '/architecture/', label: 'Plant' },
   { href: '/research/', label: 'Research' },
+  { href: '/onchain/', label: 'On-Chain' },
+  { href: '/proof/', label: 'Proof' },
+  { href: '/security/', label: 'Security' },
   { href: '/about/', label: 'About' },
 ] as const
 
