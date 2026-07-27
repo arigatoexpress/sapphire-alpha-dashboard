@@ -131,36 +131,44 @@ export default function App() {
           <MossPanel snapshot={mossSnapshot} error={mossError} />
         </div>
 
-        <details id="system" className="system-disclosure mt-6 scroll-mt-24">
-          <summary>
-            <span>
-              <b>System detail</b>
-              <small>Routes, agents, market feed, and fleet</small>
-            </span>
-            <em>{snapshot?.nodes.length ?? 0} components · {snapshot?.links.length ?? 0} paths</em>
-          </summary>
-          <div className="system-disclosure-body">
-            <SignalRoutes
-              nodes={snapshot?.nodes ?? []}
-              links={snapshot?.links ?? []}
-              status={status}
-            />
-            <div className="mt-6">
-              <FleetPanel fleet={fleet} error={fleetError} />
+        {/* System graph always open — this is the analysis surface, not a disclosure. */}
+        <section id="system" className="mt-8 scroll-mt-24" aria-labelledby="system-heading">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="font-mono text-[11px] tracking-[0.18em] text-sapphire uppercase">
+                System mesh
+              </p>
+              <h2
+                id="system-heading"
+                className="mt-2 font-display text-2xl font-semibold tracking-[-0.02em]"
+              >
+                Routes, agents, market feed, fleet
+              </h2>
             </div>
-            <div id="activity" className="mt-6 grid gap-6 scroll-mt-24 xl:grid-cols-3">
-              <AgentPanel
-                agents={snapshot?.agents ?? []}
-                observed={Boolean(snapshot?.observed_at)}
-              />
-              <MarketPanel snapshot={snapshot} />
-              <EventLedger
-                events={snapshot?.events ?? []}
-                observed={Boolean(snapshot?.observed_at)}
-              />
-            </div>
+            <em className="font-mono text-[11px] text-ink-faint not-italic">
+              {snapshot?.nodes.length ?? 0} components · {snapshot?.links.length ?? 0} paths
+            </em>
           </div>
-        </details>
+          <SignalRoutes
+            nodes={snapshot?.nodes ?? []}
+            links={snapshot?.links ?? []}
+            status={status}
+          />
+          <div className="mt-6">
+            <FleetPanel fleet={fleet} error={fleetError} />
+          </div>
+          <div id="activity" className="mt-6 grid gap-6 scroll-mt-24 xl:grid-cols-3">
+            <AgentPanel
+              agents={snapshot?.agents ?? []}
+              observed={Boolean(snapshot?.observed_at)}
+            />
+            <MarketPanel snapshot={snapshot} />
+            <EventLedger
+              events={snapshot?.events ?? []}
+              observed={Boolean(snapshot?.observed_at)}
+            />
+          </div>
+        </section>
 
         {/* --- Policy -------------------------------------------------- */}
         <section className="mt-12 border-t border-line pt-9">
