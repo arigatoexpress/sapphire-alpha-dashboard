@@ -1,5 +1,14 @@
 import type { Metadata } from 'next'
-import { Eyebrow, PageHeader, Panel, Row, Rule, Terminal, Verified } from '@/components/Primitives'
+import {
+  Eyebrow,
+  PageHeader,
+  Panel,
+  Row,
+  Rule,
+  StatusChip,
+  Terminal,
+  Verified,
+} from '@/components/Primitives'
 
 export const metadata: Metadata = {
   title: 'Trading',
@@ -8,6 +17,24 @@ export const metadata: Metadata = {
     'that fails closed. How the Sapphire Alpha desk is allowed to act.',
   alternates: { canonical: '/trading/' },
 }
+
+const MODES = [
+  {
+    tone: 'ice' as const,
+    label: 'Halted',
+    body: 'Kill switch present, or a hard safety veto. No order path is open.',
+  },
+  {
+    tone: 'degraded' as const,
+    label: 'Off',
+    body: 'Desk is observing. Paper may run; nothing with real capital is proposed.',
+  },
+  {
+    tone: 'sapphire' as const,
+    label: 'Gated',
+    body: 'Armed under caps. Every real action still waits for a human on the approval rail.',
+  },
+]
 
 const RAILS = [
   {
@@ -51,7 +78,18 @@ export default function Trading() {
         lede="The desk runs unattended. That is only defensible because every path to an order passes through limits it cannot modify, and a switch a human can always throw."
       />
 
-      <section className="mx-auto max-w-6xl px-6 pt-14">
+      <section className="mx-auto max-w-6xl px-6 pt-10">
+        <div className="grid gap-px border border-line bg-line sm:grid-cols-3">
+          {MODES.map((mode) => (
+            <div key={mode.label} className="bg-void px-5 py-5 md:px-6 md:py-6">
+              <StatusChip tone={mode.tone}>{mode.label}</StatusChip>
+              <p className="mt-4 text-sm leading-relaxed text-ink-dim text-pretty">{mode.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 pt-16">
         <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
           <div>
             <Eyebrow>Order lifecycle</Eyebrow>

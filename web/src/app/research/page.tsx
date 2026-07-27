@@ -102,34 +102,86 @@ export default function Research() {
             </p>
           </Panel>
         ) : (
-          <div className="mt-12 border-t border-line-lit">
-            {reports.map((report, i) => (
-              <Link
-                key={report.slug}
-                href={`/research/${report.slug}/`}
-                className="rise group grid gap-3 border-b border-line py-7 transition-colors hover:bg-raised/40 md:grid-cols-[150px_1fr] md:gap-8"
-                style={{ animationDelay: `${i * 70}ms` }}
-              >
-                <p className="tnum font-mono text-[12px] text-ink-faint">
-                  {report.date ?? '—'}
-                </p>
-                <div>
-                  <h3 className="font-display text-xl leading-snug font-semibold tracking-[-0.015em] transition-colors group-hover:text-sapphire">
-                    {report.title}
-                  </h3>
-                  {report.description && (
-                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-dim">
-                      {report.description}
+          <>
+            {/* Featured strip: latest system opinions + portfolio cards first */}
+            <div className="mt-12 grid gap-px border border-line-lit bg-line md:grid-cols-2">
+              {reports.slice(0, 2).map((report) => {
+                const isOpinion =
+                  report.tags.includes('conjecture') ||
+                  report.tags.includes('predictions') ||
+                  report.slug.includes('conjecture')
+                const isBook =
+                  report.tags.includes('portfolio') || report.slug.includes('portfolio')
+                const kicker = isBook
+                  ? 'Portfolio multi-lens'
+                  : isOpinion
+                    ? 'System opinions'
+                    : 'Research'
+                return (
+                  <Link
+                    key={`feat-${report.slug}`}
+                    href={`/research/${report.slug}/`}
+                    className="group relative flex flex-col justify-between bg-void p-7 transition-colors hover:bg-raised md:p-9"
+                  >
+                    <div>
+                      <p className="font-mono text-[10px] tracking-[0.18em] text-ice uppercase">
+                        {kicker}
+                      </p>
+                      <h3 className="mt-4 max-w-md font-conviction text-3xl leading-[0.95] font-medium tracking-[-0.03em] text-ink transition-colors group-hover:text-sapphire md:text-4xl">
+                        {report.title}
+                      </h3>
+                      {report.description && (
+                        <p className="mt-5 max-w-lg text-sm leading-relaxed text-ink-dim text-pretty">
+                          {report.description}
+                        </p>
+                      )}
+                    </div>
+                    <p className="mt-8 font-mono text-[11px] tracking-[0.12em] text-ink-faint uppercase">
+                      {report.date ?? '—'} · {report.minutes} min · read →
                     </p>
-                  )}
-                  <p className="mt-3 font-mono text-[11px] tracking-[0.1em] text-ink-faint uppercase">
-                    {report.minutes} min read
-                    {report.tags.length > 0 && <> · {report.tags.slice(0, 3).join(' · ')}</>}
+                  </Link>
+                )
+              })}
+            </div>
+
+            <div className="mt-10 border-t border-line-lit">
+              {reports.map((report, i) => (
+                <Link
+                  key={report.slug}
+                  href={`/research/${report.slug}/`}
+                  className="rise group grid gap-3 border-b border-line py-7 transition-colors hover:bg-raised/40 md:grid-cols-[150px_1fr_auto] md:items-baseline md:gap-8"
+                  style={{ animationDelay: `${i * 70}ms` }}
+                >
+                  <p className="tnum font-mono text-[12px] text-ink-faint">
+                    {report.date ?? '—'}
                   </p>
-                </div>
-              </Link>
-            ))}
-          </div>
+                  <div>
+                    <h3 className="font-display text-xl leading-snug font-semibold tracking-[-0.015em] transition-colors group-hover:text-sapphire">
+                      {report.title}
+                    </h3>
+                    {report.description && (
+                      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-dim">
+                        {report.description}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {report.tags.slice(0, 5).map((tag) => (
+                        <span
+                          key={tag}
+                          className="border border-line px-2 py-0.5 font-mono text-[10px] tracking-[0.1em] text-ink-faint uppercase"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="font-mono text-[11px] tracking-[0.1em] text-ink-faint uppercase md:text-right">
+                    {report.minutes} min
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </>
         )}
       </section>
 

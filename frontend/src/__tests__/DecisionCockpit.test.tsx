@@ -87,7 +87,11 @@ describe('decision cockpit', () => {
   const markup = renderToStaticMarkup(<DecisionCockpit desk={desk} />)
 
   it('answers the desk questions before exposing machine plumbing', () => {
-    expect(markup).toContain('Trading stays off.')
+    // Halted is a distinct claim from off — never collapse them.
+    expect(markup).toContain('Execution is halted.')
+    expect(markup).toContain('data-execution="halted"')
+    expect(markup).toContain('data-risk="restricted"')
+    expect(markup).toContain('execution-mode-strip')
     expect(markup).toContain('Release conditions')
     expect(markup).toContain('13 evidence days')
     expect(markup).toContain('Positive OOS')

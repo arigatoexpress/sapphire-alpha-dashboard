@@ -591,6 +591,34 @@ body {
   text-transform: uppercase;
 }
 
+/* Shared status chip — used by both surfaces when a categorical state needs
+   a single word and a tone. Colour is meaning, never decoration. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--color-line);
+  padding: 0.35rem 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-dim);
+}
+
+.status-chip__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: currentColor;
+}
+
+.status-chip--ice { color: var(--color-ice); border-color: color-mix(in srgb, var(--color-ice) 40%, var(--color-line)); }
+.status-chip--sapphire { color: var(--color-sapphire); border-color: color-mix(in srgb, var(--color-sapphire) 45%, var(--color-line)); }
+.status-chip--degraded { color: var(--color-degraded); border-color: color-mix(in srgb, var(--color-degraded) 40%, var(--color-line)); }
+.status-chip--failed { color: var(--color-failed); border-color: color-mix(in srgb, var(--color-failed) 40%, var(--color-line)); }
+.status-chip--verified { color: var(--color-verified); border-color: color-mix(in srgb, var(--color-verified) 40%, var(--color-line)); }
+
 .machine-drawer {
   border: 1px solid var(--color-line);
   background: color-mix(in srgb, var(--color-raised) 72%, transparent);

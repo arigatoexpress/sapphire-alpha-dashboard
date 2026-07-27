@@ -286,6 +286,91 @@ body {
   color: var(--color-ink-faint);
 }
 
+/* Execution strip — desk / rail / gate. Colour is state only. */
+.mr-execution {
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-raised) 70%, transparent);
+}
+
+.mr-execution__strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.mr-execution__chip {
+  min-width: 0;
+  padding: 14px 16px 15px;
+  background: var(--color-void);
+}
+
+.mr-execution__chip span {
+  display: block;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.mr-execution__chip strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.mr-execution__chip--ice {
+  box-shadow: inset 0 2px var(--color-ice);
+}
+.mr-execution__chip--ice strong {
+  color: var(--color-ice);
+}
+
+.mr-execution__chip--sapphire {
+  box-shadow: inset 0 2px var(--color-sapphire);
+}
+.mr-execution__chip--sapphire strong {
+  color: var(--color-sapphire);
+}
+
+.mr-execution__chip--degraded {
+  box-shadow: inset 0 2px var(--color-degraded);
+}
+.mr-execution__chip--degraded strong {
+  color: var(--color-degraded);
+}
+
+.mr-execution__money {
+  padding: 16px 18px 18px;
+  border-left: 2px solid var(--color-line-lit);
+  margin: 0;
+}
+
+.mr-execution[data-tone='ice'] .mr-execution__money {
+  border-left-color: color-mix(in srgb, var(--color-ice) 70%, transparent);
+}
+
+.mr-execution[data-tone='sapphire'] .mr-execution__money {
+  border-left-color: color-mix(in srgb, var(--color-sapphire) 70%, transparent);
+}
+
+.mr-execution[data-tone='degraded'] .mr-execution__money {
+  border-left-color: color-mix(in srgb, var(--color-degraded) 55%, transparent);
+}
+
+@media (max-width: 620px) {
+  .mr-execution__strip {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mr-node__dot[data-breathing='true'] {
     animation: none;
