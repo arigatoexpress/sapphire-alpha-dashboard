@@ -4,29 +4,38 @@ import Home from './page'
 
 const markup = renderToStaticMarkup(<Home />)
 
-describe('professional homepage', () => {
-  it('states a clear value proposition', () => {
-    expect(markup).toMatch(/Markets researched|Autonomous capital/)
-    expect(markup).toContain('See today’s opinions')
-    expect(markup).toContain('Live desk')
+describe('public evidence observatory', () => {
+  it('states one clear proposition and two honest entry points', () => {
+    expect(markup).toContain('Evidence')
+    expect(markup).toContain('before action.')
+    expect(markup).toContain('Read the evidence')
+    expect(markup).toContain('Open the observatory')
   })
 
-  it('explains the research method with visuals', () => {
-    expect(markup).toContain('Speculate with discipline')
-    expect(markup).toContain('Event probability')
-    expect(markup).toContain('Path bands')
-    expect(markup).toContain('Falsifier first')
-    expect(markup).toContain('scores itself')
-    expect(markup).toContain('Learn')
-    expect(markup).toContain('Robinhood Agentic')
-    expect(markup).toContain('MegaETH')
-    expect(markup).toContain('Research methodology')
+  it('shows the live evidence contract without inventing state', () => {
+    expect(markup).toContain('Evidence horizon')
+    expect(markup).toContain('Source:')
+    expect(markup).toContain('authority: none')
+    expect(markup).toContain('unknown stays unknown')
+    expect(markup).toContain('not observed')
   })
 
-  it('states what is and is not published', () => {
-    expect(markup).toContain('We publish')
-    expect(markup).toContain('We do not publish')
-    expect(markup).toMatch(/[Pp]aper backtest/)
+  it('explains a falsifiable research method', () => {
+    for (const stage of ['Observe', 'Form', 'Falsify', 'Gate', 'Score']) {
+      expect(markup).toContain(stage)
+    }
+    expect(markup).toContain('one probability at one timestamp')
+    expect(markup).toContain('Bear, base, and bull belong to the path')
+    expect(markup).toContain('publish the error')
+  })
+
+  it('states the authority and disclosure boundary', () => {
+    expect(markup).toContain('Authority held.')
+    expect(markup).toContain('No execution is available from this page.')
+    expect(markup).toContain('cannot place a trade')
     expect(markup).toContain('Not investment advice')
+    expect(markup).toContain('paper backtest leaderboards')
+    expect(markup).not.toContain('Autonomous capital')
+    expect(markup).not.toContain('Plant status')
   })
 })

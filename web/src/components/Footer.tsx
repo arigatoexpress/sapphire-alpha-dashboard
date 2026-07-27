@@ -11,8 +11,8 @@ export default function Footer() {
             Sapphire<span className="text-sapphire">Alpha</span>
           </p>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-ink-dim">
-            Autonomous trading and agent infrastructure, built so its claims can be
-            checked rather than believed.
+            Market research and bounded agent infrastructure, built so its claims can
+            be checked rather than believed.
           </p>
         </div>
 

@@ -76,6 +76,14 @@ export function formatClockTime(iso: string | null | undefined): string {
   })
 }
 
+/** Full UTC observation stamp. A clock without its date or zone is ambiguous. */
+export function formatObservedAt(iso: string | null | undefined): string {
+  if (!iso) return NOT_OBSERVED
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return NOT_OBSERVED
+  return at.toISOString().replace('T', ' ').replace('.000Z', 'Z')
+}
+
 /** Percentage with a single decimal when needed. Absence stays words. */
 export function formatPercent(value: number | null | undefined, digits = 1): string {
   if (absent(value)) return NOT_OBSERVED

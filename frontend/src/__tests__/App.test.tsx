@@ -1,172 +1,120 @@
 /**
- * The desk shell, rendered.
- *
- * Effects do not run under `renderToStaticMarkup`, so no fetch happens and the
- * page renders its no-data state — which is precisely the state that used to
- * show a login form. If a credential prompt could still appear, it would appear
- * here.
+ * The observatory shell rendered before effects run. This is the most
+ * conservative state: no endpoint has reported, so unknown must stay unknown.
  */
 
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import emptyFixture from '../../../shared/__tests__/fixtures/empty-snapshot.json'
-import App, { AgentPanel, MarketPanel, SafetyRail } from '../App'
-import type { LiveAgent, LiveSnapshot } from '../types'
+import App, { buildEvidenceSegments } from '../App'
+import { liveSnapshot } from './fixture'
 
 const markup = renderToStaticMarkup(<App />)
 
-describe('no gate', () => {
-  it('renders the desk without asking for anything', () => {
-    expect(markup).toContain('Plant status')
-    expect(markup).toContain('No paper backtest leaderboards')
-    expect(markup).toContain('Cycle model')
-    expect(markup).toContain('Liquidity')
-    expect(markup).toContain('Market structure')
-    expect(markup).toContain('Frontier technology')
-    expect(markup).toContain('Fundamentals')
+describe('anonymous decision observatory', () => {
+  it('opens on the operating boundary rather than a decorative dashboard', () => {
+    expect(markup).toContain('Decision observatory · read only')
+    expect(markup).toContain('Awaiting observed state.')
+    expect(markup).toContain('Needs attention')
+    expect(markup).toContain('Read and review only')
+    expect(markup).toContain('Evidence horizon')
   })
 
   it.each([
     ['a password field', /type="password"/],
     ['a sign-in control', /Sign in/],
-    ['the operator-access form', /Operator access|Enter observatory|Return to public view/],
+    ['an operator-access form', /Operator access|Enter observatory/],
     ['a username field', /autocomplete="username"/i],
-  ])('has no %s', (_what, pattern) => {
+  ])('does not render %s', (_what, pattern) => {
     expect(markup).not.toMatch(pattern)
   })
 
-  it('uses its visible brand text as the home link name', () => {
+  it('uses visible brand text as the home link name', () => {
     expect(markup).toContain('href="/"')
     expect(markup).not.toContain('aria-label="Sapphire Alpha home"')
   })
 })
 
-describe('the market aperture', () => {
-  it('makes plant posture the first-class decision surface', () => {
-    expect(markup).toContain('data-market-aperture="true"')
-    expect(markup).toContain('Plant status')
-    expect(markup).toContain('designated rails')
-    expect(markup).toContain('Cycle model')
+describe('evidence contract', () => {
+  it('keeps every source on one interactive horizon', () => {
+    expect(markup.match(/role="tab"/g)).toHaveLength(7)
+    for (const segment of [
+      'Snapshot',
+      'Market feed',
+      'Decision gate',
+      'Execution',
+      'Research',
+      'Coordination',
+      'On-chain',
+    ]) {
+      expect(markup).toContain(segment)
+    }
+    for (const field of ['Source', 'Observed', 'Freshness', 'Authority', 'Uncertainty']) {
+      expect(markup).toContain(field)
+    }
   })
 
-  it('labels the classified task-agent count without conflating it with services', () => {
-    expect(markup).toContain('Task agents active')
-    expect(markup).not.toContain('Agents working')
-    expect(markup).toContain('System components')
-    expect(markup).toContain('What is running')
-    expect(markup).not.toContain('Agent presence')
+  it('demotes retained live values when a later poll fails', () => {
+    const snapshot = liveSnapshot()
+    const segments = buildEvidenceSegments({
+      snapshot,
+      widgets: null,
+      moss: null,
+      fleet: null,
+      execution: snapshot.desk?.execution ?? snapshot.markets.execution,
+      errors: {
+        live: 'poll failed',
+        widgets: '',
+        fleet: '',
+        moss: '',
+      },
+    })
+
+    for (const segment of segments.slice(0, 4)) {
+      expect(segment.tone).toBe('degraded')
+    }
+    expect(segments[0].observedAt).toContain('Z')
+    expect(segments[0].uncertainty).toContain('last report')
   })
 
-  it('keeps advisory research visibly outside execution authority', () => {
-    expect(markup).toContain('Evidence, not authority')
-    expect(markup).toContain('Execution stays outside this lens')
+  it('orders attention and change before evidence details', () => {
+    expect(markup.indexOf('01 · Needs attention')).toBeLessThan(
+      markup.indexOf('02 · What changed'),
+    )
+    expect(markup.indexOf('02 · What changed')).toBeLessThan(
+      markup.indexOf('03 · Authority'),
+    )
+    expect(markup.indexOf('03 · Authority')).toBeLessThan(
+      markup.indexOf('04 · Evidence'),
+    )
+  })
+
+  it('makes the non-authority boundary explicit', () => {
+    expect(markup).toContain('Evidence may challenge. It may not authorize.')
+    expect(markup).toContain('This surface cannot place a trade')
+    expect(markup).toContain('Anonymous · read only · no execution authority')
   })
 })
 
-describe('decision-first hierarchy', () => {
-  it('puts live rails ahead of system routes', () => {
-    expect(markup.indexOf('LIVE RAILS')).toBeLessThan(markup.indexOf('System mesh'))
-    expect(markup).toContain('What the plant is doing')
-    expect(markup).toContain('Robinhood Agentic')
-    expect(markup).toContain('MegaETH')
-    expect(markup).not.toContain('Paper strategy evidence')
-  })
-
-  it('keeps the system mesh open as a first-class analysis surface', () => {
-    expect(markup).toContain('id="system"')
-    expect(markup).toContain('System mesh')
-    expect(markup).toContain('Routes, agents, market feed, fleet')
-    expect(markup).not.toContain('<details id="system"')
-  })
-})
-
-describe('no second tier is described', () => {
-  it.each([
-    /aggregated \+ delayed/,
-    /operator detail/,
-    /Operator sign-in/,
-    /aggregated, delayed/,
-    /public projection/i,
-  ])('does not claim %s exists', (pattern) => {
-    expect(markup).not.toMatch(pattern)
-  })
-
-  it('states the single-view policy instead', () => {
-    expect(markup).toContain('the figure the machines reported')
-  })
-})
-
-describe('with nothing observed', () => {
-  it('says so rather than printing zeroes', () => {
-    /* Four hero metrics, the freshness readouts and the safety rail all have no
-       reading before the first fetch. None of them may invent one. */
+describe('honest empty state', () => {
+  it('does not turn missing observations into zero, safe, or live', () => {
     expect(markup).toContain('not observed')
-    expect(markup).not.toContain('0 / 0')
+    expect(markup).toContain('Waiting for the first report')
+    expect(markup).toContain('No event report yet')
     expect(markup).toContain('No component report has arrived yet')
-    expect(markup).toContain('No event report has arrived yet')
+    expect(markup).not.toContain('0 / 0')
+    expect(markup).not.toMatch(/>off(?:line)?</)
   })
 
-  it('does not turn an unknown safety state into off or offline', () => {
-    expect(markup).not.toMatch(/>off</)
-    expect(markup).not.toMatch(/>offline</)
+  it('does not resurrect the discarded card-wall language', () => {
+    expect(markup).not.toContain('Plant status')
+    expect(markup).not.toContain('System mesh')
+    expect(markup).not.toContain('LIVE RAILS')
+    expect(markup).not.toContain('Autonomous capital')
   })
 
-  it('ignores placeholder market defaults in an empty endpoint response', () => {
-    const snapshot = emptyFixture as LiveSnapshot
-    const safety = renderToStaticMarkup(<SafetyRail snapshot={snapshot} />)
-    const market = renderToStaticMarkup(<MarketPanel snapshot={snapshot} />)
-
-    expect(safety.match(/>not observed</g)?.length).toBe(4)
-    expect(market).not.toMatch(/>off(?:line)?</i)
-    expect(market).toContain('not observed')
-  })
-
-  it('narrates the absence in a full sentence', () => {
-    expect(markup).toContain('Waiting for the first report to arrive')
-  })
-})
-
-describe('system component visibility', () => {
-  it('shows every observed component and puts live work ahead of offline routes', () => {
-    const offline: LiveAgent[] = Array.from({ length: 13 }, (_, index) => ({
-      id: `offline-route-${index}`,
-      role: `Offline route ${index}`,
-      state: 'offline',
-      activity: `offline activity ${index}`,
-      verification: 'not_applicable',
-      provider_class: 'unassigned',
-      updated_at: '2026-07-24T12:00:00+00:00',
-    }))
-    const live: LiveAgent[] = [
-      {
-        id: 'live-source-one',
-        role: 'Live source one',
-        state: 'working',
-        activity: 'reporting with source errors',
-        verification: 'pending',
-        provider_class: 'local CPU',
-        updated_at: '2026-07-26T12:00:00+00:00',
-      },
-      {
-        id: 'live-source-two',
-        role: 'Live source two',
-        state: 'working',
-        activity: 'observing live signals',
-        verification: 'verified',
-        provider_class: 'local CPU',
-        updated_at: '2026-07-26T12:00:00+00:00',
-      },
-    ]
-
-    const panel = renderToStaticMarkup(
-      <AgentPanel agents={[...offline, ...live]} observed />,
-    )
-
-    expect(panel).toContain('offline activity 0')
-    expect(panel).toContain('offline activity 12')
-    expect(panel).toContain('reporting with source errors')
-    expect(panel.indexOf('reporting with source errors')).toBeLessThan(
-      panel.indexOf('offline activity 0'),
-    )
+  it('states the measurement rule in plain language', () => {
+    expect(markup).toContain('A number is observed, or it is absent.')
+    expect(markup).toContain('unknown—not zero, safe, or live')
+    expect(markup).toContain('Waiting for the first observed event.')
   })
 })

@@ -37,8 +37,8 @@ const newsreader = Newsreader({
 import { SITE_URL } from '@/lib/site'
 
 const DESCRIPTION =
-  'Research-driven trading infrastructure: data-backed event probabilities, path forecasts, ' +
-  'and autonomous execution on designated agentic capital only — with falsifiers and kill switches.'
+  'A decision observatory for market evidence: timestamped event probabilities, path forecasts, ' +
+  'falsifiers, calibration, and explicitly bounded execution authority.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -49,7 +49,8 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   applicationName: 'Sapphire Alpha',
   keywords: [
-    'autonomous trading infrastructure',
+    'decision observatory',
+    'market evidence provenance',
     'agent orchestration',
     'verifiable systems',
     'Arbitrum Orbit',

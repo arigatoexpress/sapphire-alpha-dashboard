@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 export const ROUTES = [
   { href: '/trading/', label: 'Strategy' },
-  { href: '/architecture/', label: 'Plant' },
+  { href: '/architecture/', label: 'System' },
   { href: '/research/', label: 'Research' },
   { href: '/onchain/', label: 'On-Chain' },
   { href: '/proof/', label: 'Proof' },
@@ -43,7 +43,7 @@ export default function Nav() {
             href="/dashboard"
             className="border border-sapphire/45 px-3 py-1.5 font-mono text-[12px] tracking-[0.1em] text-sapphire uppercase transition-colors hover:bg-sapphire hover:text-void"
           >
-            Live&nbsp;desk
+            Observatory
           </Link>
         </div>
 
@@ -52,7 +52,7 @@ export default function Nav() {
           href="/dashboard"
           className="border border-sapphire/45 px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] text-sapphire uppercase lg:hidden"
         >
-          Desk
+          Observe
         </Link>
       </nav>
     </header>
