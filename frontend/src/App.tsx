@@ -381,7 +381,7 @@ export function MarketPanel({ snapshot }: { snapshot: LiveSnapshot | null }) {
         <div className="grid grid-cols-2 gap-5">
           <Metric label="Events" value={formatRate(market?.events_per_min)} />
           <Metric label="Feed age" value={formatAge(market?.feed_age_s)} />
-          <Metric label="Paper strategies" value={formatCount(market?.paper_strategies)} />
+          <Metric label="Decision gate" value={market?.decision_gate ?? NOT_OBSERVED} />
           <Metric
             label="Execution"
             value={market?.execution ?? NOT_OBSERVED}
@@ -390,9 +390,9 @@ export function MarketPanel({ snapshot }: { snapshot: LiveSnapshot | null }) {
         </div>
 
         <p className="mt-6 text-[13px] leading-relaxed text-ink-faint">
-          The private mandate sets conviction. Cycle, liquidity, market-structure,
-          frontier-technology, and fundamentals research contribute bounded evidence.
-          Execution remains a separate system with pause, sizing, and mandate checks.
+          Research forms a single probability for each binary market claim, then path bands
+          for price targets. Execution is a separate gated system — caps, kill switch, designated
+          capital only. No paper backtest scoreboards on this page.
         </p>
       </div>
     </Panel>

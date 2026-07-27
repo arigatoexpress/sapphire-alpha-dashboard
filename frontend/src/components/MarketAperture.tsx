@@ -3,8 +3,7 @@ import { formatCount, formatRate } from '../desk/format'
 import type { LiveSnapshot } from '../types'
 
 export function MarketAperture({ snapshot }: { snapshot: LiveSnapshot | null }) {
-  const { headline, posture, primary, lenses, inputCap, evidenceMinimum } =
-    PUBLIC_DOCTRINE
+  const { posture, primary, lenses, inputCap, evidenceMinimum } = PUBLIC_DOCTRINE
 
   return (
     <section
@@ -14,11 +13,12 @@ export function MarketAperture({ snapshot }: { snapshot: LiveSnapshot | null }) 
       className="market-aperture rise scroll-mt-24"
     >
       <div className="aperture-copy">
-        <p className="aperture-kicker">Sovereign market lens · live desk</p>
-        <h1 id="aperture-title">{headline}</h1>
+        <p className="aperture-kicker">Live desk · designated rails only</p>
+        <h1 id="aperture-title">Plant status</h1>
         <p className="aperture-lede">
-          The mandate sets conviction. Research earns influence by surviving
-          independent checks and a written falsifier.
+          Real execution posture, risk runway, and decision queue. No paper
+          backtest leaderboards. Research opinions live on the public research
+          pages with a single event probability and separate path bands.
         </p>
 
         <div className="aperture-contract">

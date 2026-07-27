@@ -17,8 +17,8 @@ const markup = renderToStaticMarkup(<App />)
 
 describe('no gate', () => {
   it('renders the desk without asking for anything', () => {
-    expect(markup).toContain('Preserve optionality.')
-    expect(markup).toContain('The mandate sets conviction')
+    expect(markup).toContain('Plant status')
+    expect(markup).toContain('No paper backtest leaderboards')
     expect(markup).toContain('Cycle model')
     expect(markup).toContain('Liquidity')
     expect(markup).toContain('Market structure')
@@ -42,10 +42,10 @@ describe('no gate', () => {
 })
 
 describe('the market aperture', () => {
-  it('makes the mandate and current posture the first-class decision surface', () => {
+  it('makes plant posture the first-class decision surface', () => {
     expect(markup).toContain('data-market-aperture="true"')
-    expect(markup).toContain('Preserve optionality.')
-    expect(markup).toContain('The mandate sets conviction')
+    expect(markup).toContain('Plant status')
+    expect(markup).toContain('designated rails')
     expect(markup).toContain('Cycle model')
   })
 
@@ -64,9 +64,12 @@ describe('the market aperture', () => {
 })
 
 describe('decision-first hierarchy', () => {
-  it('puts the desk conclusion ahead of system routes', () => {
-    expect(markup.indexOf('Waiting for desk state.')).toBeLessThan(markup.indexOf('System mesh'))
-    expect(markup).toContain('Waiting for desk state.')
+  it('puts live rails ahead of system routes', () => {
+    expect(markup.indexOf('LIVE RAILS')).toBeLessThan(markup.indexOf('System mesh'))
+    expect(markup).toContain('What the plant is doing')
+    expect(markup).toContain('Robinhood Agentic')
+    expect(markup).toContain('MegaETH')
+    expect(markup).not.toContain('Paper strategy evidence')
   })
 
   it('keeps the system mesh open as a first-class analysis surface', () => {

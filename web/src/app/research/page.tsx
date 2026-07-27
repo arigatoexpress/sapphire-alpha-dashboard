@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Eyebrow, PageHeader, Panel, Rule } from '@/components/Primitives'
+import { ConceptCards, MethodFlow, PathBandChart, ProbabilityRing } from '@/components/Visuals'
 import { getReports } from '@/lib/research'
 
 export const metadata: Metadata = {
@@ -60,7 +61,44 @@ export default function Research() {
         </p>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pt-14" aria-labelledby="standard-heading">
+      {/* Visual: event P vs path band */}
+      <section className="mx-auto max-w-6xl px-6 pt-14" aria-labelledby="viz-heading">
+        <Eyebrow>See the difference</Eyebrow>
+        <h2
+          id="viz-heading"
+          className="mt-4 max-w-3xl font-display text-3xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-4xl"
+        >
+          One probability for events. Bands for paths.
+        </h2>
+        <div className="home-viz-row mt-10">
+          <ProbabilityRing p={0.51} label="BTC cycle low is in" sub="As of latest book · residual 49%" />
+          <ProbabilityRing p={0.63} label="4-year cycle still useful" sub="Lean yes · prior + position" />
+          <div className="home-viz-path-wrap w-full">
+            <PathBandChart
+              asset="BTC"
+              horizon="medium · 90d path"
+              spot={65175}
+              bear={46926}
+              base={66500}
+              bull={85000}
+            />
+            <p className="home-viz-caption">
+              Short / medium / long horizons never rewrite the event probability. They only describe
+              possible price paths and trends.
+            </p>
+          </div>
+        </div>
+        <div className="mt-12">
+          <ConceptCards />
+        </div>
+        <div className="mt-10">
+          <MethodFlow />
+        </div>
+      </section>
+
+      <Rule />
+
+      <section className="mx-auto max-w-6xl px-6 pt-4" aria-labelledby="standard-heading">
         <Eyebrow>The standard</Eyebrow>
         <h2
           id="standard-heading"

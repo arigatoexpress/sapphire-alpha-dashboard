@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import {
+  ConceptCards,
+  MethodFlow,
+  PathBandChart,
+  ProbabilityRing,
+} from '@/components/Visuals'
 
 type Live = {
   status?: string
@@ -9,11 +15,7 @@ type Live = {
   desk?: {
     execution?: string | null
     posture?: string | null
-    tracks?: Array<{ strategy?: string; status?: string; live_return_pct?: number | null }>
   }
-  markets?: { execution?: string | null }
-  agents?: Array<{ id?: string; state?: string }>
-  nodes?: Array<{ id?: string; status?: string }>
   summary?: { headline?: string }
 }
 
@@ -23,49 +25,6 @@ function fmtAge(s: number | null | undefined) {
   if (s < 3600) return `${Math.round(s / 60)}m ago`
   return `${Math.round(s / 3600)}h ago`
 }
-
-const PILLARS = [
-  {
-    title: 'Market research',
-    body:
-      'Event probabilities are a single number as of now. Short, medium, and long horizons are reserved for price paths, growth, and trends — each with data, evidence, and a falsifier.',
-    href: '/research/',
-    cta: 'Read research',
-  },
-  {
-    title: 'Execution rails',
-    body:
-      'Autonomous trading only on designated agentic capital. Hard caps, wallet fences, and a kill switch. Client money never shares these rails.',
-    href: '/trading/',
-    cta: 'How execution works',
-  },
-  {
-    title: 'Live operations',
-    body:
-      'Architecture telemetry, agent graph, and desk posture — so you can see the plant without guessing.',
-    href: '/dashboard',
-    cta: 'Open live desk',
-  },
-]
-
-const METHOD = [
-  {
-    t: 'Observe',
-    d: 'Public market data (crypto spot, dominance, macro proxies) plus portfolio multi-lens research on the book.',
-  },
-  {
-    t: 'Estimate',
-    d: 'One probability per binary event (e.g. “BTC cycle low is in”). Separate path bands for prices over short / medium / long.',
-  },
-  {
-    t: 'Falsify',
-    d: 'Every claim carries a written falsifier before the outcome. We score later — opinions without review are vibes.',
-  },
-  {
-    t: 'Act (gated)',
-    d: 'Trade ideas stay on designated wallets under caps. Speculation is allowed; silent overreach is not.',
-  },
-]
 
 export default function MissionControl() {
   const [live, setLive] = useState<Live | null>(null)
@@ -98,39 +57,37 @@ export default function MissionControl() {
     const st = live?.status
     const age = fmtAge(live?.freshness_s)
     const exec = live?.desk?.execution
-    const agents = live?.agents?.length ?? 0
-    const hasSignal = Boolean(st && st !== 'warming' && st !== 'offline')
-    return { st, age, exec, agents, hasSignal, headline: live?.summary?.headline }
+    return { st, age, exec, headline: live?.summary?.headline }
   }, [live])
 
   return (
     <div className="home-pro">
-      {/* Hero — plain English, no empty gauges */}
+      {/* Hero */}
       <section className="home-hero">
+        <div className="home-hero-mesh" aria-hidden="true" />
         <div className="home-hero-inner">
           <p className="home-kicker">Sapphire Alpha</p>
           <h1>
-            Research-driven trading infrastructure
-            <span className="home-h1-sub">you can actually inspect.</span>
+            Markets, researched.
+            <span className="home-h1-sub">Trades, gated. Everything inspectable.</span>
           </h1>
           <p className="home-lede">
-            We form data-backed market opinions, publish the reasoning with falsifiers, and
-            run autonomous execution only on designated test and agentic capital — under caps
-            and a kill switch.
+            We form clear market opinions from public data — one probability per event, path
+            bands for price targets — then run autonomous execution only on designated capital
+            under hard caps.
           </p>
           <div className="home-cta">
             <Link href="/research/" className="btn-primary">
-              Latest research
+              See today’s opinions
             </Link>
             <Link href="/dashboard" className="btn-secondary">
               Live desk
             </Link>
-            <Link href="/trading/" className="btn-ghost">
-              Execution design
+            <Link href="/research/research-methodology/" className="btn-ghost">
+              How it works
             </Link>
           </div>
 
-          {/* Status strip — only meaningful fields */}
           <div className="home-status" aria-label="System status">
             <div>
               <span>Telemetry</span>
@@ -151,71 +108,120 @@ export default function MissionControl() {
               <strong>{status.exec ? String(status.exec) : 'See live desk'}</strong>
             </div>
             <div>
-              <span>Published research</span>
-              <strong>
-                <Link href="/research/conjecture-2026-07-27/">Event book · path bands</Link>
-              </strong>
+              <span>Rails</span>
+              <strong>RH Agentic · MegaETH</strong>
             </div>
           </div>
-          {status.headline && status.hasSignal && (
-            <p className="home-status-note">{status.headline}</p>
-          )}
         </div>
       </section>
 
-      {/* Three pillars */}
+      {/* Visual concept explainer */}
       <section className="home-section">
         <div className="home-section-inner">
-          <p className="home-kicker">What this is</p>
-          <h2>Three surfaces. One standard.</h2>
-          <div className="home-pillars">
-            {PILLARS.map((p) => (
-              <article key={p.title} className="home-card">
-                <h3>{p.title}</h3>
-                <p>{p.body}</p>
-                <Link href={p.href}>{p.cta} →</Link>
-              </article>
-            ))}
-          </div>
+          <p className="home-kicker">The idea in three pictures</p>
+          <h2>Clear enough to disagree with.</h2>
+          <p className="home-section-lede">
+            No multi-horizon odds for the same event. No fake backtest leaderboards. Just a
+            probability, a path, and a way to be wrong.
+          </p>
+          <ConceptCards />
         </div>
       </section>
 
-      {/* Methodology */}
+      {/* Live sample viz from latest published book */}
       <section className="home-section home-section--raised">
         <div className="home-section-inner">
-          <p className="home-kicker">How research works</p>
-          <h2>Speculate with discipline.</h2>
-          <p className="home-section-lede">
-            The system is allowed to conjecture — including on ambiguous markets — but every
-            claim is forced through data, a single event probability when the claim is binary,
-            path horizons only for targets and trends, and a falsifier written in advance.
-          </p>
-          <ol className="home-method">
-            {METHOD.map((m, i) => (
-              <li key={m.t}>
-                <span>{String(i + 1).padStart(2, '0')}</span>
-                <div>
-                  <strong>{m.t}</strong>
-                  <p>{m.d}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <div className="home-method-cta">
+          <p className="home-kicker">From the latest book</p>
+          <h2>What an opinion looks like.</h2>
+          <div className="home-viz-row">
+            <ProbabilityRing
+              p={0.51}
+              label="BTC cycle low is in"
+              sub="Single event P · residual 49%"
+            />
+            <ProbabilityRing
+              p={0.28}
+              label="US recession ≤12m"
+              sub="Lean no · confidence moderate"
+            />
+            <div className="home-viz-path-wrap">
+              <PathBandChart
+                asset="BTC"
+                horizon="medium · 90d path"
+                spot={65175}
+                bear={46926}
+                base={66500}
+                bull={85000}
+              />
+              <p className="home-viz-caption">
+                Path bands answer “where might price go?” — not “is the low in?” Those stay as
+                one number above.
+              </p>
+            </div>
+          </div>
+          <div className="home-method-cta" style={{ marginTop: '1.75rem' }}>
             <Link href="/research/conjecture-2026-07-27/" className="btn-primary">
-              Read today’s opinions
+              Full opinion book
             </Link>
             <Link href="/research/research-methodology/" className="btn-secondary">
               Research methodology
             </Link>
-            <Link href="/research/how-research-is-published/" className="btn-ghost">
-              Publication standard
-            </Link>
           </div>
         </div>
       </section>
 
-      {/* Honest scope */}
+      {/* Method flow */}
+      <section className="home-section">
+        <div className="home-section-inner">
+          <p className="home-kicker">How research works</p>
+          <h2>Speculate with discipline.</h2>
+          <p className="home-section-lede">
+            The system is allowed to conjecture on ambiguous markets — including dubiously —
+            but every claim is forced through data, a single event probability when binary, path
+            horizons only for targets, and a falsifier written in advance.
+          </p>
+          <MethodFlow />
+        </div>
+      </section>
+
+      {/* Rails */}
+      <section className="home-section home-section--raised">
+        <div className="home-section-inner">
+          <p className="home-kicker">Execution</p>
+          <h2>Two rails. Designated capital only.</h2>
+          <div className="home-pillars">
+            <article className="home-card home-card--glow">
+              <p className="home-card-kicker">Rail 01</p>
+              <h3>Robinhood Agentic</h3>
+              <p>
+                Free-reign equities, options, and crypto on the agentic account. Per-order and
+                daily caps. Settlement cash is a real gate — no fantasy liquidity.
+              </p>
+              <Link href="/trading/">Strategy design →</Link>
+            </article>
+            <article className="home-card home-card--glow-ice">
+              <p className="home-card-kicker">Rail 02</p>
+              <h3>MegaETH · MOSS</h3>
+              <p>
+                Passkey session keys for USDm on MegaETH. Transfer-first lab scope, hard daily
+                spend, no private keys in model context.
+              </p>
+              <Link href="/onchain/">On-chain design →</Link>
+            </article>
+            <article className="home-card">
+              <p className="home-card-kicker">Always</p>
+              <h3>Kill switch</h3>
+              <p>
+                Caps the strategy cannot argue with. A human can always pause. Client money never
+                shares these rails.
+              </p>
+              <Link href="/dashboard">Open live desk →</Link>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* Scope */}
       <section className="home-section">
         <div className="home-section-inner home-scope">
           <div>
@@ -228,15 +234,15 @@ export default function MissionControl() {
               <ul>
                 <li>Event probabilities as of a timestamp</li>
                 <li>Price path bands (short / medium / long)</li>
-                <li>Evidence, sources, and falsifiers</li>
+                <li>Evidence, drivers, and falsifiers</li>
                 <li>Architecture and execution design</li>
               </ul>
             </div>
             <div>
               <h3>We do not publish</h3>
               <ul>
-                <li>Live account balances or holdings</li>
-                <li>Wallet addresses in anonymous views</li>
+                <li>Live balances or private holdings</li>
+                <li>Paper backtest “strategy” leaderboards</li>
                 <li>Guaranteed returns or hit rates</li>
                 <li>Advice for outside capital</li>
               </ul>
