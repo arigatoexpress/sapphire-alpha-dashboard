@@ -185,12 +185,12 @@ export default function MissionControl() {
       </div>
 
       <div className="mc-shell">
-        {/* Hero + KPIs */}
-        <header className="mc-hero">
+        {/* Hero + KPIs — keep "Autonomous capital" / "Command desk" for RTH health gate */}
+        <header className="mc-hero" aria-label="Command desk">
           <div>
-            <p className="mc-kicker">Self-sovereign trading plant</p>
+            <p className="mc-kicker">Self-sovereign trading plant · Command desk</p>
             <h1>
-              Full stack.
+              Autonomous capital.
               <br />
               <em>Full visibility.</em>
             </h1>
@@ -357,16 +357,45 @@ export default function MissionControl() {
           {[
             ['RH Agentic MCP', 'Equities + single-leg options'],
             ['Free-reign easy', 'Account-scale auto-approve'],
+            ['MOSS MegaETH', '20 USDm/day transfer-only'],
             ['Super Heavy', 'Planner · never places'],
             ['VPIN / TA / TV', 'Advisory flow + alerts'],
-            ['Win plant', 'Executor · VPIN · schtasks'],
-            ['Wallet fence', 'Designated rails only'],
+            ['Trade journal', 'Every fill + prediction'],
           ].map(([t, d]) => (
             <div key={t} className="mc-rail">
               <strong>{t}</strong>
               <span>{d}</span>
             </div>
           ))}
+        </section>
+
+        {/* Research epistemics */}
+        <section className="mc-panel" style={{ marginTop: '1.25rem' }}>
+          <div className="mc-panel-head">
+            <span>RESEARCH CONTRACT</span>
+            <Link href="/research/" className="mc-muted">
+              open research →
+            </Link>
+          </div>
+          <div style={{ padding: '1rem 1.1rem', display: 'grid', gap: '0.85rem' }}>
+            <p style={{ margin: 0, color: 'var(--color-ink-dim)', fontSize: '0.95rem', lineHeight: 1.55 }}>
+              <strong style={{ color: 'var(--color-ink)' }}>Events</strong> (BTC bottom in?
+              recession? cycle intact?) get <em>one probability as of now</em>.{' '}
+              <strong style={{ color: 'var(--color-ink)' }}>Path forecasts</strong> use short /
+              medium / long for price targets, growth, and trends — not for event odds.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <Link href="/research/conjecture-2026-07-27/" className="mc-btn">
+                Latest opinions
+              </Link>
+              <Link href="/research/portfolio-research-2026-07-27/" className="mc-btn">
+                Portfolio multi-lens
+              </Link>
+              <Link href="/dashboard" className="mc-btn mc-btn--primary">
+                Live desk
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
     </div>
