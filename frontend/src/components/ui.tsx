@@ -111,7 +111,7 @@ export function Panel({
     <section
       id={id}
       aria-label={label}
-      className={`border border-line bg-raised/60 ${className}`}
+      className={`min-w-0 border border-line bg-raised/60 ${className}`}
     >
       {children}
     </section>
