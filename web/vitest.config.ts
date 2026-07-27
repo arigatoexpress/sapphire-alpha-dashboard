@@ -4,13 +4,9 @@ import { fileURLToPath } from 'node:url'
 /**
  * Tests for the marketing site's own pure logic.
  *
- * `src/lib/machineRoom.ts` decides what every live figure *means* — including
- * whether there is a figure at all — so it is the part of the hero that can be
- * silently wrong. It runs in the node environment: the module is pure, and the
- * component is asserted through `react-dom/server`, which needs no DOM. That
- * keeps jsdom and a testing library out of the dependency list for assertions
- * that are all present in the static markup anyway (the same call the operator
- * desk's suite makes).
+ * Pure page and component assertions run in Node through `react-dom/server`.
+ * That keeps jsdom and a testing library out of the dependency list for
+ * assertions already present in static markup.
  *
  * `next build` does not read this file and the Dockerfile does not copy it;
  * vitest is a dev dependency only and never reaches the bundle.

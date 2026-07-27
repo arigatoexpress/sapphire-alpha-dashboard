@@ -98,7 +98,7 @@ export default function MissionControl() {
   return (
     <div className="public-observatory">
       <section className="public-hero" aria-labelledby="public-title">
-        <div className="public-hero-copy">
+        <div>
           <p className="public-kicker">Sapphire Alpha · decision observatory</p>
           <h1 id="public-title">
             Evidence
@@ -158,7 +158,7 @@ export default function MissionControl() {
       </section>
 
       <section className="public-method" aria-labelledby="method-title">
-        <div className="public-method-heading">
+        <div>
           <p className="public-kicker">How a claim travels</p>
           <h2 id="method-title">The record is the product.</h2>
         </div>

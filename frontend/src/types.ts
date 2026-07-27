@@ -11,32 +11,8 @@
  */
 
 export type {
-  AgentState,
-  DecisionGate,
-  DeskExecution,
-  DeskLeader,
-  DeskPosture,
-  EventStatus,
-  Execution,
-  Health,
-  LiveAgent,
   LiveEvent,
-  LiveDesk,
-  LiveLink,
-  LiveMarkets,
-  LiveNode,
   LiveSnapshot,
-  LiveSummary,
-  MarketStatus,
-  NodeLoad,
-  ProviderClass,
-  PublicStrategy,
-  PublicTrack,
-  ServingStatus,
-  SignalClass,
-  SummaryState,
-  Verification,
-  Zone,
 } from '@shared/telemetry'
 
 /* --- /api/v1/moss -------------------------------------------------------- */

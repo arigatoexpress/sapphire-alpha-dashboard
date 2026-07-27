@@ -31,7 +31,7 @@ export function ProbabilityRing({
           {pct}%
         </text>
         <text x="64" y="78" textAnchor="middle" className="viz-ring-unit">
-          as of now
+          point estimate
         </text>
       </svg>
       <strong>{label}</strong>

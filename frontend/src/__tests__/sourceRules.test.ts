@@ -63,7 +63,7 @@ describe('the source scan itself', () => {
   it('finds the desk source', () => {
     expect(FILES.length).toBeGreaterThanOrEqual(8)
     expect(FILES.map((file) => file.path)).toContain('App.tsx')
-    expect(FILES.map((file) => file.path)).toContain('components/SignalRoutes.tsx')
+    expect(FILES.map((file) => file.path)).toContain('hooks/useLiveTelemetry.ts')
     expect(FILES.map((file) => file.path)).toContain('types.ts')
   })
 
