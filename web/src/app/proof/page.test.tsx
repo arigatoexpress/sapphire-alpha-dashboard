@@ -21,7 +21,7 @@ describe('the public proof ledger', () => {
 
   it('publishes operating modes and fail-closed behavior', () => {
     expect(markup).toContain('Operating modes')
-    expect(markup).toContain('Bounded autonomous')
+    expect(markup).toContain('Free-reign (bounded autonomous)')
     expect(markup).toContain('Failure is a state, not a surprise')
     expect(markup).toContain('Replay detected')
     expect(markup).toContain('Capital cap breached')

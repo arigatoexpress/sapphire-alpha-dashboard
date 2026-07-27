@@ -13,8 +13,8 @@ import {
 export const metadata: Metadata = {
   title: 'Trading',
   description:
-    'Autonomous execution bounded by hard caps, a human approval rail, and a kill switch ' +
-    'that fails closed. How the Sapphire Alpha desk is allowed to act.',
+    'Robinhood Agentic free-reign strategy on designated rails — bounded by hard caps, ' +
+    'wallet fences, Super Heavy orchestration, and a kill switch that fails closed.',
   alternates: { canonical: '/trading/' },
 }
 
@@ -34,26 +34,41 @@ const MODES = [
     label: 'Gated',
     body: 'Armed under caps. Every real action still waits for a human on the approval rail.',
   },
+  {
+    tone: 'verified' as const,
+    label: 'Free-reign',
+    body:
+      'Armed agentic mode. Qualifying proposals on designated rails auto-approve under ' +
+      'clip-to-cap limits — kill switch, wallet fence, and daily caps still bind.',
+  },
 ]
 
 const RAILS = [
   {
-    term: 'Per-trade cap',
+    term: 'RH Agentic MCP',
     body:
-      'Every order is checked against a hard notional ceiling before it is signed. The cap ' +
-      'is configuration, not a constant in the strategy — a strategy cannot raise its own limit.',
+      'Brokerage execution for equities and single-leg options on the designated agentic ' +
+      'account only. Crypto placement is split off the MCP path. Non-agentic accounts are ' +
+      'rejected at the tool boundary.',
   },
   {
-    term: 'Daily cap',
+    term: 'Free-reign easy',
     body:
-      'Cumulative deployment is bounded per day. Once reached, the desk stops proposing ' +
-      'rather than shrinking its orders to squeeze underneath.',
+      'When armed, the policy layer auto-approves brokerage (and designated L2 tracks) ' +
+      'through the same ledger a human approval uses. Tickets clip to the lane cap; ' +
+      'oversized intent is resized, not rejected for being slightly over.',
   },
   {
-    term: 'Approval rail',
+    term: 'Per-trade & daily caps',
     body:
-      'Proposals surface on a Telegram gate with the reasoning attached. Approve and deny ' +
-      'are both one tap; no response is a deny.',
+      'Verified, thesis, and L2 lanes each carry their own notional ceiling. Cumulative ' +
+      'deployment is bounded per day. Caps are configuration the strategy cannot raise.',
+  },
+  {
+    term: 'Per-venue positions',
+    body:
+      'Open-position limits are counted per venue so brokerage and on-chain books do not ' +
+      'starve each other under a single global slot budget.',
   },
   {
     term: 'Kill switch',
@@ -64,8 +79,29 @@ const RAILS = [
   {
     term: 'Wallet fence',
     body:
-      'Execution is restricted to a registry of designated addresses. A wallet not in the ' +
-      'registry cannot be traded against, regardless of what a strategy requests.',
+      'Execution is restricted to a registry of designated addresses and the agentic ' +
+      'brokerage account. A wallet not in the registry cannot be traded against.',
+  },
+]
+
+const STACK = [
+  {
+    term: 'Super Heavy',
+    body:
+      'Primary planner (Grok high-effort) for plant orchestration. Plans only allowlisted ' +
+      'tools — it never places orders. Local Nemotron is the offline fallback.',
+  },
+  {
+    term: 'VPIN / TA / TV',
+    body:
+      'Flow-toxicity (VPIN), technical alerts, and TradingView webhooks feed proposals. ' +
+      'Signals are advisory until they pass the gate and free-reign or human approval.',
+  },
+  {
+    term: 'Windows plant',
+    body:
+      'GPU executor hosts the schtasks plant: free-reign tick, executor consume, VPIN, ' +
+      'orchestrator heartbeat. Mac remains control plane and RH MCP gate.',
   },
 ]
 
@@ -74,12 +110,12 @@ export default function Trading() {
     <>
       <PageHeader
         eyebrow="Trading"
-        title="Bounded before it is fast."
-        lede="The desk runs unattended. That is only defensible because every path to an order passes through limits it cannot modify, and a switch a human can always throw."
+        title="Agentic on designated rails."
+        lede="The desk runs a Robinhood Agentic free-reign strategy on capital that is explicitly allowed to take risk. Every path to an order still passes through limits it cannot modify, and a switch a human can always throw."
       />
 
       <section className="mx-auto max-w-6xl px-6 pt-10">
-        <div className="grid gap-px border border-line bg-line sm:grid-cols-3">
+        <div className="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
           {MODES.map((mode) => (
             <div key={mode.label} className="bg-void px-5 py-5 md:px-6 md:py-6">
               <StatusChip tone={mode.tone}>{mode.label}</StatusChip>
@@ -94,32 +130,37 @@ export default function Trading() {
           <div>
             <Eyebrow>Order lifecycle</Eyebrow>
             <h2 className="mt-4 font-display text-3xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-4xl">
-              Five checks between a signal and a fill.
+              Signal → free-reign → fill.
             </h2>
             <p className="mt-6 text-base leading-relaxed text-ink-dim">
-              A signal is not an order. It becomes one only after passing the wallet fence,
-              both caps, the kill-switch check, and — depending on mode — a human. Any check
-              that cannot complete stops the sequence.
+              A signal is not an order. Research, VPIN, TA, and TV alerts become proposals.
+              Free-reign easy auto-approves only when the gate is armed, the kill switch is
+              absent, the wallet is fenced, and the ticket fits (or clips into) the lane cap.
+              Gated mode still waits for a human. Any check that cannot complete stops the
+              sequence.
             </p>
-            <div className="mt-8">
+            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
               <Verified>Fail-closed by construction</Verified>
+              <Verified>Designated agentic capital only</Verified>
             </div>
           </div>
 
           <Terminal
-            title="execution trace — designated test wallet"
+            title="execution trace — free-reign easy · RH agentic"
             scanline
             lines={[
-              { prompt: true, text: 'desk propose --symbol RTR --side buy' },
+              { prompt: true, text: 'desk propose --symbol HOOD --side buy --lane thesis' },
               { text: '' },
-              { text: 'check  wallet_fence      registered', tone: 'verified' },
-              { text: 'check  per_trade_cap     within limit', tone: 'verified' },
-              { text: 'check  daily_cap         within limit', tone: 'verified' },
+              { text: 'check  wallet_fence      agentic_allowed', tone: 'verified' },
               { text: 'check  killswitch        absent', tone: 'verified' },
-              { text: 'check  approval_rail     awaiting human', tone: 'sapphire' },
+              { text: 'check  gate              ARMED', tone: 'verified' },
+              { text: 'check  free_reign        easy · auto_approve', tone: 'verified' },
+              { text: 'check  per_trade_cap     clip-to-cap', tone: 'sapphire' },
+              { text: 'check  daily_cap         within limit', tone: 'verified' },
+              { text: 'check  venue_slots       brokerage ok', tone: 'verified' },
               { text: '' },
-              { text: '→ proposal queued, not executed.', tone: 'dim' },
-              { text: '  no response within window = deny.', tone: 'dim' },
+              { text: '→ ledger auto-approve via free_reign', tone: 'verified' },
+              { text: '→ executor consume → RH Agentic MCP', tone: 'dim' },
             ]}
           />
         </div>
@@ -146,6 +187,25 @@ export default function Trading() {
 
       <Rule />
 
+      <section className="mx-auto max-w-6xl px-6" aria-labelledby="stack-heading">
+        <Eyebrow>Plant stack</Eyebrow>
+        <h2
+          id="stack-heading"
+          className="mt-4 max-w-3xl font-display text-3xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-5xl"
+        >
+          Orchestration without unsupervised authority.
+        </h2>
+        <dl className="mt-12 border-t border-line">
+          {STACK.map((item) => (
+            <Row key={item.term} term={item.term} status={<Verified>live</Verified>}>
+              {item.body}
+            </Row>
+          ))}
+        </dl>
+      </section>
+
+      <Rule />
+
       <section className="mx-auto max-w-6xl px-6">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
           <div>
@@ -156,11 +216,13 @@ export default function Trading() {
             <div className="mt-7 space-y-5 text-base leading-relaxed text-ink-dim">
               <p>
                 It is an autonomous execution system running on designated test and agentic
-                wallets, with risk deliberately accepted on those envelopes.
+                wallets — including a Robinhood Agentic brokerage account — with risk
+                deliberately accepted on those envelopes.
               </p>
               <p>
                 It is not a managed fund, it does not take outside capital, and nothing on
-                this site is investment advice or an offer of any kind.
+                this site is investment advice or an offer of any kind. Client and production
+                money never share these rails.
               </p>
             </div>
           </div>
@@ -171,7 +233,7 @@ export default function Trading() {
             </p>
             <div className="mt-5 space-y-4 text-sm leading-relaxed text-ink-dim">
               <p>
-                Exact balances, current holdings, sizes, and limits are excluded from
+                Exact balances, current holdings, sizes, and live limits are excluded from
                 anonymous responses. Public architecture telemetry is a separate contract
                 and contains no capital state.
               </p>

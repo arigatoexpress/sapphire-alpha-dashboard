@@ -66,9 +66,11 @@ const MODES = [
     description: 'A valid proposal pauses at authorization until an explicit approval arrives.',
   },
   {
-    name: 'Bounded autonomous',
-    authority: 'Pre-authorized',
-    description: 'Actions may proceed only inside named wallets, instruments, and hard capital limits.',
+    name: 'Free-reign (bounded autonomous)',
+    authority: 'Pre-authorized envelope',
+    description:
+      'On designated RH Agentic and L2 rails only: free-reign easy auto-approves ' +
+      'inside clip-to-cap, daily, and wallet fences. Mode never expands the envelope.',
   },
   {
     name: 'Paused',

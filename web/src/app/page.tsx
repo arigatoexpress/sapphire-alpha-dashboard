@@ -8,18 +8,18 @@ import { CHAIN, CORE_METRICS, MEASURED_AT } from '@/data/metrics'
 const CAPABILITIES = [
   {
     n: '01',
-    title: 'Autonomous execution',
+    title: 'RH Agentic free-reign',
     body:
-      'Agents that analyse, propose, and execute against hard per-trade and daily caps. ' +
-      'Every action is bounded before it is fast.',
+      'Robinhood Agentic brokerage plus designated L2 rails. Free-reign easy auto-approves ' +
+      'under clip-to-cap limits; Super Heavy plans, never places.',
     href: '/trading/',
   },
   {
     n: '02',
     title: 'Fail-closed safety',
     body:
-      'A kill switch, a human approval rail, and a fence list that binds every agent in ' +
-      'the fleet. When a check cannot run, execution stops.',
+      'A kill switch, wallet fence, human approval rail, and caps that bind every agent. ' +
+      'When a check cannot run, execution stops.',
     href: '/security/',
   },
   {
@@ -83,7 +83,7 @@ export default function Home() {
                 href="/trading/"
                 className="border border-line-lit px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-ink-dim uppercase transition-colors hover:border-sapphire hover:text-ink"
               >
-                Execution rails
+                Agentic strategy
               </Link>
             </div>
           </div>

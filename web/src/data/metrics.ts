@@ -108,7 +108,7 @@ export const NODES: Node[] = [
     id: 'executor',
     role: 'GPU executor',
     hardware: 'NVIDIA RTX 5070 Ti · 16 GB',
-    duty: 'Model inference, forecasting, trade execution under caps.',
+    duty: 'Model inference, free-reign plant, RH/L2 execution under caps.',
   },
   {
     id: 'offload',

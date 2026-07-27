@@ -21,8 +21,15 @@ const LAYERS = [
   {
     term: 'Execution',
     body:
-      'A Windows GPU node runs inference and places orders. It can act without asking, ' +
-      'but only inside caps the control plane set, and only on designated wallets.',
+      'A Windows GPU node runs inference, free-reign policy ticks, and order placement. ' +
+      'Robinhood Agentic MCP handles the brokerage rail; on-chain uses provisioned wallets. ' +
+      'Both act only inside caps and designated envelopes.',
+  },
+  {
+    term: 'Orchestration',
+    body:
+      'Grok Super Heavy is the primary plant planner (high effort); local Nemotron is the ' +
+      'offline fallback. Orchestrators propose and schedule — they never hold keys or place.',
   },
   {
     term: 'Telemetry',
