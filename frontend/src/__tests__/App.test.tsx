@@ -93,6 +93,12 @@ describe('evidence contract', () => {
     expect(markup).toContain('This surface cannot place a trade')
     expect(markup).toContain('Anonymous · read only · no execution authority')
   })
+
+  it('never invents a deployed build identity and links to the manifest', () => {
+    expect(markup).toContain('Build not verified')
+    expect(markup).toContain('href="/api/build"')
+    expect(markup).toContain('inspect manifest')
+  })
 })
 
 describe('honest empty state', () => {

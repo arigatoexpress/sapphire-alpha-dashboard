@@ -131,14 +131,18 @@ export default function Architecture() {
             lines={[
               { text: '# one image, one service, one domain.', tone: 'dim' },
               { text: '' },
-              { prompt: true, text: 'gcloud builds submit --config cloudbuild.yaml' },
-              { text: 'step 0: docker build  ................ ok', tone: 'verified' },
-              { text: 'step 1: docker push   ................ ok', tone: 'verified' },
-              { text: 'step 2: run deploy    ................ ok', tone: 'verified' },
+              {
+                prompt: true,
+                text: './deploy.sh',
+              },
+              { text: 'step 0: verify source ................. ok', tone: 'verified' },
+              { text: 'step 1: docker build  ................. ok', tone: 'verified' },
+              { text: 'step 2: docker push   ................. ok', tone: 'verified' },
+              { text: 'step 3: run deploy    ................. ok', tone: 'verified' },
               { text: '' },
               { text: 'service   sapphire-alpha-dashboard' },
               { text: 'region    us-central1' },
-              { text: 'traffic   100% → latest', tone: 'sapphire' },
+              { text: 'image     immutable build ID', tone: 'sapphire' },
               { text: '' },
               { text: '# secrets resolve at runtime, never baked in.', tone: 'dim' },
             ]}

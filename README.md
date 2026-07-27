@@ -4,8 +4,8 @@ Two surfaces at **[sapphirealpha.xyz](https://sapphirealpha.xyz)**, shipped as o
 
 | Path | Surface | Access |
 | --- | --- | --- |
-| `/` | **Machine Room** (`web/`) — a plain-language live view of the system plus its measured architecture and research | Anonymous |
-| `/dashboard` | **Observatory** (`frontend/`) — the deeper live view of distributed compute, agent activity, Robinhood Chain research, and verified system events | Anonymous |
+| `/` | **Evidence Observatory** (`web/`) — the research method, published evidence, architecture, and public operating boundary | Anonymous |
+| `/dashboard` | **Decision Observatory** (`frontend/`) — current exceptions, changes, authority, and source-level evidence | Anonymous |
 
 FastAPI + a statically exported Next.js site + a React/Vite SPA. The application has no trading or infrastructure actuation routes.
 
@@ -29,7 +29,7 @@ Two rules keep it honest:
 The site is a static export (`output: 'export'`) — prerendered HTML with no Next.js server,
 fully readable with JavaScript disabled, served straight from the FastAPI container.
 
-## Signal Routes architecture
+## Evidence flow
 
 ```text
 home-mesh raw observations
@@ -45,12 +45,11 @@ Cloud Run signed ingest -> Firestore latest + bounded history
        +--> one undelayed compute projection
        +--> narrowly sanitized capital and legacy projections
        v
-Signal Routes + agents + research + evidence ledger
+Evidence Horizon + agents + research + evidence ledger
 ```
 
-Each measured route has its own row, endpoints, status, latency, and event rate. Routes
-never cross and nothing moves for decoration. Missing sources render `not observed`,
-`warming`, `stale`, or `offline`—never synthetic market activity.
+Each source retains its own freshness and authority. Missing sources render `not observed`,
+`warming`, `stale`, or `offline`—never synthetic market activity or implied permission.
 
 ## Privacy boundary
 
@@ -74,6 +73,8 @@ present/empty, and exposes freshness rather than exact block height.
 - `GET /api/v1/moss` — banded anonymous asset state or exact authenticated operator view
 - `GET /api/v1/vault-map` — fixed public topic taxonomy; no titles, paths, counts, mount state, or note content
 - `GET /api/health` — public service liveness
+- `GET /api/build` — source SHA, Cloud Build ID, Cloud Run revision, and deterministic
+  manifests for both shipped frontend trees
 - Raw `GET /vault/rag-map` remains authenticated. `/api/v1/widgets` supplies
   the observatory's anonymous evidence and system watchboard; it remains
   advisory and cannot grant execution authority. `/api/fleet` remains a
@@ -149,6 +150,18 @@ ordering, schema bounds, non-finite numbers, sensitive-field rejection,
 measurement provenance, missing-source honesty, local-projector fidelity, the
 sanitized vault map, narration, responsive non-overlap, and the MOSS
 operator/public privacy split.
+
+An approved release uses one immutable build path:
+
+```bash
+./deploy.sh
+python scripts/verify_deployment.py "$(git rev-parse HEAD)"
+```
+
+The wrapper refuses a dirty tree or invalid source SHA, delegates to the canonical Cloud
+Build config, and tags the image with the Cloud Build ID. Do not bypass its clean-tree
+preflight with a raw submit command. The verifier is read-only and checks the deployed source, runtime revision, both
+frontend manifests, and representative public routes.
 
 ## Deployment gate
 

@@ -30,6 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from live_telemetry import validate_snapshot  # type: ignore[import]
+from main import _build_identity as _runtime_build_identity  # type: ignore[import]
 from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]
 
 
@@ -152,13 +153,17 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # Quiet logs; stderr stays clean for demo use.
         pass
 
-    def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+    def _send_json(
+        self, status: int, payload: dict[str, Any], *, cache_control: str | None = None
+    ) -> None:
         body = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(body)
 
@@ -187,6 +192,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "timestamp": _utc_now(),
                 },
             )
+            return
+
+        if self.path == "/api/build":
+            self._send_json(200, _runtime_build_identity(), cache_control="no-store")
             return
 
         if self.path == "/api/v1/live":

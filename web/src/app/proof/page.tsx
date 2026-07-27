@@ -91,8 +91,9 @@ const FAILURES = [
 ] as const
 
 const ENDPOINTS = [
-  ['/api/health', 'Service health and build identity'],
-  ['/api/v1/live', 'Typed architecture telemetry used by the Machine Room'],
+  ['/api/health', 'Service liveness'],
+  ['/api/build', 'Source, runtime revision, and shipped asset manifests'],
+  ['/api/v1/live', 'Typed architecture telemetry used by the Evidence Horizon'],
   ['/api/v1/moss', 'Privacy-bounded on-chain observer state'],
   ['/api/v1/transparency', 'Capital and activity summaries with sensitive detail omitted'],
   ['/api/v1/status', 'Sanitized control-plane and service posture'],

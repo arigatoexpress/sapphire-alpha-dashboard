@@ -44,6 +44,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ARG SAPPHIRE_BUILD_SHA=unknown
+ARG SAPPHIRE_BUILD_ID=unknown
+
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -53,6 +56,10 @@ COPY --from=web-build /repo/web/out ./web/out
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
+ENV SAPPHIRE_BUILD_SHA=${SAPPHIRE_BUILD_SHA}
+ENV SAPPHIRE_BUILD_ID=${SAPPHIRE_BUILD_ID}
+LABEL org.opencontainers.image.revision=${SAPPHIRE_BUILD_SHA}
+LABEL io.sapphire.build-id=${SAPPHIRE_BUILD_ID}
 
 EXPOSE 8080
 

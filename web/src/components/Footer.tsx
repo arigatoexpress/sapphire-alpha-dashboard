@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ROUTES } from './Nav'
 import { MEASURED_AT, MEASURED_SHA } from '@/data/metrics'
+import BuildStamp from './BuildStamp'
 
 export default function Footer() {
   return (
@@ -14,6 +15,7 @@ export default function Footer() {
             Market research and bounded agent infrastructure, built so its claims can
             be checked rather than believed.
           </p>
+          <BuildStamp />
         </div>
 
         <nav aria-label="Footer">
@@ -44,7 +46,7 @@ export default function Footer() {
               <dd className="tnum text-ink-dim">{MEASURED_AT}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-ink-faint">commit</dt>
+              <dt className="text-ink-faint">metrics SHA</dt>
               <dd className="tnum text-ink-dim">{MEASURED_SHA}</dd>
             </div>
             <div className="flex justify-between gap-4">
