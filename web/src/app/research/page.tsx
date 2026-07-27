@@ -16,23 +16,23 @@ export const metadata: Metadata = {
 const STANDARD = [
   {
     n: '01',
-    title: 'What regime are we in?',
-    body: 'Cycle, liquidity, breadth, dominance, credit, and energy set the risk budget.',
+    title: 'What does the data say?',
+    body: 'Public market feeds and portfolio multi-lens scores first — prices, dominance, macro proxies, cluster risk.',
   },
   {
     n: '02',
-    title: 'Is the theme real?',
-    body: 'Retained users, utilization, settlement, and revenue—not an attractive story.',
+    title: 'What is our event probability?',
+    body: 'Binary claims get one probability as of the timestamp (e.g. “cycle low is in”). Not short/med/long odds.',
   },
   {
     n: '03',
-    title: 'Where does value accrue?',
-    body: 'Fees, token capture, net supply, capital intensity, and open exit rights.',
+    title: 'What is the path?',
+    body: 'Short / medium / long horizons are for price bands, growth, and trends — with scenarios, not fake precision.',
   },
   {
     n: '04',
-    title: 'What would prove this wrong?',
-    body: 'Falsifiers committed before the outcome, so the call can actually be scored.',
+    title: 'What would prove us wrong?',
+    body: 'Every claim carries a falsifier before the outcome so the system can learn, not just narrate.',
   },
 ]
 
@@ -43,9 +43,22 @@ export default function Research() {
     <>
       <PageHeader
         eyebrow="Research"
-        title="Positions are private. The reasoning is not."
-        lede="The investment mandate stays private. Published research exposes the framework, evidence, and falsifiers—not personal attribution, private inputs, positions, or execution authority."
+        title="Data first. Then a clear opinion."
+        lede="We publish event probabilities as of a timestamp, path forecasts for targets and trends, and the evidence and falsifiers behind both. Positions stay private. Reasoning does not."
       />
+
+      <section className="mx-auto max-w-6xl px-6 pt-6">
+        <p className="text-sm text-ink-dim">
+          Full research contract:{" "}
+          <Link
+            href="/research/research-methodology/"
+            className="text-sapphire underline-offset-4 hover:underline"
+          >
+            How we form market opinions
+          </Link>
+          .
+        </p>
+      </section>
 
       <section className="mx-auto max-w-6xl px-6 pt-14" aria-labelledby="standard-heading">
         <Eyebrow>The standard</Eyebrow>

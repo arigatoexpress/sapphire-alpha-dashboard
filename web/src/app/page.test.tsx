@@ -4,19 +4,25 @@ import Home from './page'
 
 const markup = renderToStaticMarkup(<Home />)
 
-describe('mission control home', () => {
-  it('renders as a mission-control console', () => {
-    expect(markup).toContain('MISSION CONTROL')
-    expect(markup).toContain('Full stack.')
-    expect(markup).toContain('Full visibility.')
-    expect(markup).toContain('Open live desk')
+describe('professional homepage', () => {
+  it('states a clear value proposition', () => {
+    expect(markup).toContain('Research-driven trading infrastructure')
+    expect(markup).toContain('Latest research')
+    expect(markup).toContain('Live desk')
   })
 
-  it('exposes analysis modules for desk, strategy, research, plant', () => {
-    expect(markup).toContain('Operator desk')
-    expect(markup).toContain('Free-reign rails')
-    expect(markup).toContain('Multi-lens book')
-    expect(markup).toContain('Four-node plant')
-    expect(markup).toContain('Proof ledger')
+  it('explains the research method without jargon overload', () => {
+    expect(markup).toContain('Speculate with discipline')
+    expect(markup).toMatch(/[Oo]ne probability/)
+    expect(markup).toContain('Falsify')
+    expect(markup).toContain('Market research')
+    expect(markup).toContain('Execution rails')
+    expect(markup).toContain('Research methodology')
+  })
+
+  it('states what is and is not published', () => {
+    expect(markup).toContain('We publish')
+    expect(markup).toContain('We do not publish')
+    expect(markup).toContain('Not investment advice')
   })
 })

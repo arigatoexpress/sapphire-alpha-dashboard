@@ -37,13 +37,13 @@ const newsreader = Newsreader({
 import { SITE_URL } from '@/lib/site'
 
 const DESCRIPTION =
-  'Mission control for a self-sovereign multi-rail trading plant: free-reign agentic execution, ' +
-  'Super Heavy orchestration, VPIN risk, live plant mesh, and research — designated capital only.'
+  'Research-driven trading infrastructure: data-backed event probabilities, path forecasts, ' +
+  'and autonomous execution on designated agentic capital only — with falsifiers and kill switches.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Sapphire Alpha — Mission Control',
+    default: 'Sapphire Alpha — Research & Execution',
     template: '%s — Sapphire Alpha',
   },
   description: DESCRIPTION,
@@ -64,13 +64,13 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'Sapphire Alpha',
-    title: 'Sapphire Alpha — Mission Control',
+    title: 'Sapphire Alpha — Research & Execution',
     description: DESCRIPTION,
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sapphire Alpha — Mission Control',
+    title: 'Sapphire Alpha — Research & Execution',
     description: DESCRIPTION,
   },
   robots: {

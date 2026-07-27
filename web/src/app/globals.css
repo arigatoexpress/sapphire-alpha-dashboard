@@ -12,6 +12,294 @@ body {
 }
 
 /* =====================================================================
+   Professional homepage — clear, calm, accurate
+   ===================================================================== */
+
+.home-pro {
+  color: var(--color-ink);
+  background: var(--color-void);
+}
+
+.home-hero {
+  border-bottom: 1px solid var(--color-line);
+  background:
+    radial-gradient(ellipse 70% 50% at 10% 0%, color-mix(in srgb, var(--color-sapphire) 18%, transparent), transparent 55%),
+    var(--color-void);
+}
+
+.home-hero-inner,
+.home-section-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 3.25rem;
+}
+
+@media (min-width: 768px) {
+  .home-hero-inner,
+  .home-section-inner {
+    padding: 4.5rem 2rem 4rem;
+  }
+}
+
+.home-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-sapphire);
+}
+
+.home-hero h1 {
+  margin-top: 0.85rem;
+  max-width: 16ch;
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5.5vw, 3.75rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.home-h1-sub {
+  display: block;
+  margin-top: 0.15em;
+  color: var(--color-ink-dim);
+  font-weight: 500;
+}
+
+.home-lede {
+  margin-top: 1.25rem;
+  max-width: 40rem;
+  font-size: 1.125rem;
+  line-height: 1.65;
+  color: var(--color-ink-dim);
+}
+
+.home-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.75rem;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.8rem 1.15rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn-primary {
+  border: 1px solid var(--color-sapphire);
+  background: var(--color-sapphire);
+  color: var(--color-void);
+}
+.btn-primary:hover {
+  background: transparent;
+  color: var(--color-sapphire);
+}
+
+.btn-secondary {
+  border: 1px solid var(--color-line-lit);
+  color: var(--color-ink);
+}
+.btn-secondary:hover {
+  border-color: var(--color-sapphire);
+  color: var(--color-sapphire);
+}
+
+.btn-ghost {
+  border: 1px solid transparent;
+  color: var(--color-ink-dim);
+}
+.btn-ghost:hover {
+  color: var(--color-ink);
+}
+
+.home-status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  margin-top: 2.5rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-line);
+}
+@media (min-width: 800px) {
+  .home-status {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.home-status > div {
+  padding: 1rem 1.1rem;
+  background: var(--color-raised);
+}
+.home-status span {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+.home-status strong {
+  display: block;
+  margin-top: 0.4rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.home-status a {
+  color: var(--color-sapphire);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.home-status-note {
+  margin-top: 0.85rem;
+  font-size: 0.9rem;
+  color: var(--color-ink-faint);
+}
+
+.home-section {
+  border-bottom: 1px solid var(--color-line);
+}
+.home-section--raised {
+  background: color-mix(in srgb, var(--color-raised) 70%, transparent);
+}
+.home-section h2 {
+  margin-top: 0.6rem;
+  max-width: 18ch;
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.home-section-lede {
+  margin-top: 1rem;
+  max-width: 42rem;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--color-ink-dim);
+}
+
+.home-pillars {
+  display: grid;
+  gap: 1px;
+  margin-top: 2rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-line);
+}
+@media (min-width: 900px) {
+  .home-pillars {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.home-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 14rem;
+  padding: 1.5rem 1.4rem;
+  background: var(--color-void);
+}
+.home-card h3 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.home-card p {
+  margin-top: 0.7rem;
+  flex: 1;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--color-ink-dim);
+}
+.home-card a {
+  margin-top: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-sapphire);
+}
+
+.home-method {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--color-line);
+}
+.home-method li {
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.home-method span {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--color-sapphire);
+  padding-top: 0.2rem;
+}
+.home-method strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+.home-method p {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--color-ink-dim);
+}
+.home-method-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.75rem;
+}
+
+.home-scope-grid {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.75rem;
+}
+@media (min-width: 800px) {
+  .home-scope-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+}
+.home-scope-grid h3 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+.home-scope-grid ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--color-ink-dim);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+.home-disclaimer {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-line);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-ink-faint);
+}
+
+/* legacy mission-control tokens kept for any residual class use */
+/* =====================================================================
    Mission Control — homepage console (instrument, not brochure)
    ===================================================================== */
 
