@@ -8,7 +8,7 @@ Two surfaces on one Cloud Run service:
 ## Tech stack
 - Backend: FastAPI + uvicorn (Python 3.11) — also serves both frontends as static files
 - Marketing site (`web/`): Next.js 16 static export + Tailwind v4 + TypeScript
-- Operator dashboard (`frontend/`): React 19 + Vite + TypeScript + Framer Motion
+- Operator dashboard (`frontend/`): React 19 + Vite + TypeScript
 - Hosting: Cloud Run (Docker / Cloud Build deploy), one image, one domain
 
 ### Why a static export
@@ -62,24 +62,23 @@ running the local telemetry collector directly. `/api/v1/moss`,
 so the UI renders cleanly without operator auth or invented observations.
 
 ## Deploy
-Preferred: Cloud Build with explicit env substitution.
+The only supported manual release entrypoint is the clean-tree wrapper:
 ```bash
-export AUTH_PASSWORD=$(security find-generic-password -s sapphire-alpha-dashboard -w)
-gcloud builds submit \
-  --config cloudbuild.yaml \
-  --substitutions=_AUTH_PASSWORD="$AUTH_PASSWORD" \
-  --project=sapphire-479610 \
-  --region=us-central1 \
-  .
-```
-
-Alternative (local source deploy):
-```bash
-export AUTH_PASSWORD=$(security find-generic-password -s sapphire-alpha-dashboard -w)
 ./deploy.sh
 ```
+Do not invoke `gcloud builds submit` manually: the wrapper's clean-tree preflight is what
+makes the embedded HEAD SHA truthful. The build also refuses a missing/invalid source
+SHA. The Dockerfile uses `npm install` rather than
+`npm ci` so the container build tolerates platform-specific optional dependencies in the
+lockfile.
 
-The Dockerfile uses `npm install` rather than `npm ci` so the container build tolerates platform-specific optional dependencies in the lockfile.
+After an approved deploy, bind the public revision back to the intended source and both
+frontend manifests:
+```bash
+python scripts/verify_deployment.py "$(git rev-parse HEAD)"
+```
+This is read-only. It also checks the public home, operator home, and calibration report
+markers; a mismatch exits non-zero.
 
 Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` Cloud Run service in `us-central1`.
 
@@ -93,6 +92,8 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
 - Public build assets: `GET /_next/*` (fingerprinted, immutable cache)
 - Public observatory: `GET /dashboard`, `GET /dashboard/*` — anonymous read-only (`auth_or_public`)
 - Public: `GET /healthz`, `GET /api/health`
+- Public build provenance: `GET /api/build` (source SHA, build ID, Cloud Run revision,
+  and SHA-256 of both shipped HTML entrypoints; no private paths or host metadata)
 - Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
 - Public compute projection: `GET /api/v1/live` (one undelayed numeric view for every reader)
 - Public fixed vault taxonomy: `GET /api/v1/vault-map` (no private metadata); raw `GET /vault/rag-map` remains authenticated

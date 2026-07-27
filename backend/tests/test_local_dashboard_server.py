@@ -63,3 +63,11 @@ def test_offline_fallback_covers_the_dashboard_watchboard_contract():
     }
     assert widgets["system_health"]["telegram"] == "not_observed"
     assert widgets["tradingview"]["status"] == "not_observed"
+
+
+def test_offline_fallback_exposes_the_same_fail_closed_build_contract():
+    identity = local_dashboard_server._runtime_build_identity()
+
+    assert identity["schema"] == 1
+    assert set(identity["surfaces"]) == {"operator", "public"}
+    assert isinstance(identity["complete"], bool)

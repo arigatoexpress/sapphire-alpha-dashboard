@@ -1,16 +1,29 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: bash
+    args:
+      - '-ceu'
+      - |
+        if [[ ! "${_BUILD_SHA}" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
+          echo "_BUILD_SHA must be an exact 40- or 64-character lowercase Git SHA" >&2
+          exit 2
+        fi
+  - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
+      - '--build-arg'
+      - 'SAPPHIRE_BUILD_SHA=${_BUILD_SHA}'
+      - '--build-arg'
+      - 'SAPPHIRE_BUILD_ID=$BUILD_ID'
       - '-f'
       - 'Dockerfile'
       - '.'
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -18,7 +31,7 @@ steps:
       - 'deploy'
       - 'sapphire-alpha-dashboard'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
       - '--region'
       - 'us-central1'
       - '--platform'
@@ -33,7 +46,12 @@ steps:
       # via a deliberate one-shot ops step, then re-enable --set-secrets.
 
 images:
-  - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:latest'
+  - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
+
+substitutions:
+  # This default exists only so Cloud Build can parse the config. Step 0 fails
+  # closed unless callers replace it with the exact clean-tree commit.
+  _BUILD_SHA: unknown
 
 # The image now builds two frontends (Vite dashboard + Next.js marketing site)
 # alongside the Python runtime. That comfortably exceeds Cloud Build's 10-minute

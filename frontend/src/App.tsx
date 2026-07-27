@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { narrate } from '@shared/narrate'
 import { describeAgent, describeNode } from '@shared/vocabulary'
+import { shortBuildValue } from '@shared/build'
 import { useFleet } from './hooks/useFleet'
+import { useBuildIdentity } from './hooks/useBuildIdentity'
 import { useLiveTelemetry } from './hooks/useLiveTelemetry'
 import { useMossSnapshot } from './hooks/useMossSnapshot'
 import { usePublicWidgets } from './hooks/usePublicWidgets'
@@ -81,6 +83,7 @@ function toneForValue(value: string | null | undefined): EvidenceTone {
 }
 
 export default function App() {
+  const build = useBuildIdentity()
   const { snapshot, error, loading } = useLiveTelemetry()
   const { snapshot: moss, error: mossError } = useMossSnapshot()
   const { fleet, error: fleetError } = useFleet()
@@ -174,7 +177,7 @@ export default function App() {
 
       <main className="observatory-main">
         <section className="observatory-opening" aria-labelledby="observatory-title">
-          <div className="observatory-opening-copy">
+          <div>
             <p className="observatory-kicker">Decision observatory · read only</p>
             <h1 id="observatory-title">{headline}</h1>
             <p className="observatory-lede">
@@ -314,6 +317,21 @@ export default function App() {
 
       <footer className="observatory-footer">
         <span>Sapphire Alpha · evidence before action</span>
+        {build ? (
+          <span>
+            Build {shortBuildValue(build.source_sha)} ·{' '}
+            {shortBuildValue(build.build_id, 16)} · {build.runtime_revision} ·{' '}
+            {build.surfaces.operator.asset_count + build.surfaces.public.asset_count} files ·{' '}
+            {shortBuildValue(build.surfaces.operator.manifest_sha256, 8)}/
+            {shortBuildValue(build.surfaces.public.manifest_sha256, 8)} ·{' '}
+            {build.complete ? 'attributed' : 'incomplete'} ·{' '}
+            <a href="/api/build">manifest</a>
+          </span>
+        ) : (
+          <span>
+            Build not verified · <a href="/api/build">inspect manifest</a>
+          </span>
+        )}
         <span>Anonymous · read only · no execution authority</span>
       </footer>
     </div>

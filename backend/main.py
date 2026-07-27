@@ -26,6 +26,7 @@ Anonymous read access:
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import logging
 import os
@@ -123,6 +124,103 @@ _KNOWLEDGE_ROOT = Path(_env("KNOWLEDGE_ROOT", str(Path.home() / "Knowledge")))
 # container so the public site, the operator dashboard, and the API share one
 # Cloud Run service and one domain.
 _WEB_OUT_DIR = Path(__file__).resolve().parent.parent / "web" / "out"
+
+
+def _sha256_file(path: Path) -> str | None:
+    """Hash one shipped entrypoint without disclosing its filesystem path."""
+    try:
+        with path.open("rb") as handle:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: handle.read(64 * 1024), b""):
+                digest.update(chunk)
+            return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _surface_manifest(root: Path, entrypoint_url: str) -> dict[str, Any]:
+    """Digest every regular file served for one frontend without listing paths."""
+    entrypoint_sha256 = _sha256_file(root / "index.html")
+    entries: list[str] = []
+    try:
+        base = root.resolve(strict=True)
+    except OSError:
+        base = None
+
+    if base is not None and base.is_dir():
+        for candidate in sorted(base.rglob("*")):
+            if candidate.is_symlink():
+                continue
+            try:
+                resolved = candidate.resolve(strict=True)
+            except OSError:
+                continue
+            if not resolved.is_relative_to(base) or not resolved.is_file():
+                continue
+            try:
+                size = resolved.stat().st_size
+            except OSError:
+                continue
+            digest = _sha256_file(resolved)
+            if digest is None:
+                continue
+            relative = resolved.relative_to(base).as_posix()
+            entries.append(f"{relative}\0{size}\0{digest}\n")
+
+    manifest_sha256 = (
+        hashlib.sha256("".join(entries).encode("utf-8")).hexdigest() if entries else None
+    )
+    return {
+        "entrypoint_url": entrypoint_url,
+        "entrypoint_sha256": entrypoint_sha256,
+        "asset_count": len(entries),
+        "manifest_sha256": manifest_sha256,
+    }
+
+
+def _identity_value(name: str, default: str) -> str:
+    """Return a bounded public-safe build label, never arbitrary env content."""
+    value = _env(name, default)
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value):
+        return value
+    return default
+
+
+@lru_cache(maxsize=1)
+def _build_identity() -> dict[str, Any]:
+    """Bind source, build, runtime revision, and the two served entrypoints."""
+    source_sha = _identity_value("SAPPHIRE_BUILD_SHA", "unknown").lower()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", source_sha):
+        source_sha = "unknown"
+
+    build_id = _identity_value("SAPPHIRE_BUILD_ID", "unknown")
+    runtime_service = _identity_value("K_SERVICE", "local")
+    runtime_revision = _identity_value("K_REVISION", "local")
+    surfaces = {
+        "operator": _surface_manifest(_FRONTEND_DIST_DIR, "/dashboard"),
+        "public": _surface_manifest(_WEB_OUT_DIR, "/"),
+    }
+    complete = (
+        source_sha != "unknown"
+        and build_id != "unknown"
+        and runtime_revision != "local"
+        and all(
+            surface["entrypoint_sha256"]
+            and surface["asset_count"]
+            and surface["manifest_sha256"]
+            for surface in surfaces.values()
+        )
+    )
+    return {
+        "schema": 1,
+        "source_sha": source_sha,
+        "build_id": build_id,
+        "runtime_service": runtime_service,
+        "runtime_revision": runtime_revision,
+        "surfaces": surfaces,
+        "complete": complete,
+    }
+
 
 # Explicit map rather than `mimetypes.guess_type`, which depends on the host's
 # mime database and would vary between a Mac dev box and the slim container.
@@ -317,6 +415,14 @@ async def healthz(request: Request) -> dict[str, Any]:
 async def api_health(request: Request) -> dict[str, Any]:
     """Public health endpoint that avoids Cloud Run /healthz interception."""
     return await healthz(request)
+
+
+@app.get("/api/build")
+@limiter.limit("30/minute")
+async def api_build(request: Request, response: Response) -> dict[str, Any]:
+    """Public, sanitized proof of the source and frontend bytes in this process."""
+    response.headers["Cache-Control"] = "no-store"
+    return _build_identity()
 
 
 def _reset_live_telemetry_for_tests() -> None:
