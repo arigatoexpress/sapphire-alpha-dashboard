@@ -73,7 +73,7 @@ export default function Research() {
         <div className="home-viz-row mt-10">
           <ProbabilityRing p={0.51} label="BTC cycle low is in" sub="As of latest book · residual 49%" />
           <ProbabilityRing p={0.63} label="4-year cycle still useful" sub="Lean yes · prior + position" />
-          <div className="home-viz-path-wrap w-full">
+          <div className="w-full">
             <PathBandChart
               asset="BTC"
               horizon="medium · 90d path"
