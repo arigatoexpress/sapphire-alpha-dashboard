@@ -39,7 +39,10 @@ def public_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(
         main,
         "_PAUSE_SENTINELS",
-        {"mac": tmp_path / "missing-mac", "windows": tmp_path / "missing-windows"},
+        {
+            "mac": tmp_path / "missing-mac",
+            "rh_chain": tmp_path / "missing-rh-chain",
+        },
     )
     monkeypatch.setenv("PUBLIC_READ_ONLY", "1")
     monkeypatch.setenv(

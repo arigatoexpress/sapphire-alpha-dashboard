@@ -132,7 +132,10 @@ def gate_env(monkeypatch, tmp_path):
     monkeypatch.setattr(
         main,
         "_PAUSE_SENTINELS",
-        {"mac": tmp_path / "mac-pause", "windows": tmp_path / "windows-pause"},
+        {
+            "mac": tmp_path / "mac-pause",
+            "rh_chain": tmp_path / "rh-chain-pause",
+        },
     )
     return monkeypatch, tmp_path
 
@@ -151,7 +154,7 @@ def test_killswitch_visible_in_public_view(gate_env):
         '{"created_at":"2026-07-28T00:00:00Z"}',
         encoding="utf-8",
     )
-    (tmp_path / "windows-pause").write_text(
+    (tmp_path / "rh-chain-pause").write_text(
         json.dumps(
             {
                 "state": "clear",
