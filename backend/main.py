@@ -47,11 +47,10 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 try:
-    from . import owner_approval, public_vault_map, telegram_miniapp, transparency
+    from . import public_vault_map, telegram_miniapp, transparency
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
-    import owner_approval
     import public_vault_map
     import telegram_miniapp
     import transparency
@@ -398,28 +397,6 @@ def auth_or_public(
         detail="Not authenticated",
         headers={"WWW-Authenticate": "Basic"},
     )
-
-
-def _authenticate_approval_owner(username: str, password: str) -> str:
-    """Reuse the existing credential verifier without creating another secret."""
-    try:
-        return require_auth(
-            HTTPBasicCredentials(username=username, password=password)
-        )
-    except HTTPException as exc:
-        raise owner_approval.RailRefused("AUTH_INVALID", 401) from exc
-
-
-# Separate, owner-only local entrypoint. Its production rail is bootstrap-inert
-# until a separately attended MACed activation exists; Cloud/container/public
-# requests hard-404 before authentication.
-app.include_router(
-    owner_approval.create_owner_approval_router(
-        owner_approval.production_rail(),
-        authenticate=_authenticate_approval_owner,
-        asset_dir=_FRONTEND_DIST_DIR,
-    )
-)
 
 
 @app.get("/healthz")

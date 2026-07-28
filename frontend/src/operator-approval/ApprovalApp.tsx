@@ -28,6 +28,53 @@ type Financial = {
   market_hours_policy: string
 }
 
+export const RENDERED_ACTION_FIELDS = [
+  'action_id',
+  'action_kind',
+  'atomic_group',
+  'environment',
+  'account',
+  'destination',
+  'parameters',
+  'units',
+  'max_cost',
+  'max_slippage_bps',
+  'target_revision_sha256',
+  'idempotency_key',
+  'preconditions',
+  'expected_effects',
+  'verification',
+  'rollback',
+  'kill_switch',
+  'residual_risks',
+  'financial',
+] as const
+
+export const RENDERED_FINANCIAL_FIELDS = [
+  'account',
+  'symbol',
+  'asset',
+  'side',
+  'quantity',
+  'max_notional',
+  'order_type',
+  'limit_price',
+  'stop_price',
+  'time_in_force',
+  'estimated_fees',
+  'max_slippage_bps',
+  'market_hours_policy',
+] as const
+
+export const RENDERED_REVIEW_FIELDS = [
+  'reviewer',
+  'reviewer_class',
+  'verdict',
+  'reviewed_at',
+  'candidate_sha256',
+  'artifact_sha256',
+] as const
+
 export type ApprovalAction = {
   action_id: string
   action_kind: string
@@ -100,6 +147,9 @@ export type ApprovalBundleDTO = {
     fleet_lease_version: string
     approval_schema_version: string
     approval_source_sha256: string
+    fleet_core_source_sha256: string
+    approval_harness_commit: string
+    approval_harness_tree: string
     consumer_commit: string
     consumer_tree: string
     consumer_result_sha256: string
@@ -143,7 +193,11 @@ const REASON_COPY: Record<string, string> = {
     'This bundle could modify the approval rail or its authority boundary.',
   ALREADY_DECIDED: 'A terminal decision or lifecycle transition is already recorded.',
   DEPENDENCY_MISMATCH: 'An accepted source, package, schema, or review identity changed.',
+  SERVER_STATE_STALE:
+    'The last server projection is stale or internally inconsistent. Refresh before deciding.',
 }
+
+const MAX_SERVER_STATE_AGE_MS = 5_000
 
 export function groupDigest(digest: string): string {
   return digest.match(/.{1,8}/g)?.join(' ') ?? digest
@@ -158,6 +212,43 @@ export function countdownLabel(expiresAt: string, now = new Date()): string {
   if (remaining < 60) return `Expires in ${remaining} second${remaining === 1 ? '' : 's'}`
   const minutes = Math.ceil(remaining / 60)
   return `Expires in ${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
+export function serverNowFromMonotonic(
+  serverTime: string,
+  anchorMonotonicMs: number,
+  currentMonotonicMs: number,
+): Date {
+  return new Date(
+    new Date(serverTime).getTime() +
+      Math.max(0, currentMonotonicMs - anchorMonotonicMs),
+  )
+}
+
+export function serverAuthorityCurrent(
+  serverTime: string,
+  bundleExpiresAt: string,
+  challengeExpiresAt: string | null,
+  now: Date,
+): boolean {
+  const serverTimeMs = Date.parse(serverTime)
+  const bundleExpiresMs = Date.parse(bundleExpiresAt)
+  const challengeExpiresMs =
+    challengeExpiresAt === null ? null : Date.parse(challengeExpiresAt)
+  const nowMs = now.getTime()
+  return (
+    Number.isFinite(serverTimeMs) &&
+    Number.isFinite(bundleExpiresMs) &&
+    Number.isFinite(nowMs) &&
+    bundleExpiresMs > serverTimeMs &&
+    nowMs >= serverTimeMs &&
+    nowMs - serverTimeMs <= MAX_SERVER_STATE_AGE_MS &&
+    nowMs < bundleExpiresMs &&
+    (challengeExpiresMs === null ||
+      (Number.isFinite(challengeExpiresMs) &&
+        challengeExpiresMs > nowMs &&
+        challengeExpiresMs <= bundleExpiresMs))
+  )
 }
 
 function EvidenceList({ title, values }: { title: string; values: string[] }) {
@@ -218,6 +309,10 @@ function ActionLedger({ action, index }: { action: ApprovalAction; index: number
             <dd className="mono">{action.idempotency_key}</dd>
           </div>
           <div>
+            <dt>Action units</dt>
+            <dd className="mono">{action.units}</dd>
+          </div>
+          <div>
             <dt>Bound cost</dt>
             <dd>
               <MoneyValue value={action.max_cost} />
@@ -265,6 +360,10 @@ function ActionLedger({ action, index }: { action: ApprovalAction; index: number
                 <dd className="mono">{action.financial.symbol}</dd>
               </div>
               <div>
+                <dt>Financial account</dt>
+                <dd className="mono">{action.financial.account}</dd>
+              </div>
+              <div>
                 <dt>Asset</dt>
                 <dd className="mono">{action.financial.asset}</dd>
               </div>
@@ -273,6 +372,28 @@ function ActionLedger({ action, index }: { action: ApprovalAction; index: number
                 <dd>
                   <MoneyValue value={action.financial.limit_price} />
                 </dd>
+              </div>
+              <div>
+                <dt>Maximum notional</dt>
+                <dd>
+                  <MoneyValue value={action.financial.max_notional} />
+                </dd>
+              </div>
+              <div>
+                <dt>Stop</dt>
+                <dd>
+                  <MoneyValue value={action.financial.stop_price} />
+                </dd>
+              </div>
+              <div>
+                <dt>Estimated fees</dt>
+                <dd>
+                  <MoneyValue value={action.financial.estimated_fees} />
+                </dd>
+              </div>
+              <div>
+                <dt>Financial slippage cap</dt>
+                <dd className="mono">{action.financial.max_slippage_bps} bps</dd>
               </div>
               <div>
                 <dt>Market hours</dt>
@@ -315,24 +436,48 @@ export function ApprovalView({
   onReauthenticate,
   onDecision,
 }: ApprovalViewProps) {
+  const anchorMonotonic = useRef(performance.now())
   const [now, setNow] = useState(() => new Date(bundle.server_time))
   const resultHeading = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(new Date()), 1_000)
+    anchorMonotonic.current = performance.now()
+    setNow(new Date(bundle.server_time))
+    const interval = window.setInterval(
+      () =>
+        setNow(
+          serverNowFromMonotonic(
+            bundle.server_time,
+            anchorMonotonic.current,
+            performance.now(),
+          ),
+        ),
+      250,
+    )
     return () => window.clearInterval(interval)
-  }, [])
+  }, [bundle.server_time])
 
   useEffect(() => {
     if (message) resultHeading.current?.focus()
   }, [message])
 
-  const eligible = bundle.eligibility.eligible
+  const serverCurrent = serverAuthorityCurrent(
+    bundle.server_time,
+    bundle.expires_at,
+    challenge?.expires_at ?? null,
+    now,
+  )
+  const eligible = bundle.eligibility.eligible && serverCurrent
   const challengeCurrent =
-    challenge !== null && new Date(challenge.expires_at).getTime() > now.getTime()
+    challenge !== null &&
+    serverCurrent &&
+    new Date(challenge.expires_at).getTime() > now.getTime()
   const canDecide = eligible && challengeCurrent && !busy
+  const effectiveReason = serverCurrent
+    ? bundle.eligibility.reason_code
+    : 'SERVER_STATE_STALE'
   const reasonCopy =
-    REASON_COPY[bundle.eligibility.reason_code] ??
+    REASON_COPY[effectiveReason] ??
     'The server refused this exact decision state.'
 
   return (
@@ -344,7 +489,7 @@ export function ApprovalView({
         </div>
         <div className="header-state">
           <span className={`state-mark ${eligible ? 'state-mark--verified' : ''}`}>
-            {bundle.eligibility.reason_code}
+            {effectiveReason}
           </span>
           <span className="mono">rev {bundle.rev}</span>
         </div>
@@ -393,6 +538,14 @@ export function ApprovalView({
                 <dd>{bundle.purpose_class}</dd>
               </div>
               <div>
+                <dt>Creator</dt>
+                <dd>{bundle.creator}</dd>
+              </div>
+              <div>
+                <dt>Display schema</dt>
+                <dd className="mono">{bundle.schema_version}</dd>
+              </div>
+              <div>
                 <dt>Created</dt>
                 <dd>
                   <time dateTime={bundle.created_at}>{bundle.created_at}</time>
@@ -432,6 +585,18 @@ export function ApprovalView({
               <div>
                 <dt>Reviewer</dt>
                 <dd>{bundle.independent_review.reviewer}</dd>
+              </div>
+              <div>
+                <dt>Reviewer class</dt>
+                <dd>{bundle.independent_review.reviewer_class}</dd>
+              </div>
+              <div>
+                <dt>Reviewed</dt>
+                <dd>
+                  <time dateTime={bundle.independent_review.reviewed_at}>
+                    {bundle.independent_review.reviewed_at}
+                  </time>
+                </dd>
               </div>
               <HashRow
                 label="Candidate"
@@ -486,6 +651,18 @@ export function ApprovalView({
                 value={bundle.dependency_pins.approval_source_sha256}
               />
               <HashRow
+                label="Fleet core source"
+                value={bundle.dependency_pins.fleet_core_source_sha256}
+              />
+              <HashRow
+                label="Approval harness commit"
+                value={bundle.dependency_pins.approval_harness_commit}
+              />
+              <HashRow
+                label="Approval harness tree"
+                value={bundle.dependency_pins.approval_harness_tree}
+              />
+              <HashRow
                 label="Consumer commit"
                 value={bundle.dependency_pins.consumer_commit}
               />
@@ -535,7 +712,10 @@ export function ApprovalView({
 
           <div className="policy-strip">
             <strong>{bundle.execution_policy.failure_mode}</strong>
-            <span>{bundle.partial_outcome_semantics}</span>
+            <span>
+              {bundle.partial_outcome_semantics} Atomic groups:{' '}
+              {bundle.execution_policy.atomic_groups.join(', ')}
+            </span>
           </div>
 
           {bundle.actions.map((action, index) => (
@@ -547,6 +727,17 @@ export function ApprovalView({
           <p className="eyebrow">Attended decision</p>
           <h2 id="attended-decision-heading">Approval is not execution.</h2>
           <p className="decision-statement">{bundle.approval_statement}</p>
+          <dl className="stacked-definitions">
+            <div>
+              <dt>Approver identity</dt>
+              <dd className="mono">{bundle.approval_policy.approver_identity}</dd>
+            </div>
+            <div>
+              <dt>Approver class</dt>
+              <dd className="mono">{bundle.approval_policy.approver_class}</dd>
+            </div>
+            <HashRow label="Projection ETag" value={bundle.etag} />
+          </dl>
 
           <div className="consumer-state">
             <span>Consumer {bundle.consumer_state.toLowerCase()}</span>
@@ -557,7 +748,7 @@ export function ApprovalView({
             className={`eligibility-banner ${eligible ? 'eligibility-banner--verified' : ''}`}
             role="status"
           >
-            <strong>{bundle.eligibility.reason_code}</strong>
+            <strong>{effectiveReason}</strong>
             <span>{reasonCopy}</span>
           </div>
 
@@ -649,12 +840,30 @@ export default function ApprovalApp() {
       }),
     )
     setBundle(current)
+    setError('')
   }
 
   useEffect(() => {
     void load().catch((reason: unknown) => {
       setError(reason instanceof Error ? reason.message : 'BUNDLE_LOAD_FAILED')
     })
+  }, [])
+
+  useEffect(() => {
+    const refresh = () => {
+      void load().catch((reason: unknown) => {
+        setChallenge(null)
+        setError(reason instanceof Error ? reason.message : 'BUNDLE_REFRESH_FAILED')
+      })
+    }
+    const interval = window.setInterval(refresh, 2_000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [])
 
   useEffect(() => {

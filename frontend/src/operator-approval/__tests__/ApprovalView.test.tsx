@@ -5,6 +5,8 @@ import {
   ApprovalView,
   countdownLabel,
   groupDigest,
+  serverAuthorityCurrent,
+  serverNowFromMonotonic,
   type ApprovalBundleDTO,
 } from '../ApprovalApp'
 
@@ -60,10 +62,10 @@ const bundle: ApprovalBundleDTO = {
         asset: `asset:${'1'.repeat(64)}`,
         side: 'SELL',
         quantity: { value: 1, unit: 'CONTRACT' },
-        max_notional: null,
+        max_notional: { amount_minor: 5000, currency: 'USD', scale: 2 },
         order_type: 'LIMIT',
         limit_price: { amount_minor: 2500, currency: 'USD', scale: 2 },
-        stop_price: null,
+        stop_price: { amount_minor: 2100, currency: 'USD', scale: 2 },
         time_in_force: 'DAY',
         estimated_fees: { amount_minor: 0, currency: 'USD', scale: 2 },
         max_slippage_bps: 20,
@@ -123,9 +125,12 @@ const bundle: ApprovalBundleDTO = {
     fleet_lease_tree: '7'.repeat(40),
     fleet_lease_result_sha256: '4'.repeat(64),
     fleet_lease_review_sha256: '5'.repeat(64),
-    fleet_lease_version: '0.6.0',
+    fleet_lease_version: '0.7.0',
     approval_schema_version: '3.0.0',
     approval_source_sha256: '6'.repeat(64),
+    fleet_core_source_sha256: 'd'.repeat(64),
+    approval_harness_commit: 'e'.repeat(40),
+    approval_harness_tree: 'f'.repeat(40),
     consumer_commit: '8'.repeat(40),
     consumer_tree: '9'.repeat(40),
     consumer_result_sha256: '7'.repeat(64),
@@ -161,6 +166,12 @@ describe('owner approval view', () => {
       'the market can gap',
       'INDEPENDENT_GROUPS',
       'SHIP-INERTLY',
+      'INDEPENDENT_AGENT',
+      '2026-07-28T11:59:00Z',
+      '5000 minor USD',
+      '2100 minor USD',
+      '0 minor USD',
+      '20 bps',
       'Approval is not execution',
       'Consumer disarmed',
     ]) {
@@ -224,6 +235,26 @@ describe('owner approval view', () => {
     }
   })
 
+  it('renders no authority when server and challenge windows are inconsistent', () => {
+    const html = renderToStaticMarkup(
+      <ApprovalView
+        bundle={bundle}
+        challenge={{
+          csrf_challenge: 'must-not-enable',
+          expires_at: '2026-07-28T12:11:00Z',
+        }}
+        busy={false}
+        message=""
+        onReauthenticate={() => undefined}
+        onDecision={() => undefined}
+      />,
+    )
+    expect(html).toContain('SERVER_STATE_STALE')
+    expect(html).not.toContain('Approve exact bundle')
+    expect(html).not.toContain('Refuse bundle')
+    expect(html).not.toContain('Re-verify owner')
+  })
+
   it('groups the hash spine without changing the copied authority', () => {
     expect(groupDigest(DIGEST)).toBe(
       '01234567 89abcdef 01234567 89abcdef 01234567 89abcdef 01234567 89abcdef',
@@ -250,5 +281,56 @@ describe('owner approval view', () => {
         new Date('2026-07-28T12:00:00Z'),
       ),
     ).toBe('Expired')
+  })
+
+  it('derives time only from server UTC plus monotonic elapsed time', () => {
+    expect(
+      serverNowFromMonotonic('2026-07-28T12:00:00Z', 10_000, 25_500).toISOString(),
+    ).toBe('2026-07-28T12:00:15.500Z')
+    expect(
+      serverNowFromMonotonic('2026-07-28T12:00:00Z', 25_500, 10_000).toISOString(),
+    ).toBe('2026-07-28T12:00:00.000Z')
+  })
+
+  it('fails closed at stale, skewed, suspended, and boundary-second states', () => {
+    const serverTime = '2026-07-28T12:00:00Z'
+    const bundleExpiry = '2026-07-28T12:10:00Z'
+    const challengeExpiry = '2026-07-28T12:00:45Z'
+    expect(
+      serverAuthorityCurrent(
+        serverTime,
+        bundleExpiry,
+        challengeExpiry,
+        new Date('2026-07-28T12:00:05Z'),
+      ),
+    ).toBe(true)
+    expect(
+      serverAuthorityCurrent(
+        serverTime,
+        bundleExpiry,
+        challengeExpiry,
+        new Date('2026-07-28T12:00:05.001Z'),
+      ),
+    ).toBe(false)
+    expect(
+      serverAuthorityCurrent(
+        serverTime,
+        bundleExpiry,
+        '2026-07-28T12:11:00Z',
+        new Date(serverTime),
+      ),
+    ).toBe(false)
+    expect(
+      serverAuthorityCurrent(
+        serverTime,
+        serverTime,
+        null,
+        new Date(serverTime),
+      ),
+    ).toBe(false)
+    const resumed = serverNowFromMonotonic(serverTime, 1_000, 31_000)
+    expect(
+      serverAuthorityCurrent(serverTime, bundleExpiry, challengeExpiry, resumed),
+    ).toBe(false)
   })
 })

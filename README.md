@@ -93,6 +93,40 @@ AUTH_USERNAME=sapphire AUTH_PASSWORD=change-me-now \
   python -m uvicorn main:app --reload --port 8080
 ```
 
+The owner approval rail is intentionally not part of that public/dashboard
+runtime. Its only supported launcher is
+`scripts/run_owner_approval_local.py`, using the locked backend venv, exact
+owner identity `AUTH_USERNAME=ari`, a password of at least 12 characters, and
+owner-supplied local TLS paths in `OWNER_APPROVAL_TLS_CERT` and
+`OWNER_APPROVAL_TLS_KEY`. The launcher hard-codes `127.0.0.1:8099`, refuses
+Cloud/container markers and dependency drift, and has no host override.
+
+Reproduce that runtime from the repository root with Python 3.11 and the
+hash-locked dependency set:
+
+```bash
+python3.11 -m venv backend/.venv
+backend/.venv/bin/python -m pip install --require-hashes \
+  -r backend/requirements.lock
+mkdir -p "$HOME/Library/Application Support/Sapphire/tls"
+chmod 700 "$HOME/Library/Application Support/Sapphire" \
+  "$HOME/Library/Application Support/Sapphire/tls"
+openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 7 \
+  -keyout "$HOME/Library/Application Support/Sapphire/tls/owner.key" \
+  -out "$HOME/Library/Application Support/Sapphire/tls/owner.crt" \
+  -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"
+chmod 600 "$HOME/Library/Application Support/Sapphire/tls/owner.key"
+AUTH_USERNAME=ari AUTH_PASSWORD='<attended-owner-secret>' \
+OWNER_APPROVAL_TLS_CERT="$HOME/Library/Application Support/Sapphire/tls/owner.crt" \
+OWNER_APPROVAL_TLS_KEY="$HOME/Library/Application Support/Sapphire/tls/owner.key" \
+backend/.venv/bin/python scripts/run_owner_approval_local.py
+```
+
+The browser endpoint is then exactly `https://127.0.0.1:8099/operator-approval`.
+Creating a TLS key or starting this process does not create the separately
+attended activation artifact, legacy receipt, approval bundle, or broker
+adapter. Without those independent prerequisites the rail remains read-only.
+
 In another terminal, inspect the safe projection or push it to the local server:
 
 ```bash

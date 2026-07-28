@@ -23,9 +23,14 @@ from fastapi.testclient import TestClient
 
 from owner_approval import (
     ACTIVATION_SCHEMA,
+    DISPLAY_ACTION_FIELDS,
+    DISPLAY_FINANCIAL_FIELDS,
+    DISPLAY_REVIEW_FIELDS,
     PIN_SET_SHA256,
+    PROTECTED_AUTHORITY_IDS,
     ActivationState,
     ActivationVerifier,
+    FleetLeaseCompilerPort,
     OwnerApprovalRail,
     RailRefused,
     canonical_json,
@@ -40,7 +45,7 @@ OWNER = "ari"
 PASSWORD = "owner-test-password-99"
 BUNDLE_ID = "approval-20260728-risk-trim"
 BUNDLE_SHA = hashlib.sha256(b"exact-reviewed-bundle").hexdigest()
-PROTECTED_SERVICE = "svc:" + hashlib.sha256(b"approval-rail").hexdigest()
+PROTECTED_SERVICE = PROTECTED_AUTHORITY_IDS[0]
 
 
 def _utc(value: datetime) -> str:
@@ -192,6 +197,8 @@ class FakeCompiler:
         self._lock = threading.Lock()
         self._replays: dict[str, dict] = {}
         self.approve_fail_once = approve_fail_once
+        self.provisioned_receipts: dict[str, dict] = {}
+        self.consumed_receipts: set[str] = set()
 
     def get_bundle(self, bundle_id: str) -> dict:
         if bundle_id != self.bundle["bundle_id"]:
@@ -219,10 +226,35 @@ class FakeCompiler:
             }
         ]
 
-    def approval_connection(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.registry, timeout=5)
-        connection.row_factory = sqlite3.Row
-        return connection
+    def provision_attended_approval_receipt(
+        self,
+        content: dict,
+        *,
+        operation_key: str,
+    ) -> str:
+        receipt_sha = hashlib.sha256(
+            canonical_json(content).encode("utf-8")
+        ).hexdigest()
+        prior = self.provisioned_receipts.get(operation_key)
+        if prior is not None and prior != content:
+            raise RailRefused("ATTENDED_RECEIPT_REFUSED")
+        if prior is None and any(
+            item["bundle_sha256"] == content["bundle_sha256"]
+            and sha not in self.consumed_receipts
+            for sha, item in (
+                (
+                    hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest(),
+                    value,
+                )
+                for value in self.provisioned_receipts.values()
+            )
+        ):
+            raise RailRefused("ATTENDED_RECEIPT_REFUSED")
+        self.provisioned_receipts[operation_key] = json.loads(json.dumps(content))
+        return receipt_sha
+
+    def consume_legacy_owner_activation(self, **kwargs: str) -> bool:
+        return False
 
     def approve_bundle(self, bundle_id: str, **kwargs: object) -> dict:
         with self._lock:
@@ -235,20 +267,19 @@ class FakeCompiler:
             assert bundle_id == self.bundle["bundle_id"]
             assert kwargs["bundle_sha256"] == self.bundle["canonical_sha256"]
             assert kwargs["expected_rev"] == self.bundle["rev"]
-            assert kwargs["approval_statement"] == self.bundle["source"]["approval_statement"]
+            assert (
+                kwargs["approval_statement"]
+                == self.bundle["source"]["approval_statement"]
+            )
             assert kwargs["actor"] == OWNER
-            with self.approval_connection() as connection:
-                receipt = connection.execute(
-                    "SELECT * FROM attended_approval_receipts WHERE receipt_sha256 = ?",
-                    (kwargs["attended_receipt_sha256"],),
-                ).fetchone()
-                assert receipt is not None
-                assert receipt["consumed_at"] is None
-                connection.execute(
-                    "UPDATE attended_approval_receipts SET consumed_at = ? "
-                    "WHERE receipt_sha256 = ?",
-                    (_utc(NOW), kwargs["attended_receipt_sha256"]),
-                )
+            receipt_sha = str(kwargs["attended_receipt_sha256"])
+            assert any(
+                hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+                == receipt_sha
+                for value in self.provisioned_receipts.values()
+            )
+            assert receipt_sha not in self.consumed_receipts
+            self.consumed_receipts.add(receipt_sha)
             self.approve_calls.append(dict(kwargs))
             self.bundle["status"] = "APPROVED"
             self.bundle["rev"] += 1
@@ -274,21 +305,7 @@ class FakeCompiler:
 
 
 def _initialize_registry(path: Path) -> None:
-    with sqlite3.connect(path) as connection:
-        connection.executescript(
-            """
-            CREATE TABLE attended_approval_receipts (
-                receipt_sha256 TEXT PRIMARY KEY,
-                bundle_sha256 TEXT NOT NULL,
-                statement_sha256 TEXT NOT NULL,
-                approver_identity TEXT NOT NULL,
-                approver_class TEXT NOT NULL,
-                issued_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                consumed_at TEXT
-            );
-            """
-        )
+    sqlite3.connect(path).close()
     path.chmod(0o600)
 
 
@@ -298,7 +315,7 @@ def _active() -> ActivationState:
         reason_code="ACTIVE",
         pin_set_sha256=PIN_SET_SHA256,
         registry_identity_sha256="a" * 64,
-        protected_authority_ids=(PROTECTED_SERVICE,),
+        protected_authority_ids=PROTECTED_AUTHORITY_IDS,
         expires_at=_utc(NOW + timedelta(hours=1)),
     )
 
@@ -314,15 +331,13 @@ def rail(tmp_path: Path) -> tuple[OwnerApprovalRail, FakeCompiler, Path]:
         activation=lambda _now: _active(),
         clock=lambda: NOW,
         token_bytes=lambda size: bytes([next(counter)]) * size,
+        session_registry_path=tmp_path / "sessions.sqlite3",
     )
     return instance, compiler, registry
 
 
 def test_local_context_rejects_cloud_container_wildcard_and_remote() -> None:
-    assert (
-        local_context_reason("127.0.0.1", "127.0.0.1:8099", {}, False)
-        is None
-    )
+    assert local_context_reason("127.0.0.1", "127.0.0.1:8099", {}, False) is None
     assert local_context_reason("203.0.113.4", "127.0.0.1:8099", {}, False) == (
         "NON_LOOPBACK_PEER"
     )
@@ -332,9 +347,9 @@ def test_local_context_rejects_cloud_container_wildcard_and_remote() -> None:
     assert local_context_reason("127.0.0.1", "localhost:8099", {}, False) == (
         "NON_LOOPBACK_HOST"
     )
-    assert local_context_reason("127.0.0.1", "127.0.0.1:8099", {"K_SERVICE": "x"}, False) == (
-        "CLOUD_RUNTIME"
-    )
+    assert local_context_reason(
+        "127.0.0.1", "127.0.0.1:8099", {"K_SERVICE": "x"}, False
+    ) == ("CLOUD_RUNTIME")
     assert local_context_reason("127.0.0.1", "127.0.0.1:8099", {}, True) == (
         "CONTAINER_RUNTIME"
     )
@@ -359,7 +374,6 @@ def test_activation_requires_owner_private_mac_and_exact_registry(
         "nonce_sha256": hashlib.sha256(b"one-use-nonce").hexdigest(),
         "issued_at": _utc(issued),
         "expires_at": _utc(NOW + timedelta(minutes=30)),
-        "protected_authority_ids": [PROTECTED_SERVICE],
     }
     payload["mac_sha256"] = hmac.new(
         key.read_bytes(),
@@ -368,14 +382,57 @@ def test_activation_requires_owner_private_mac_and_exact_registry(
     ).hexdigest()
     attestation.write_text(canonical_json(payload), encoding="utf-8")
     attestation.chmod(0o600)
+    consumed: list[dict[str, str]] = []
+
+    def consume(**kwargs: str) -> bool:
+        consumed.append(kwargs)
+        return kwargs["receipt_sha256"] == payload["legacy_gate_receipt_sha256"]
+
     verifier = ActivationVerifier(
         registry_path=registry,
         attestation_path=attestation,
         key_path=key,
+        consume_legacy_receipt=consume,
     )
     state = verifier.verify(NOW)
     assert state.active is True
-    assert state.protected_authority_ids == (PROTECTED_SERVICE,)
+    assert state.protected_authority_ids == PROTECTED_AUTHORITY_IDS
+    assert len(consumed) == 1
+
+    phantom = ActivationVerifier(
+        registry_path=registry,
+        attestation_path=attestation,
+        key_path=key,
+        consume_legacy_receipt=lambda **_kwargs: False,
+    )
+    assert phantom.verify(NOW).reason_code == "LEGACY_RECEIPT_INVALID"
+
+    payload["protected_authority_ids"] = []
+    unsigned = {
+        key_name: value
+        for key_name, value in payload.items()
+        if key_name != "mac_sha256"
+    }
+    payload["mac_sha256"] = hmac.new(
+        key.read_bytes(),
+        canonical_json(unsigned).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    attestation.write_text(canonical_json(payload), encoding="utf-8")
+    assert verifier.verify(NOW).reason_code == "ACTIVATION_FILE_INVALID"
+    payload.pop("protected_authority_ids")
+    payload["mac_sha256"] = hmac.new(
+        key.read_bytes(),
+        canonical_json(
+            {
+                key_name: value
+                for key_name, value in payload.items()
+                if key_name != "mac_sha256"
+            }
+        ).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    attestation.write_text(canonical_json(payload), encoding="utf-8")
 
     substituted_registry = tmp_path / "substituted.sqlite3"
     substituted_registry.write_bytes(registry.read_bytes())
@@ -384,6 +441,7 @@ def test_activation_requires_owner_private_mac_and_exact_registry(
         registry_path=substituted_registry,
         attestation_path=attestation,
         key_path=key,
+        consume_legacy_receipt=consume,
     )
     assert substituted.verify(NOW).reason_code == "ACTIVATION_BINDING_INVALID"
 
@@ -401,9 +459,9 @@ def test_inspection_is_exact_ordered_and_read_only(rail) -> None:
     assert dto["canonical_sha256"] == BUNDLE_SHA
     assert len(dto["canonical_sha256"]) == 64
     assert dto["rev"] == 1
-    assert dto["compile_receipt_sha256"] == hashlib.sha256(
-        b"compile-receipt"
-    ).hexdigest()
+    assert (
+        dto["compile_receipt_sha256"] == hashlib.sha256(b"compile-receipt").hexdigest()
+    )
     assert [action["action_id"] for action in dto["actions"]] == ["first", "second"]
     assert dto["execution_policy"]["failure_mode"] == "INDEPENDENT_GROUPS"
     assert dto["partial_outcome_semantics"]
@@ -456,11 +514,70 @@ def test_control_plane_self_modification_is_ineligible(tmp_path: Path) -> None:
         _bundle(actions=[_action("self-modify", service=PROTECTED_SERVICE)]),
         registry,
     )
+    caller_selected_incomplete = ActivationState(
+        active=True,
+        reason_code="ACTIVE",
+        pin_set_sha256=PIN_SET_SHA256,
+        registry_identity_sha256="a" * 64,
+        protected_authority_ids=(),
+        expires_at=_utc(NOW + timedelta(hours=1)),
+    )
+    instance = OwnerApprovalRail(
+        compiler=compiler,
+        activation=lambda _now: caller_selected_incomplete,
+        clock=lambda: NOW,
+        token_bytes=os.urandom,
+        session_registry_path=tmp_path / "sessions.sqlite3",
+    )
+    assert instance.inspect(BUNDLE_ID)["eligibility"] == {
+        "eligible": False,
+        "reason_code": "CONTROL_PLANE_SELF_MODIFICATION",
+    }
+
+
+@pytest.mark.parametrize(
+    ("action_kind", "field"),
+    [
+        (kind, field)
+        for kind in ("FINANCIAL", "DEPLOYMENT", "PUBLICATION", "MESSAGE")
+        for field in DISPLAY_ACTION_FIELDS
+        if field != "action_kind"
+    ],
+)
+def test_every_compiler_action_kind_and_field_is_scanned_for_self_modification(
+    action_kind: str,
+    field: str,
+) -> None:
+    action: dict[str, object] = {"action_kind": action_kind}
+    action[field] = {"nested": [PROTECTED_SERVICE]}
+    assert OwnerApprovalRail._self_modifies(
+        {"actions": [action]},
+        PROTECTED_AUTHORITY_IDS,
+    )
+
+
+@pytest.mark.parametrize("protected_id", PROTECTED_AUTHORITY_IDS)
+def test_every_fixed_authority_id_is_protected_at_any_action_depth(
+    tmp_path: Path,
+    protected_id: str,
+) -> None:
+    registry = tmp_path / "registry.sqlite3"
+    _initialize_registry(registry)
+    action = _action("nested-self-modification")
+    action["parameters"].append(
+        {
+            "name": "nested",
+            "value": {"targets": [{"authority": protected_id}]},
+            "unit": "authority-id",
+        }
+    )
+    compiler = FakeCompiler(_bundle(actions=[action]), registry)
     instance = OwnerApprovalRail(
         compiler=compiler,
         activation=lambda _now: _active(),
         clock=lambda: NOW,
         token_bytes=os.urandom,
+        session_registry_path=tmp_path / "sessions.sqlite3",
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"] == {
         "eligible": False,
@@ -478,6 +595,7 @@ def test_read_only_bootstrap_never_issues_challenge(tmp_path: Path) -> None:
         activation=lambda _now: inactive,
         clock=lambda: NOW,
         token_bytes=os.urandom,
+        session_registry_path=tmp_path / "sessions.sqlite3",
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"]["reason_code"] == (
         "READ_ONLY_BOOTSTRAP"
@@ -495,12 +613,27 @@ def test_direct_receipt_provisioning_without_deciding_challenge_fails_closed(
     with pytest.raises(RailRefused, match="CHALLENGE_INVALID"):
         instance._provision_receipt(
             challenge=stored,
-            statement=_bundle()["source"]["approval_statement"],
         )
-    with sqlite3.connect(registry) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM attended_approval_receipts"
-        ).fetchone()[0] == 0
+    assert _compiler.provisioned_receipts == {}
+
+
+def test_session_store_refuses_symlink_into_authority_registry(tmp_path: Path) -> None:
+    registry = tmp_path / "registry.sqlite3"
+    _initialize_registry(registry)
+    before = registry.read_bytes()
+    session_link = tmp_path / "sessions.sqlite3"
+    session_link.symlink_to(registry)
+    compiler = FakeCompiler(_bundle(), registry)
+    instance = OwnerApprovalRail(
+        compiler=compiler,
+        activation=lambda _now: _active(),
+        clock=lambda: NOW,
+        token_bytes=os.urandom,
+        session_registry_path=session_link,
+    )
+    with pytest.raises(RailRefused, match="SESSION_REGISTRY_INVALID"):
+        instance.reauthenticate(BUNDLE_ID, OWNER)
+    assert registry.read_bytes() == before
 
 
 def test_new_reauthentication_invalidates_old_and_expires_within_sixty_seconds(
@@ -551,13 +684,8 @@ def test_approve_once_is_challenge_bound_replay_safe_and_executes_nothing(rail) 
     )
     assert replay == result
     assert len(compiler.approve_calls) == 1
-    with sqlite3.connect(registry) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM attended_approval_receipts"
-        ).fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM owner_approval_rail_receipts"
-        ).fetchone()[0] == 1
+    assert len(compiler.provisioned_receipts) == 1
+    assert len(compiler.consumed_receipts) == 1
 
 
 def test_decision_rechecks_all_live_eligibility_before_claiming_challenge(rail) -> None:
@@ -594,6 +722,7 @@ def test_approval_recovers_idempotently_across_lifecycle_crash(
         activation=lambda _now: _active(),
         clock=lambda: NOW,
         token_bytes=os.urandom,
+        session_registry_path=tmp_path / "sessions.sqlite3",
     )
     challenge = instance.reauthenticate(BUNDLE_ID, OWNER)
     arguments = {
@@ -609,13 +738,8 @@ def test_approval_recovers_idempotently_across_lifecycle_crash(
     recovered = instance.decide(BUNDLE_ID, **arguments)
     assert recovered["status"] == "APPROVED"
     assert len(compiler.approve_calls) == 1
-    with sqlite3.connect(registry) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM owner_approval_rail_receipts"
-        ).fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM attended_approval_receipts"
-        ).fetchone()[0] == 1
+    assert len(compiler.provisioned_receipts) == 1
+    assert len(compiler.consumed_receipts) == 1
 
 
 def test_concurrent_same_challenge_has_one_authority_and_stable_result(rail) -> None:
@@ -671,10 +795,7 @@ def test_refusal_is_exact_terminal_and_never_provisions_attended_receipt(rail) -
         "Refusal recorded. Nothing executed. Consumer remains disarmed."
     )
     assert compiler.revoke_calls[0]["reason"] == "OWNER_REFUSED"
-    with sqlite3.connect(registry) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM attended_approval_receipts"
-        ).fetchone()[0] == 0
+    assert compiler.provisioned_receipts == {}
 
 
 @pytest.mark.parametrize(
@@ -745,15 +866,20 @@ def test_api_is_owner_only_private_no_store_and_exact_shape(
     assert response.headers["pragma"] == "no-cache"
     assert "default-src 'self'" in response.headers["content-security-policy"]
     assert response.json()["canonical_sha256"] == BUNDLE_SHA
-    assert client.get(
-        f"/operator/approvals/{BUNDLE_ID}", auth=(OWNER, PASSWORD)
-    ).status_code == 200
+    assert (
+        client.get(
+            f"/operator/approvals/{BUNDLE_ID}", auth=(OWNER, PASSWORD)
+        ).status_code
+        == 200
+    )
 
     compiler.bundle["source"]["approval_policy"]["approver_identity"] = "other"
     assert client.get(path, auth=(OWNER, PASSWORD)).status_code == 403
 
 
-def test_api_cloud_and_remote_hard_404_before_auth(rail, tmp_path: Path, monkeypatch) -> None:
+def test_api_cloud_and_remote_hard_404_before_auth(
+    rail, tmp_path: Path, monkeypatch
+) -> None:
     instance, _compiler, _registry = rail
     app = _app_for(instance, tmp_path)
     remote = TestClient(
@@ -788,18 +914,24 @@ def test_api_mutations_require_https_origin_host_json_and_same_origin_fetch(
         "Sec-Fetch-Site": "same-origin",
     }
     assert client.post(path, auth=(OWNER, PASSWORD)).status_code == 415
-    assert client.post(
-        path,
-        auth=(OWNER, PASSWORD),
-        headers=dict(good, Origin="https://evil.invalid"),
-        json={},
-    ).status_code == 403
-    assert client.post(
-        path,
-        auth=(OWNER, PASSWORD),
-        headers=dict(good, **{"Sec-Fetch-Site": "cross-site"}),
-        json={},
-    ).status_code == 403
+    assert (
+        client.post(
+            path,
+            auth=(OWNER, PASSWORD),
+            headers=dict(good, Origin="https://evil.invalid"),
+            json={},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            path,
+            auth=(OWNER, PASSWORD),
+            headers=dict(good, **{"Sec-Fetch-Site": "cross-site"}),
+            json={},
+        ).status_code
+        == 403
+    )
     issued = client.post(path, auth=(OWNER, PASSWORD), headers=good, json={})
     assert issued.status_code == 200
     challenge = issued.json()
@@ -821,7 +953,9 @@ def test_api_mutations_require_https_origin_host_json_and_same_origin_fetch(
     assert len(compiler.approve_calls) == 1
 
 
-def test_api_rejects_client_authored_fields_and_freeform_refusal(rail, tmp_path: Path) -> None:
+def test_api_rejects_client_authored_fields_and_freeform_refusal(
+    rail, tmp_path: Path
+) -> None:
     instance, compiler, _registry = rail
     client = TestClient(
         _app_for(instance, tmp_path),
@@ -850,7 +984,9 @@ def test_api_rejects_client_authored_fields_and_freeform_refusal(rail, tmp_path:
         f"/api/operator/v1/approval-bundles/{BUNDLE_ID}/decision",
         auth=(OWNER, PASSWORD),
         headers=headers,
-        cookies={"sapphire_owner_session": issued.cookies.get("sapphire_owner_session")},
+        cookies={
+            "sapphire_owner_session": issued.cookies.get("sapphire_owner_session")
+        },
         json=body,
     )
     assert response.status_code == 422
@@ -888,6 +1024,9 @@ def test_module_has_no_consumer_connector_network_process_or_secret_logging() ->
         "precheck(",
         "invoke(",
         "observe_outcome(",
+        "importlib",
+        "approval_connection",
+        "attended_approval_receipts",
         "gcloud",
         "robinhood",
         "wallet",
@@ -896,6 +1035,8 @@ def test_module_has_no_consumer_connector_network_process_or_secret_logging() ->
         "log.",
     ):
         assert forbidden not in source
+    assert "\n    def _connect(" not in source
+    assert "._connect(" not in source
 
     frontend = (
         path.parents[1] / "frontend" / "src" / "operator-approval" / "ApprovalApp.tsx"
@@ -912,10 +1053,100 @@ def test_module_has_no_consumer_connector_network_process_or_secret_logging() ->
     assert "csrf_challenge: challenge.csrf_challenge" in frontend
 
 
-def test_combined_image_copies_the_isolated_approval_entrypoint() -> None:
-    dockerfile = (
-        Path(__file__).resolve().parents[2] / "Dockerfile"
+def test_exact_held_fleet_source_executes_without_ambient_import(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry.sqlite3"
+    _initialize_registry(registry)
+    core_path = tmp_path / "core.py"
+    core_source = b'HELD_CORE = "exact-core-bytes"\n'
+    core_path.write_bytes(core_source)
+    approvals_path = tmp_path / "approvals.py"
+    approvals_source = (
+        b"from .core import HELD_CORE\n"
+        b'BUNDLE_SCHEMA_VERSION = "held-test/v1"\n'
+        b"class ApprovalBundleDB:\n"
+        b"    def __init__(self, path):\n"
+        b"        self.path = path\n"
+        b"        self.core_identity = HELD_CORE\n"
+    )
+    approvals_path.write_bytes(approvals_source)
+    database = FleetLeaseCompilerPort._load_held_database(
+        registry_path=registry,
+        core_path=core_path,
+        approvals_path=approvals_path,
+        core_size=len(core_source),
+        core_sha256=hashlib.sha256(core_source).hexdigest(),
+        approvals_size=len(approvals_source),
+        approvals_sha256=hashlib.sha256(approvals_source).hexdigest(),
+        schema_version="held-test/v1",
+    )
+    assert database.__class__.__module__.startswith("_sapphire_held_fleet_")
+    assert database.path == registry
+    assert database.core_identity == "exact-core-bytes"
+
+
+def test_public_app_excludes_owner_approval_and_local_runtime_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = Path(__file__).resolve().parents[1]
+    public_source = (backend / "main.py").read_text(encoding="utf-8")
+    local_source = (backend / "local_owner_main.py").read_text(encoding="utf-8")
+    launcher = (backend.parent / "scripts" / "run_owner_approval_local.py").read_text(
+        encoding="utf-8"
+    )
+    assert "owner_approval" not in public_source
+    assert 'OWNER = "ari"' in launcher
+    assert 'HOST = "127.0.0.1"' in launcher
+    assert 'PORT = "8099"' in launcher
+    assert "backend.local_owner_main:app" in launcher
+    assert '"--host",\n        HOST' in launcher
+    assert "create_owner_approval_router" in local_source
+    assert "configured_owner != OWNER" in local_source
+    assert "docs_url=None" in local_source
+    import local_owner_main
+
+    monkeypatch.setenv("AUTH_USERNAME", OWNER)
+    monkeypatch.setenv("AUTH_PASSWORD", PASSWORD)
+    assert local_owner_main.authenticate_owner(OWNER, PASSWORD) == OWNER
+    with pytest.raises(RailRefused, match="AUTH_INVALID"):
+        local_owner_main.authenticate_owner("sapphire", PASSWORD)
+
+
+def test_frontend_render_contract_exactly_matches_closed_backend_fields() -> None:
+    frontend = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "operator-approval"
+        / "ApprovalApp.tsx"
     ).read_text(encoding="utf-8")
+
+    def rendered_fields(name: str) -> tuple[str, ...]:
+        marker = f"export const {name} = ["
+        start = frontend.index(marker) + len(marker)
+        end = frontend.index("] as const", start)
+        return tuple(
+            node.value
+            for node in ast.parse("[" + frontend[start:end] + "]").body[0].value.elts
+            if isinstance(node, ast.Constant) and type(node.value) is str
+        )
+
+    assert rendered_fields("RENDERED_ACTION_FIELDS") == DISPLAY_ACTION_FIELDS
+    assert rendered_fields("RENDERED_FINANCIAL_FIELDS") == DISPLAY_FINANCIAL_FIELDS
+    assert rendered_fields("RENDERED_REVIEW_FIELDS") == DISPLAY_REVIEW_FIELDS
+    for field in DISPLAY_ACTION_FIELDS:
+        assert f"action.{field}" in frontend
+    for field in DISPLAY_FINANCIAL_FIELDS:
+        assert f"action.financial.{field}" in frontend
+    for field in DISPLAY_REVIEW_FIELDS:
+        assert f"bundle.independent_review.{field}" in frontend
+
+
+def test_combined_image_copies_the_isolated_approval_entrypoint() -> None:
+    dockerfile = (Path(__file__).resolve().parents[2] / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
     assert any(
         line.startswith("COPY frontend/") and "frontend/approval.html" in line
         for line in dockerfile.splitlines()
