@@ -17,5 +17,11 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      input: {
+        dashboard: new URL('./index.html', import.meta.url).pathname,
+        approval: new URL('./approval.html', import.meta.url).pathname,
+      },
+    },
   },
 })
