@@ -29,6 +29,14 @@ from tests.test_live_telemetry import _sample
 
 NOW = datetime(2026, 7, 28, 18, 0, tzinfo=UTC)
 TASK063_MERGED = "4205e79ac53e56b03949bf266f2a3b074a651d71"
+TASK065_REVIEWED = "2d76f2a3254e5d21ca917a01f945ab1b64912aa0"
+TASK065_MERGED = "f19270df630ef0cb67d439e00e07e70121dae4de"
+TASK065_RESULT_SHA256 = (
+    "5fba3c1802fa75ea49801fedb07f4a48cdeaefbe7ef8cd776621f6b8e5b5e916"
+)
+TASK065_REVIEW_SHA256 = (
+    "49367a90974b4c4605aa2d2c5e004c7cec9eb0841e73062d16f8bf14f2277cfc"
+)
 
 
 def _stored_sample(*, observed_at: datetime = NOW) -> dict:
@@ -141,16 +149,41 @@ def test_public_moss_projection_retains_its_persisted_observation_time() -> None
         ([{"source": "mac", "state": "clear", "observed_at": "bad"}], "unknown"),
         (
             [
-                {"source": "mac", "state": "clear", "observed_at": NOW.isoformat()},
-                {"source": "mac", "state": "active", "observed_at": NOW.isoformat()},
-                {"source": "windows", "state": "clear", "observed_at": NOW.isoformat()},
+                {
+                    "source": "mac",
+                    "state": "clear",
+                    "observed_at": NOW.isoformat(),
+                    "_source_identity": (1, 1),
+                },
+                {
+                    "source": "mac",
+                    "state": "active",
+                    "observed_at": NOW.isoformat(),
+                    "_source_identity": (1, 2),
+                },
+                {
+                    "source": "rh_chain",
+                    "state": "clear",
+                    "observed_at": NOW.isoformat(),
+                    "_source_identity": (1, 3),
+                },
             ],
             "unknown",
         ),
         (
             [
-                {"source": "mac", "state": "active", "observed_at": NOW.isoformat()},
-                {"source": "windows", "state": "clear", "observed_at": NOW.isoformat()},
+                {
+                    "source": "mac",
+                    "state": "active",
+                    "observed_at": NOW.isoformat(),
+                    "_source_identity": (1, 1),
+                },
+                {
+                    "source": "rh_chain",
+                    "state": "clear",
+                    "observed_at": NOW.isoformat(),
+                    "_source_identity": (1, 2),
+                },
             ],
             "active",
         ),
@@ -170,16 +203,22 @@ def test_pause_truth_is_tristate_and_fail_closed(
 
 def test_only_two_fresh_explicit_clear_observations_can_clear_pause() -> None:
     fresh = [
-        {"source": source, "state": "clear", "observed_at": NOW.isoformat()}
-        for source in ("mac", "windows")
+        {
+            "source": source,
+            "state": "clear",
+            "observed_at": NOW.isoformat(),
+            "_source_identity": (1, index),
+        }
+        for index, source in enumerate(("mac", "rh_chain"), start=1)
     ]
     stale = [
         {
             "source": source,
             "state": "clear",
             "observed_at": (NOW - timedelta(minutes=10)).isoformat(),
+            "_source_identity": (2, index),
         }
-        for source in ("mac", "windows")
+        for index, source in enumerate(("mac", "rh_chain"), start=1)
     ]
 
     assert main._evaluate_pause_truth(fresh, now=NOW)["state"] == "clear"
@@ -207,9 +246,10 @@ def test_absent_unreadable_and_malformed_pause_files_never_mean_clear(
             [
                 observation,
                 {
-                    "source": "windows",
+                    "source": "rh_chain",
                     "state": "clear",
                     "observed_at": NOW.isoformat(),
+                    "_source_identity": (1, 2),
                 },
             ],
             now=NOW,
@@ -228,7 +268,7 @@ def test_missing_pause_truth_cannot_be_force_cleared_by_retired_env(
         "_PAUSE_SENTINELS",
         {
             "mac": tmp_path / "missing-mac-pause",
-            "windows": tmp_path / "missing-windows-pause",
+            "rh_chain": tmp_path / "missing-rh-chain-pause",
         },
     )
     monkeypatch.setenv("DASHBOARD_FORCE_KILLSWITCH", "false")
@@ -259,7 +299,7 @@ def test_active_persisted_pause_wins_without_request_time_freshening(
                 "updated": NOW.timestamp(),
                 "pause_sources": [
                     {
-                        "source": "windows",
+                        "source": "rh_chain",
                         "state": "clear",
                         "observed_at": NOW.isoformat(),
                     }
@@ -273,11 +313,16 @@ def test_active_persisted_pause_wins_without_request_time_freshening(
         json.dumps({"created_at": (NOW - timedelta(days=1)).isoformat()}),
         encoding="utf-8",
     )
+    rh_pause = tmp_path / "rh-chain-pause"
+    rh_pause.write_text(
+        json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(main, "_RH_CHAIN_DIR", rh)
     monkeypatch.setattr(
         main,
         "_PAUSE_SENTINELS",
-        {"mac": mac_pause, "windows": tmp_path / "missing"},
+        {"mac": mac_pause, "rh_chain": rh_pause},
     )
 
     gate = main._gate_status(now=NOW)
@@ -329,12 +374,24 @@ def test_widgets_and_readiness_report_no_retired_control_or_unproved_runtime() -
             "status": "SOURCE_MERGED_INERT",
             "merged_commit": TASK063_MERGED,
         },
-        "task065": {"status": "UNAVAILABLE"},
+        "task065": {
+            "status": "SOURCE_MERGED_INERT",
+            "reviewed_head": TASK065_REVIEWED,
+            "merged_commit": TASK065_MERGED,
+            "result_sha256": TASK065_RESULT_SHA256,
+            "review_sha256": TASK065_REVIEW_SHA256,
+            "outcome": "TWO_ATTENDANCES_REQUIRED",
+            "one_attendance": "UNAVAILABLE",
+            "production_execution": "UNAVAILABLE",
+        },
         "credential_enrollment": "UNAVAILABLE",
         "broker_reconciliation": "UNAVAILABLE",
         "runtime_installation": "UNAVAILABLE",
         "production_execution": "UNAVAILABLE",
     }
     assert owner_approval.DEPENDENCY_PINS["task063_merged_commit"] == TASK063_MERGED
-    assert owner_approval.DEPENDENCY_PINS["task065_status"] == "UNAVAILABLE"
+    assert (
+        owner_approval.DEPENDENCY_PINS["task065_status"]
+        == "SOURCE_MERGED_INERT"
+    )
     assert owner_approval.DEPENDENCY_PINS["production_execution_available"] == 0

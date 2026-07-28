@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import local_dashboard_server
 import main
@@ -36,7 +38,7 @@ def _store(snapshot: dict, *, received_at: float) -> LiveTelemetryStore:
 def test_pause_sources_are_the_exact_two_canonical_active_sentinels() -> None:
     assert main._PAUSE_SENTINELS == {
         "mac": Path.home() / ".sapphire" / "autonomous_trading_pause",
-        "windows": Path.home() / "ops-state" / "rh-chain" / "killswitch",
+        "rh_chain": Path.home() / "ops-state" / "rh-chain" / "killswitch",
     }
 
 
@@ -44,7 +46,7 @@ def test_pause_clear_cannot_be_fabricated_from_filesystem_mtime(
     tmp_path: Path,
 ) -> None:
     observations = []
-    for source in ("mac", "windows"):
+    for source in ("mac", "rh_chain"):
         candidate = tmp_path / f"{source}.json"
         candidate.write_text(json.dumps({"state": "clear"}), encoding="utf-8")
         observations.append(main._pause_file_observation(source, candidate))
@@ -56,7 +58,7 @@ def test_pause_clear_cannot_be_fabricated_from_filesystem_mtime(
 
     assert all(
         item == {"source": source, "state": "invalid", "observed_at": None}
-        for source, item in zip(("mac", "windows"), observations, strict=True)
+        for source, item in zip(("mac", "rh_chain"), observations, strict=True)
     )
     assert resolved["state"] == "unknown"
     assert resolved["clear"] is None
@@ -69,7 +71,7 @@ def test_symlinked_pause_documents_never_clear_the_gate(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     observations = []
-    for source in ("mac", "windows"):
+    for source in ("mac", "rh_chain"):
         candidate = tmp_path / f"{source}.json"
         os.symlink(target, candidate)
         observations.append(main._pause_file_observation(source, candidate))
@@ -81,7 +83,7 @@ def test_symlinked_pause_documents_never_clear_the_gate(tmp_path: Path) -> None:
 
     assert all(
         item == {"source": source, "state": "invalid", "observed_at": None}
-        for source, item in zip(("mac", "windows"), observations, strict=True)
+        for source, item in zip(("mac", "rh_chain"), observations, strict=True)
     )
     assert resolved["state"] == "unknown"
     assert resolved["clear"] is None
@@ -151,8 +153,8 @@ def test_hardlinked_pause_source_is_not_independent(tmp_path: Path) -> None:
         "state": "invalid",
         "observed_at": None,
     }
-    assert main._pause_file_observation("windows", alias) == {
-        "source": "windows",
+    assert main._pause_file_observation("rh_chain", alias) == {
+        "source": "rh_chain",
         "state": "invalid",
         "observed_at": None,
     }
@@ -167,7 +169,23 @@ def test_two_pause_sources_aliasing_one_inode_never_clear() -> None:
             "observed_at": NOW.isoformat(),
             "_source_identity": shared_identity,
         }
-        for source in ("mac", "windows")
+        for source in ("mac", "rh_chain")
+    ]
+
+    resolved = main._evaluate_pause_truth(observations, now=NOW)
+
+    assert resolved["state"] == "unknown"
+    assert resolved["clear"] is None
+
+
+def test_pause_clear_requires_two_descriptor_identities() -> None:
+    observations = [
+        {
+            "source": source,
+            "state": "clear",
+            "observed_at": NOW.isoformat(),
+        }
+        for source in ("mac", "rh_chain")
     ]
 
     resolved = main._evaluate_pause_truth(observations, now=NOW)
@@ -241,6 +259,141 @@ def test_pause_parent_mode_drift_during_read_is_rejected(
         "state": "invalid",
         "observed_at": None,
     }
+
+
+def test_pause_file_mode_drift_during_read_is_rejected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    candidate = tmp_path / "pause.json"
+    candidate.write_text(
+        json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    original_read = main.os.read
+    changed = False
+
+    def drifting_read(fd: int, size: int) -> bytes:
+        nonlocal changed
+        chunk = original_read(fd, size)
+        if not changed:
+            changed = True
+            candidate.chmod(0o600)
+        return chunk
+
+    monkeypatch.setattr(main.os, "read", drifting_read)
+
+    assert main._pause_file_observation("mac", candidate) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_pause_path_replacement_during_read_is_rejected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    candidate = tmp_path / "pause.json"
+    displaced = tmp_path / "pause.displaced"
+    document = json.dumps({"state": "clear", "observed_at": NOW.isoformat()})
+    candidate.write_text(document, encoding="utf-8")
+    original_read = main.os.read
+    changed = False
+
+    def drifting_read(fd: int, size: int) -> bytes:
+        nonlocal changed
+        chunk = original_read(fd, size)
+        if not changed:
+            changed = True
+            candidate.rename(displaced)
+            candidate.write_text(document, encoding="utf-8")
+        return chunk
+
+    monkeypatch.setattr(main.os, "read", drifting_read)
+
+    assert main._pause_file_observation("mac", candidate) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_pause_path_metadata_must_match_the_read_descriptor(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    candidate = tmp_path / "pause.json"
+    candidate.write_text(
+        json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    original_stat = main.os.stat
+
+    def drifted_stat(*args, **kwargs):
+        observed = original_stat(*args, **kwargs)
+        if kwargs.get("dir_fd") is None:
+            return observed
+        return SimpleNamespace(
+            st_dev=observed.st_dev,
+            st_ino=observed.st_ino,
+            st_mode=observed.st_mode | stat.S_IWGRP,
+            st_uid=observed.st_uid,
+            st_gid=observed.st_gid,
+            st_nlink=observed.st_nlink,
+            st_size=observed.st_size,
+            st_mtime_ns=observed.st_mtime_ns,
+            st_ctime_ns=observed.st_ctime_ns,
+        )
+
+    monkeypatch.setattr(main.os, "stat", drifted_stat)
+
+    assert main._pause_file_observation("mac", candidate) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_embedded_gate_pause_claims_cannot_replace_canonical_files(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    rh_chain = tmp_path / "rh-chain"
+    rh_chain.mkdir()
+    (rh_chain / "gate.json").write_text(
+        json.dumps(
+            {
+                "armed": True,
+                "mode": "bounded_auto",
+                "observed_at": NOW.isoformat(),
+                "pause_sources": [
+                    {
+                        "source": source,
+                        "state": "clear",
+                        "observed_at": NOW.isoformat(),
+                    }
+                    for source in ("mac", "rh_chain")
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", rh_chain)
+    monkeypatch.setattr(
+        main,
+        "_PAUSE_SENTINELS",
+        {
+            "mac": tmp_path / "missing-mac",
+            "rh_chain": tmp_path / "missing-rh-chain",
+        },
+    )
+
+    gate = main._gate_status(now=NOW)
+
+    assert gate["state"] == "unavailable"
+    assert gate["pause_state"] == "unknown"
+    assert gate["armed"] is None
 
 
 def test_stale_parent_expires_future_skewed_agent_claim() -> None:
