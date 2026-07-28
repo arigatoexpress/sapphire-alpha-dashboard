@@ -151,17 +151,18 @@ measurement provenance, missing-source honesty, local-projector fidelity, the
 sanitized vault map, narration, responsive non-overlap, and the MOSS
 operator/public privacy split.
 
-An approved release uses one immutable build path:
+An approved release uses one immutable, descriptor-bound build path:
 
 ```bash
-./deploy.sh
-python scripts/verify_deployment.py "$(git rev-parse HEAD)"
+./deploy.sh /private/path/action.json <exact-action-json-sha256>
 ```
 
-The wrapper refuses a dirty tree or invalid source SHA, delegates to the canonical Cloud
-Build config, and tags the image with the Cloud Build ID. Do not bypass its clean-tree
-preflight with a raw submit command. The verifier is read-only and checks the deployed source, runtime revision, both
-frontend manifests, and representative public routes.
+The wrapper refuses a dirty tree, unbound commit, absent or changed storage
+generation, changed release tool, or drifted remote state. It uses an exact existing
+GCS source object with `--no-source`, so no bucket or source object is implicitly
+created. The pinned Cloud Build runs a second provenance check and a complete
+generation/revision/traffic/IAM/service-account/environment compare-and-swap in the
+same final step immediately before the deploy command. See `deploy/README.md`.
 
 ## Deployment gate
 

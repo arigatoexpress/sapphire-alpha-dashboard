@@ -22,15 +22,15 @@ There is no Next.js server at runtime; do not add a route handler or server acti
 cd backend
 /opt/homebrew/bin/python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 cd ..
 PYTHONPATH=backend:. backend/.venv/bin/python -m pytest backend/tests -q
 
 # Marketing site (produces web/out/, which the backend serves at /)
-cd web && npm install && npm run build && cd ..
+cd web && npm ci && npm run build && cd ..
 
 # Operator dashboard (produces frontend/dist/, served at /dashboard)
-cd frontend && npm install && npm run build && cd ..
+cd frontend && npm ci && npm run build && cd ..
 
 # Serve everything together
 AUTH_USERNAME=sapphire AUTH_PASSWORD=<12+ chars> \
@@ -62,18 +62,19 @@ running the local telemetry collector directly. `/api/v1/moss`,
 so the UI renders cleanly without operator auth or invented observations.
 
 ## Deploy
-The only supported manual release entrypoint is the clean-tree wrapper:
+The only supported manual release entrypoint is the clean-tree wrapper with a
+finalized, independently reviewed action descriptor:
 ```bash
-./deploy.sh
+./deploy.sh /private/path/action.json <exact-action-json-sha256>
 ```
-Do not invoke `gcloud builds submit` manually: the wrapper's clean-tree preflight is what
-makes the embedded HEAD SHA truthful. The build also refuses a missing/invalid source
-SHA. The Dockerfile uses `npm install` rather than
-`npm ci` so the container build tolerates platform-specific optional dependencies in the
-lockfile.
+Do not invoke `gcloud builds submit` manually. The wrapper verifies the descriptor,
+all release-tool hashes, the existing source object generation, and the complete live
+state. It uses `--no-source`; source staging is a separate declared action and never
+implicitly creates a bucket. The final Cloud Build step repeats provenance and remote
+state checks immediately before the deploy process. See `deploy/README.md`.
 
-After an approved deploy, bind the public revision back to the intended source and both
-frontend manifests:
+The wrapper runs the read-only public postcheck after a successful build. It can also
+be rerun independently:
 ```bash
 python scripts/verify_deployment.py "$(git rev-parse HEAD)"
 ```

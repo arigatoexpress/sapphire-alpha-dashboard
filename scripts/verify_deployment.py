@@ -8,6 +8,7 @@ import json
 import re
 from collections.abc import Callable
 from typing import Any
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -25,8 +26,11 @@ PAGE_CONTRACTS = {
 
 def _fetch(url: str) -> tuple[int, str]:
     request = Request(url, headers={"User-Agent": "sapphire-deploy-verifier/1"})
-    with urlopen(request, timeout=15) as response:  # noqa: S310 - caller supplies base URL
-        return response.status, response.read().decode("utf-8")
+    try:
+        with urlopen(request, timeout=15) as response:  # noqa: S310 - caller supplies base URL
+            return response.status, response.read().decode("utf-8")
+    except HTTPError as error:
+        return error.code, error.read().decode("utf-8", errors="replace")
 
 
 def verify(base_url: str, expected_sha: str, fetch: Fetch = _fetch) -> dict[str, Any]:
@@ -55,14 +59,21 @@ def verify(base_url: str, expected_sha: str, fetch: Fetch = _fetch) -> dict[str,
         page_status, page = fetch(f"{base}{path}")
         checks[name] = page_status == 200 and marker in page
 
-    return {
+    result: dict[str, Any] = {
         "ok": all(checks.values()),
         "expected_sha": expected_sha,
-        "deployed_sha": build.get("source_sha"),
-        "build_id": build.get("build_id"),
-        "runtime_revision": build.get("runtime_revision"),
         "checks": checks,
     }
+    # Actual runtime identifiers are useful evidence only after every check
+    # passes. A failure result is deliberately predicate-only so a drifted
+    # environment or future canary can never be reflected into logs.
+    if result["ok"]:
+        result.update(
+            deployed_sha=build.get("source_sha"),
+            build_id=build.get("build_id"),
+            runtime_revision=build.get("runtime_revision"),
+        )
+    return result
 
 
 def main() -> int:
@@ -71,7 +82,13 @@ def main() -> int:
     parser.add_argument("--base-url", default="https://sapphirealpha.xyz")
     args = parser.parse_args()
 
-    result = verify(args.base_url, args.expected_sha)
+    try:
+        result = verify(args.base_url, args.expected_sha)
+    except Exception:
+        result = {
+            "ok": False,
+            "error": "deployment contract mismatch",
+        }
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["ok"] else 1
 

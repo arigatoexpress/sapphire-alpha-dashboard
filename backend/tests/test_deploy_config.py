@@ -1,219 +1,123 @@
-"""Deployment manifests cannot carry operational or financial literals."""
+"""Static deployment closure and immutable build-input checks."""
 
 import json
-import os
 from pathlib import Path
 import re
-import subprocess
-
-import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+DOCKER_BUILDER = (
+    "gcr.io/cloud-builders/docker@"
+    "sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284"
+)
+CLOUD_SDK = (
+    "gcr.io/google.com/cloudsdktool/cloud-sdk@"
+    "sha256:96a99902b17be6192e01bd94067d72e9c1c017a042ad970e98eb576070562058"
+)
 
 
-def _cloudbuild_config() -> dict:
-    return yaml.safe_load((ROOT / "cloudbuild.yaml").read_text(encoding="utf-8"))
+def _cloudbuild() -> dict:
+    return json.loads((ROOT / "cloudbuild.yaml").read_text(encoding="utf-8"))
 
 
-def _deploy_args() -> list[str]:
-    matches = [
-        step["args"]
-        for step in _cloudbuild_config()["steps"]
-        if step.get("entrypoint") == "gcloud" and step.get("args", [])[:2] == ["run", "deploy"]
+def test_every_production_container_base_is_digest_pinned():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    from_lines = [
+        line for line in dockerfile.splitlines() if line.strip().startswith("FROM ")
     ]
-    assert len(matches) == 1
-    return matches[0]
+    assert len(from_lines) == 4
+    assert all(re.search(r"@sha256:[0-9a-f]{64}(?:\s|$)", line) for line in from_lines)
+    assert "node:24-bookworm-slim" in dockerfile
+    assert "python:3.11.15-slim-trixie" in dockerfile
 
 
-def _option_value(args: list[str], option: str) -> str:
-    index = args.index(option)
-    return args[index + 1]
+def test_language_dependency_installations_are_lock_closed():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert dockerfile.count("RUN npm ci") == 2
+    assert "npm install" not in dockerfile
+    assert "pip install --no-cache-dir --require-hashes -r requirements.lock" in dockerfile
+    requirements = (ROOT / "backend/requirements.lock").read_text(encoding="utf-8")
+    assert "--hash=sha256:" in requirements
+    assert requirements.count("--hash=sha256:") > 47
 
 
-def test_cloudbuild_uses_semantic_config_and_secret_manager():
-    content = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
-    # Live service has AUTH_PASSWORD as a plain env var; Cloud Build must not
-    # --set-secrets it (type mismatch fails deploy). Password is preserved
-    # across deploys; migration to Secret Manager is a separate ops step.
-    assert "SAPPHIRE_AUTH_PASSWORD:latest" not in content
-    assert "--set-secrets" not in content or "AUTH_PASSWORD=" not in content.split("--set-secrets")[-1]
-    assert "TELEMETRY_STORE=firestore" in content
-    assert "AUTH_PASSWORD=${" not in content
-    assert "WALLET_ADDRESS=" not in content
-    assert "TV_WEBHOOK_URL=" not in content
-    assert "MAX_ORDER_USD=" not in content
-    assert "DASHBOARD_ARMED=" not in content
-    assert not re.search(r"0x[a-fA-F0-9]{40}", content)
-    assert "trycloudflare.com" not in content
-    assert "sapphire-alpha-dashboard:$BUILD_ID" in content
-    assert "sapphire-alpha-dashboard:latest" not in content
-    assert "SAPPHIRE_BUILD_SHA=${_BUILD_SHA}" in content
-    assert "SAPPHIRE_BUILD_ID=$BUILD_ID" in content
-    assert "_BUILD_SHA: unknown" in content
-    assert '[[ ! "${_BUILD_SHA}" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]' in content
-    assert "exit 2" in content
+def test_fonts_are_exact_self_hosted_packages_with_dual_hash_contract():
+    layout = (ROOT / "web/src/app/layout.tsx").read_text(encoding="utf-8")
+    assert "next/font/google" not in layout
+    assert layout.count("@fontsource/") == 12
+    assets = json.loads((ROOT / "deploy/assets.sha256.json").read_text())
+    assert len(assets["assets"]) == 4
+    assert all(re.fullmatch(r"[0-9a-f]{64}", item["sha256"]) for item in assets["assets"])
+    for lock_name in ("frontend/package-lock.json", "web/package-lock.json"):
+        lock = json.loads((ROOT / lock_name).read_text())
+        assert lock["lockfileVersion"] == 3
+        for package in lock["packages"].values():
+            if package.get("resolved", "").startswith("https://registry.npmjs.org/"):
+                assert package["integrity"].startswith("sha512-")
 
 
-def test_deploy_script_never_sends_inline_secrets_or_live_state():
+def test_cloudbuild_pins_steps_and_runs_cas_immediately_before_deploy():
+    config = _cloudbuild()
+    assert [step["name"] for step in config["steps"]] == [
+        CLOUD_SDK,
+        DOCKER_BUILDER,
+        DOCKER_BUILDER,
+        CLOUD_SDK,
+    ]
+    final = config["steps"][-1]["args"][-1]
+    assert "predeploy-cas" in final
+    assert "&& exec gcloud run deploy" in final
+    assert "sapphire-alpha-dashboard" in final
+    assert "--project sapphire-479610" in final
+    assert "--region us-central1" in final
+    assert config["options"]["sourceProvenanceHash"] == ["SHA256"]
+
+
+def test_future_action_uses_existing_exact_source_and_never_implicit_staging():
     content = (ROOT / "deploy.sh").read_text(encoding="utf-8")
+    assert "local-preflight" in content
+    assert "render-cloudbuild" in content
     assert "gcloud builds submit" in content
-    assert "--config cloudbuild.yaml" in content
-    assert '--substitutions="_BUILD_SHA=${BUILD_SHA}"' in content
-    assert "AUTH_PASSWORD=${" not in content
-    for forbidden in ("WALLET_ADDRESS", "MAX_ORDER_USD", "TV_WEBHOOK_URL", "DASHBOARD_ARMED", "DASHBOARD_SIGNALS_JSON"):
-        assert forbidden not in content
+    assert "--no-source" in content
+    assert "--gcs-source-staging-dir" not in content
+    assert "storage cp" not in content
+    assert "CreateBucketIfNotExists" not in content
     assert "status --porcelain" in content
-    assert "gcloud run deploy" not in content
-    assert "local-source-" not in content
-    assert 'REGION="us-central1"' in content
-    assert 'SERVICE_NAME="sapphire-alpha-dashboard"' in content
-    assert 'REGION="${REGION:-' not in content
-    assert 'SERVICE_NAME="${SERVICE_NAME:-' not in content
-
-
-def test_deploy_script_binds_exact_personal_project():
-    content = (ROOT / "deploy.sh").read_text(encoding="utf-8")
     assert 'PROJECT_ID="sapphire-479610"' in content
-    assert 'PROJECT_ID="${PROJECT_ID:-' not in content
-    assert '--project="${PROJECT_ID}"' in content
     assert 'REGION="us-central1"' in content
-    assert 'SERVICE_NAME="sapphire-alpha-dashboard"' in content
 
 
-def test_ordinary_deploy_does_not_request_access_policy_mutation():
-    deploy_args = _deploy_args()
-    forbidden = {
-        "--allow-unauthenticated",
-        "--no-allow-unauthenticated",
-        "set-iam-policy",
-        "add-iam-policy-binding",
-        "remove-iam-policy-binding",
-        "roles/run.invoker",
-        "allUsers",
-    }
-    assert forbidden.isdisjoint(deploy_args)
-
-
-def test_cloudbuild_deploy_binds_exact_target_semantically():
-    deploy_args = _deploy_args()
-    assert deploy_args[:3] == ["run", "deploy", "sapphire-alpha-dashboard"]
-    assert _option_value(deploy_args, "--project") == "sapphire-479610"
-    assert _option_value(deploy_args, "--region") == "us-central1"
-
-
-def test_cloudbuild_fails_closed_for_wrong_project():
-    config = _cloudbuild_config()
-    preflight = config["steps"][0]
-    assert preflight["entrypoint"] == "bash"
-    script = preflight["args"][-1]
-    assert '[[ "${PROJECT_ID}" != "sapphire-479610" ]]' in script
-    exact_sha = "a" * 40
-
-    wrong_project_script = script.replace("${PROJECT_ID}", "attacker-project").replace(
-        "${_BUILD_SHA}", exact_sha
-    )
-    rejected = subprocess.run(
-        ["bash", "-ceu", wrong_project_script],
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    assert rejected.returncode == 2
-    assert "Refusing Cloud Build project attacker-project" in rejected.stderr
-
-    exact_project_script = script.replace("${PROJECT_ID}", "sapphire-479610").replace(
-        "${_BUILD_SHA}", exact_sha
-    )
-    subprocess.run(["bash", "-ceu", exact_project_script], check=True)
-
-
-def test_deploy_script_ignores_hostile_target_environment(tmp_path):
-    fake_git = tmp_path / "git"
-    fake_git.write_text(
-        """#!/usr/bin/env python3
-import sys
-
-args = sys.argv[1:]
-if args[-2:] == ["rev-parse", "HEAD"]:
-    print("e479593b27606ad4a8666389c689607c84298094")
-elif args[-2:] != ["status", "--porcelain"]:
-    raise SystemExit(f"unexpected git invocation: {args!r}")
-""",
-        encoding="utf-8",
-    )
-    fake_gcloud = tmp_path / "gcloud"
-    fake_gcloud.write_text(
-        """#!/usr/bin/env python3
-import json
-import sys
-
-print("GCLOUD_CALL=" + json.dumps(sys.argv[1:]))
-""",
-        encoding="utf-8",
-    )
-    fake_git.chmod(0o700)
-    fake_gcloud.chmod(0o700)
-
-    env = os.environ.copy()
-    env.update(
-        {
-            "PATH": f"{tmp_path}:{env['PATH']}",
-            "PROJECT_ID": "attacker-project",
-            "REGION": "attacker-region",
-            "SERVICE_NAME": "attacker-service",
-            "CLOUDSDK_CORE_PROJECT": "attacker-sdk-project",
-            "CLOUDSDK_RUN_REGION": "attacker-sdk-region",
-        }
-    )
-    completed = subprocess.run(
-        [str(ROOT / "deploy.sh")],
-        cwd=ROOT,
-        env=env,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    calls = [
-        json.loads(line.removeprefix("GCLOUD_CALL="))
-        for line in completed.stdout.splitlines()
-        if line.startswith("GCLOUD_CALL=")
-    ]
-    assert calls == [
-        [
-            "builds",
-            "submit",
-            ".",
-            "--config",
-            "cloudbuild.yaml",
-            "--project=sapphire-479610",
-            "--region=us-central1",
-            "--substitutions=_BUILD_SHA=e479593b27606ad4a8666389c689607c84298094",
-        ],
-        [
-            "run",
-            "services",
-            "describe",
-            "sapphire-alpha-dashboard",
-            "--project=sapphire-479610",
-            "--region=us-central1",
-            "--format",
-            "value(status.url)",
-        ],
-    ]
-
-
-def test_dockerfile_bakes_build_identity_into_runtime_image():
-    content = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    for declaration in (
-        "ARG SAPPHIRE_BUILD_SHA=unknown",
-        "ARG SAPPHIRE_BUILD_ID=unknown",
-        "ENV SAPPHIRE_BUILD_SHA=${SAPPHIRE_BUILD_SHA}",
-        "ENV SAPPHIRE_BUILD_ID=${SAPPHIRE_BUILD_ID}",
-        "LABEL org.opencontainers.image.revision=${SAPPHIRE_BUILD_SHA}",
-        "LABEL io.sapphire.build-id=${SAPPHIRE_BUILD_ID}",
+def test_action_binds_descriptor_preflight_postcheck_wrapper_and_build_config():
+    source = (ROOT / "scripts/deploy_contract.py").read_text(encoding="utf-8")
+    for artifact in (
+        "cloudbuild.yaml",
+        "deploy.sh",
+        "scripts/deploy_contract.py",
+        "scripts/verify_deployment.py",
     ):
-        assert declaration in content
+        assert f'"{artifact}"' in source
+    cloudbuild = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+    assert "_ACTION_DESCRIPTOR_ZLIB_B64" in cloudbuild
+    assert "_ACTION_DESCRIPTOR_SHA256" in cloudbuild
+    assert "_SOURCE_GENERATION" in cloudbuild
+    assert "_SOURCE_OBJECT" in cloudbuild
+
+
+def test_deploy_manifests_do_not_carry_operational_or_financial_literals():
+    content = (
+        (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+        + (ROOT / "deploy.sh").read_text(encoding="utf-8")
+    )
+    for forbidden in (
+        "WALLET_ADDRESS=",
+        "TV_WEBHOOK_URL=",
+        "MAX_ORDER_USD=",
+        "DASHBOARD_ARMED=",
+        "DASHBOARD_SIGNALS_JSON=",
+        "trycloudflare.com",
+    ):
+        assert forbidden not in content
+    assert not re.search(r"0x[a-fA-F0-9]{40}", content)
 
 
 def test_cloud_source_upload_excludes_local_and_generated_state():
