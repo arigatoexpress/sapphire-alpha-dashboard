@@ -320,6 +320,15 @@ def test_legacy_producer_without_desk_gets_honest_unknown_projection():
     assert normalized["desk"]["experiment"]["status"] == "unknown"
 
 
+def test_honest_unknown_projection_is_valid_on_revalidation():
+    payload = _sample()
+    payload.pop("desk")
+
+    normalized = live_telemetry.validate_snapshot(payload)
+
+    assert live_telemetry.validate_snapshot(normalized) == normalized
+
+
 def test_legacy_desk_producer_does_not_invent_new_queue_counts():
     payload = _sample()
     payload["desk"]["decisions"] = {"pending": 2}

@@ -15,13 +15,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "backend"))
 
-from collector import build_snapshot as build_mac_snapshot
-from collector import Sources as MacSources
-from collector import configured_latencies as mac_configured_latencies
-from collector import public_semantic_text
-from collector import push
+from collector import build_snapshot as build_mac_snapshot  # noqa: E402
+from collector import Sources as MacSources  # noqa: E402
+from collector import configured_latencies as mac_configured_latencies  # noqa: E402
+from collector import public_semantic_text  # noqa: E402
+from collector import push  # noqa: E402
+from live_telemetry import validate_snapshot  # noqa: E402
 
 
 def _ssh_win_snapshot(win_home: str = "C:\\Users\\aribs") -> dict:
@@ -120,7 +123,21 @@ def _sanitize_windows_snapshot(snapshot: dict) -> dict:
         markets["paper_strategies"] = None
 
     desk = sanitized.get("desk")
-    if not isinstance(desk, dict):
+    unknown_desk = (
+        isinstance(desk, dict)
+        and desk.get("updated_at") is None
+        and desk.get("posture") == "unknown"
+        and desk.get("leader") == "unknown"
+        and desk.get("execution") == "unknown"
+        and isinstance(desk.get("validation"), dict)
+        and all(
+            desk["validation"].get(key) is None
+            for key in ("oos_pass", "oos_total", "conflicts")
+        )
+        and isinstance(desk.get("feeds"), dict)
+        and all(desk["feeds"].get(key) is None for key in ("fresh", "total"))
+    )
+    if not isinstance(desk, dict) or unknown_desk:
         sanitized.pop("desk", None)
 
     return sanitized
@@ -234,6 +251,11 @@ def main() -> int:
         print(f"WARN windows telemetry leg unavailable, publishing Mac-only: {exc}", file=sys.stderr)
         win_snapshot = None
     snapshot = _merge_snapshots(mac_snapshot, win_snapshot) if win_snapshot else mac_snapshot
+    # Validate locally before an outbound push. Keep the original raw shape:
+    # validate_snapshot intentionally projects an absent desk as honest
+    # unknown state, while omitting the raw desk is what remains compatible
+    # with older deployed validators.
+    validate_snapshot(snapshot)
 
     if args.validate_only:
         print(json.dumps(snapshot, indent=None if args.compact else 2, sort_keys=True))
