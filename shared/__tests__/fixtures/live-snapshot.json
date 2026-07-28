@@ -4,7 +4,7 @@
   "sequence": 1785018376689960201,
   "summary": {
     "state": "degraded",
-    "active_agents": 9,
+    "active_agents": 8,
     "events_per_min": null,
     "verified_today": null,
     "attention": null
@@ -83,15 +83,6 @@
       "freshness_s": 58.581
     },
     {
-      "id": "telegram-bot",
-      "zone": "edge",
-      "label": "Telegram command bot",
-      "status": "healthy",
-      "load": "medium",
-      "activity_rate": null,
-      "freshness_s": 134.581
-    },
-    {
       "id": "ollama-inference",
       "zone": "compute",
       "label": "Ollama inference",
@@ -150,14 +141,6 @@
       "latency_ms": null,
       "event_rate": null,
       "signal_class": "archive"
-    },
-    {
-      "source": "telegram-bot",
-      "target": "agent-worker",
-      "status": "healthy",
-      "latency_ms": null,
-      "event_rate": null,
-      "signal_class": "agent"
     },
     {
       "source": "agent-worker",
@@ -384,15 +367,6 @@
       "updated_at": "2026-07-25T22:25:18+00:00"
     },
     {
-      "id": "telegram-command-bot",
-      "role": "Telegram command bot",
-      "state": "working",
-      "activity": "Pending commands: 4 | armed=halted",
-      "verification": "verified",
-      "provider_class": "local CPU",
-      "updated_at": "2026-07-25T22:24:02+00:00"
-    },
-    {
       "id": "ollama-inference-host",
       "role": "Ollama inference host",
       "state": "working",
@@ -408,8 +382,8 @@
     "feed_age_s": 1.541,
     "events_per_min": 599.0,
     "paper_strategies": null,
-    "decision_gate": "telegram",
-    "execution": "off"
+    "decision_gate": "unknown",
+    "execution": "unknown"
   },
   "desk": {
     "version": 1,
@@ -538,15 +512,6 @@
       "source": "intelligence",
       "target": "archive",
       "label": "Agent worker idle | 16 tasks tracked",
-      "status": "verified"
-    },
-    {
-      "id": "win-tg-1785018376",
-      "observed_at": "2026-07-25T22:24:02+00:00",
-      "event_class": "agent",
-      "source": "edge",
-      "target": "intelligence",
-      "label": "Telegram bot heartbeat observed",
       "status": "verified"
     },
     {

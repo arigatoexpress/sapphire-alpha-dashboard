@@ -67,8 +67,8 @@ _AGENT_STATES = {"working", "verifying", "idle", "blocked", "offline"}
 _VERIFICATION = {"verified", "pending", "failed", "not_applicable"}
 _PROVIDERS = {"local GPU", "local CPU", "cloud reasoning", "hybrid", "rule-only", "unassigned"}
 _MARKET_STATES = {"current", "delayed", "stale", "offline"}
-_GATES = {"telegram", "manual", "off"}
-_EXECUTION = {"off", "paper", "gated"}
+_GATES = {"manual", "off", "unknown"}
+_EXECUTION = {"off", "paper", "gated", "halted", "unknown"}
 _EVENT_STATES = {"observed", "verified", "pending", "degraded", "failed", "recovered"}
 _POSTURES = {"capital_preservation", "selective_risk", "risk_seeking", "neutral", "unknown"}
 _LEADER_STATES = {"credible", "none", "unknown"}
@@ -381,7 +381,7 @@ def _autonomy(value: Any) -> dict[str, Any]:
 def _safety_floor(value: Any) -> dict[str, Any]:
     if value is None:
         return {
-            "gate_valid": False, "pause_clear": False,
+            "gate_valid": False, "pause_clear": None,
             "ledger": "unknown", "bounded_policy": False,
         }
     raw = _keys(
@@ -390,9 +390,13 @@ def _safety_floor(value: Any) -> dict[str, Any]:
         required={"gate_valid", "pause_clear", "ledger", "bounded_policy"},
         where="desk.safety_floor",
     )
-    for key in ("gate_valid", "pause_clear", "bounded_policy"):
+    for key in ("gate_valid", "bounded_policy"):
         if not isinstance(raw[key], bool):
             raise TelemetryValidationError(f"desk.safety_floor.{key} must be boolean")
+    if raw["pause_clear"] is not None and not isinstance(raw["pause_clear"], bool):
+        raise TelemetryValidationError(
+            "desk.safety_floor.pause_clear must be boolean or null"
+        )
     return {
         "gate_valid": raw["gate_valid"],
         "pause_clear": raw["pause_clear"],
@@ -1124,7 +1128,158 @@ def _normalize_stored(snapshot: dict[str, Any]) -> dict[str, Any]:
     if isinstance(desk, dict):
         for key in ("epistemics", "autonomy", "safety_floor"):
             desk.setdefault(key, empty_desk[key])
+        safety = desk.get("safety_floor")
+        if isinstance(safety, dict):
+            safety.setdefault("pause_clear", None)
+    markets = snapshot.get("markets")
+    if isinstance(markets, dict):
+        # Telegram callbacks are retired.  Old durable snapshots may still
+        # contain the former enum, but read-time compatibility must not revive
+        # it as an execution gate.
+        if markets.get("decision_gate") == "telegram":
+            markets["decision_gate"] = "unknown"
     return snapshot
+
+
+def _age_seconds(now: float, value: Any) -> float | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return max(0.0, now - parsed.timestamp())
+
+
+def _expire_desk_runtime(desk: dict[str, Any]) -> None:
+    """Withdraw control-plane claims while retaining their persisted timestamp."""
+    desk["execution"] = "unknown"
+    desk["feeds"] = {"fresh": None, "total": None}
+    autonomy = desk.get("autonomy")
+    if isinstance(autonomy, dict):
+        autonomy.update(
+            {
+                "active": False,
+                "new_entries": "waiting",
+                "reason": "runtime observation unavailable",
+            }
+        )
+    desk["safety_floor"] = {
+        "gate_valid": False,
+        "pause_clear": None,
+        "ledger": "unknown",
+        "bounded_policy": False,
+    }
+    risk = desk.get("risk")
+    if isinstance(risk, dict):
+        risk["ledger_state"] = "unknown"
+        risk["new_risk"] = "unknown"
+
+
+def _age_runtime_projection(
+    snapshot: dict[str, Any],
+    *,
+    now: float,
+    snapshot_observed_at: float,
+    stale_after_seconds: float,
+) -> None:
+    """Age relative fields from persisted observations and fail closed.
+
+    Producers persist relative ages at ``observed_at``.  Returning those same
+    numbers on every request made an hours-old snapshot look like a one-second
+    market feed.  This projection only adds elapsed time; it never edits the
+    stored snapshot or replaces a source timestamp with request time.
+    """
+    # A tenth of a second is far below every declared TTL and keeps two
+    # back-to-back readers on the same semantic projection.
+    elapsed = round(max(0.0, now - snapshot_observed_at), 1)
+    parent_current = elapsed <= stale_after_seconds
+
+    for node in snapshot.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        age = node.get("freshness_s")
+        if isinstance(age, (int, float)) and not isinstance(age, bool):
+            age = round(max(0.0, float(age)) + elapsed, 3)
+            node["freshness_s"] = age
+            if age > stale_after_seconds:
+                node["status"] = "unknown"
+                node["activity_rate"] = None
+
+    for link in snapshot.get("links", []):
+        if isinstance(link, dict) and not parent_current:
+            link["status"] = "unknown"
+            link["event_rate"] = None
+
+    for agent in snapshot.get("agents", []):
+        if not isinstance(agent, dict):
+            continue
+        age = _age_seconds(now, agent.get("updated_at"))
+        if age is None or age > stale_after_seconds:
+            agent["state"] = "offline"
+            agent["verification"] = "pending"
+            agent["activity"] = "Capability observation unavailable"
+
+    markets = snapshot.get("markets")
+    if isinstance(markets, dict):
+        feed_age = markets.get("feed_age_s")
+        if isinstance(feed_age, (int, float)) and not isinstance(feed_age, bool):
+            feed_age = round(max(0.0, float(feed_age)) + elapsed, 3)
+            markets["feed_age_s"] = feed_age
+            markets["status"] = (
+                "current"
+                if feed_age <= 60
+                else "delayed"
+                if feed_age <= 300
+                else "stale"
+            )
+        else:
+            markets["status"] = "offline"
+        if not parent_current:
+            markets["status"] = (
+                "stale" if markets.get("feed_age_s") is not None else "offline"
+            )
+        if not parent_current or markets["status"] not in {"current", "delayed"}:
+            markets["events_per_min"] = None
+            markets["decision_gate"] = "unknown"
+            markets["execution"] = "unknown"
+
+    desk = snapshot.get("desk")
+    if isinstance(desk, dict):
+        desk_age = _age_seconds(now, desk.get("updated_at"))
+        if not parent_current or desk_age is None or desk_age > stale_after_seconds:
+            _expire_desk_runtime(desk)
+        for track in desk.get("tracks", []):
+            if not isinstance(track, dict):
+                continue
+            age = track.get("freshness_s")
+            if isinstance(age, (int, float)) and not isinstance(age, bool):
+                track["freshness_s"] = round(max(0.0, float(age)) + elapsed, 3)
+                if track["freshness_s"] > stale_after_seconds:
+                    track["status"] = "stale"
+        epistemics = desk.get("epistemics")
+        if isinstance(epistemics, dict):
+            updated_ts = epistemics.get("updated_ts")
+            if (
+                not isinstance(updated_ts, (int, float))
+                or isinstance(updated_ts, bool)
+                or now - float(updated_ts) > stale_after_seconds
+            ):
+                epistemics["fresh"] = False
+
+    if not parent_current:
+        summary = snapshot.get("summary")
+        if isinstance(summary, dict):
+            summary.update(
+                {
+                    "state": "degraded",
+                    "active_agents": None,
+                    "events_per_min": None,
+                    "attention": None,
+                }
+            )
 
 
 def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
@@ -1149,8 +1304,8 @@ def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
             "feed_age_s": None,
             "events_per_min": None,
             "paper_strategies": None,
-            "decision_gate": "off",
-            "execution": "off",
+            "decision_gate": "unknown",
+            "execution": "unknown",
         },
         "events": [],
         "desk": _empty_desk(),
@@ -1383,6 +1538,12 @@ class LiveTelemetryStore:
         freshness_s = round(max(0.0, now - observed), 1)
         status = "live" if freshness_s <= stale_after_seconds else "stale"
         projected = _normalize_stored(copy.deepcopy(snapshot))
+        _age_runtime_projection(
+            projected,
+            now=now,
+            snapshot_observed_at=observed,
+            stale_after_seconds=stale_after_seconds,
+        )
         projected.update(
             {
                 "status": status,

@@ -43,13 +43,14 @@ def test_offline_fallback_covers_the_dashboard_watchboard_contract():
     widgets = local_dashboard_server._empty_widgets()
 
     assert widgets["gate"] == {
-        "state": "killswitch",
-        "label": "Local fallback stopped",
-        "armed": False,
-        "killswitch": True,
-        "mode": "offline",
-        "executor_alive": False,
-        "updated_at": widgets["rendered_at"],
+        "state": "unavailable",
+        "label": "Pause state unavailable",
+        "armed": None,
+        "killswitch": None,
+        "pause_state": "unknown",
+        "mode": "unavailable",
+        "executor_alive": None,
+        "updated_at": None,
     }
     assert widgets["recent_signals"] == []
     assert widgets["research"]["clips"] == []
@@ -61,7 +62,7 @@ def test_offline_fallback_covers_the_dashboard_watchboard_contract():
         "can_set_conviction": False,
         "can_authorize_execution": False,
     }
-    assert widgets["system_health"]["telegram"] == "not_observed"
+    assert "telegram" not in widgets["system_health"]
     assert widgets["tradingview"]["status"] == "not_observed"
 
 

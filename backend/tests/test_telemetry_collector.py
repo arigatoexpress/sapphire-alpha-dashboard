@@ -39,7 +39,7 @@ def test_projector_is_schema_valid_real_and_strips_raw_identifiers(tmp_path):
     for forbidden in ("/users/", "192.0.2", "private-host", "secret_process", "0x" + "a" * 40, "balance", "endpoint"):
         assert forbidden not in encoded
     assert snapshot["markets"]["events_per_min"] == 88
-    assert snapshot["markets"]["execution"] == "off"
+    assert snapshot["markets"]["execution"] == "unknown"
     assert snapshot["agents"][0]["role"] == "Orderflow"
     assert snapshot["links"][3]["event_rate"] == 88
     assert snapshot["links"][3]["latency_ms"] is None

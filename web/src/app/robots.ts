@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
         // The anonymous dashboard is a public surface. Internal data and
         // compatibility endpoints remain out of indexes.
-        disallow: ['/api/', '/vault/', '/miniapp'],
+        disallow: ['/api/', '/vault/'],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

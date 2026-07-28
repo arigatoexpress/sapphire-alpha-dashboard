@@ -628,11 +628,11 @@ def test_push_does_not_retry_any_422(tmp_path):
 def _windows_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
     home = tmp_path / "home"
     worker = tmp_path / "agent-worker"
-    telegram = tmp_path / "telegram-bot"
+    desk_state = tmp_path / "desk-state"
     home.mkdir()
     (worker / "queue").mkdir(parents=True)
     (worker / "done").mkdir()
-    telegram.mkdir()
+    desk_state.mkdir()
 
     local_stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(NOW - 30))
     _write(
@@ -640,11 +640,7 @@ def _windows_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
         {"ts": local_stamp, "state": "working", "release": "test", "model": "gpu"},
     )
     _write(worker / "metrics.json", {"tasks": 2, "pass": 2, "fail": 0})
-    (telegram / "bot.log").write_text(
-        f"{local_stamp} alive pid=42 offset=1 pending=0 armed=halted\n",
-        encoding="utf-8",
-    )
-    return home, worker, telegram
+    return home, worker, desk_state
 
 
 def _stub_windows_hardware(monkeypatch) -> None:
@@ -674,20 +670,24 @@ def _stub_windows_hardware(monkeypatch) -> None:
         },
     )
     monkeypatch.setattr(win_collector, "_disk_free_gb", lambda: 100.0)
-    monkeypatch.setattr(win_collector, "_pause_present", lambda _home: False)
+    monkeypatch.setattr(
+        win_collector,
+        "_pause_observation",
+        lambda _home: ("unknown", None),
+    )
 
 
 def test_windows_links_publish_only_observed_values(tmp_path, monkeypatch):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     _stub_windows_hardware(monkeypatch)
 
-    queued = worker / "queue" / "telegram-task.md"
+    queued = worker / "queue" / "worker-task.md"
     queued.write_text(
-        "repo: demo\n---\nverify\n\n(queued from Telegram by Ari)\n",
+        "repo: demo\n---\nverify\n",
         encoding="utf-8",
     )
     completed = worker / "done" / "other-task.md"
-    completed.write_text("repo: demo\n---\nnot from Telegram\n", encoding="utf-8")
+    completed.write_text("repo: demo\n---\ncompleted\n", encoding="utf-8")
     import os
 
     os.utime(queued, (NOW - 60, NOW - 60))
@@ -696,14 +696,13 @@ def test_windows_links_publish_only_observed_values(tmp_path, monkeypatch):
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
     links = _links(snapshot)
 
-    handoff = links[("telegram-bot", "agent-worker")]
-    assert handoff["event_rate"] == 0.2
-    assert handoff["latency_ms"] is None
+    worker_node = next(node for node in snapshot["nodes"] if node["id"] == "agent-worker")
+    assert worker_node["activity_rate"] == 0.2
 
     inference = links[("agent-worker", "ollama-inference")]
     assert inference["latency_ms"] == 7.25
@@ -724,21 +723,22 @@ def test_windows_links_publish_only_observed_values(tmp_path, monkeypatch):
 
 
 def test_windows_alive_heartbeat_is_not_worker_handoff_traffic(tmp_path, monkeypatch):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     _stub_windows_hardware(monkeypatch)
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
-    assert _links(snapshot)[("telegram-bot", "agent-worker")]["event_rate"] == 0.0
+    worker_node = next(node for node in snapshot["nodes"] if node["id"] == "agent-worker")
+    assert worker_node["activity_rate"] == 0.0
 
 
 def test_windows_worker_separates_current_state_from_lifetime_history(
     tmp_path, monkeypatch
 ):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     local_stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(NOW - 30))
     _write(
         worker / "heartbeat.json",
@@ -755,7 +755,7 @@ def test_windows_worker_separates_current_state_from_lifetime_history(
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
     agent = next(
@@ -770,10 +770,10 @@ def test_windows_worker_separates_current_state_from_lifetime_history(
 def test_windows_summary_attention_uses_authoritative_pending_review(
     tmp_path, monkeypatch
 ):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     _stub_windows_hardware(monkeypatch)
     _write(
-        telegram / "desk-summary.json",
+        desk_state / "desk-summary.json",
         {
             "version": 1,
             "updated_at": "2026-07-26T08:00:00+00:00",
@@ -795,7 +795,7 @@ def test_windows_summary_attention_uses_authoritative_pending_review(
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
 
@@ -803,25 +803,24 @@ def test_windows_summary_attention_uses_authoritative_pending_review(
 
 
 def test_missing_windows_measurement_sources_publish_null(tmp_path, monkeypatch):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     _stub_windows_hardware(monkeypatch)
-    # Queue alone is only half the append-only stream: a task may already have
-    # moved to done. A partial source must not publish a measured zero.
-    (worker / "done").rmdir()
+    (worker / "queue").rmdir()
 
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
     links = _links(snapshot)
-    assert links[("telegram-bot", "agent-worker")]["event_rate"] is None
-    assert links[("agent-worker", "knowledge-archive")]["event_rate"] is None
+    worker_node = next(node for node in snapshot["nodes"] if node["id"] == "agent-worker")
+    assert worker_node["activity_rate"] is None
+    assert links[("agent-worker", "knowledge-archive")]["event_rate"] == 0.0
 
 
 def test_missing_windows_counts_are_described_as_unknown(tmp_path, monkeypatch):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     _write(worker / "metrics.json", {})
     _stub_windows_hardware(monkeypatch)
     monkeypatch.setattr(
@@ -832,7 +831,7 @@ def test_missing_windows_counts_are_described_as_unknown(tmp_path, monkeypatch):
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
     agents = {agent["id"]: agent for agent in snapshot["agents"]}
@@ -842,12 +841,12 @@ def test_missing_windows_counts_are_described_as_unknown(tmp_path, monkeypatch):
 
 
 def test_windows_push_never_retries_unknown_rates_as_zero(tmp_path, monkeypatch):
-    home, worker, telegram = _windows_sources(tmp_path)
+    home, worker, desk_state = _windows_sources(tmp_path)
     _stub_windows_hardware(monkeypatch)
     snapshot = win_collector.build_snapshot(
         home,
         agent_worker_dir=worker,
-        telegram_bot_dir=telegram,
+        desk_state_dir=desk_state,
         now=NOW,
     )
     sent: list[dict] = []

@@ -71,7 +71,7 @@ def test_widgets_with_auth():
     assert r.status_code == 200
     data = r.json()
     assert "gate" in data
-    assert "telegram_queue" in data
+    assert "telegram_queue" not in data
     assert "recent_signals" in data
     assert "research" in data
     assert "tradingview" in data
@@ -83,7 +83,7 @@ def test_status_with_auth():
     assert r.status_code == 200
     data = r.json()
     assert data["authenticated_user"] == "testuser"
-    assert data["gate"]["state"] in {"killswitch", "armed", "disarmed"}
+    assert data["gate"]["state"] in {"paused", "armed", "disarmed", "unavailable"}
 
 
 def test_security_headers():

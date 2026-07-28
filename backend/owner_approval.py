@@ -142,6 +142,12 @@ DEPENDENCY_PINS: Mapping[str, str | int] = MappingProxyType(
         "task059_result_sha256": "5866a7dea2c0e677ea7109cd8f024028c76d59f8c589f4d6d4f8482766dec745",
         "task059_review_sha256": "27a4bc76e35d9bf3cc2a63ececc40639b5eb87995a9013d9422a63f4de436d51",
         "approval_consumer_source_sha256": "ad1a8b30a9005d99926673a0d867b6766d20038ae7cf939c2e65023a48e43dd3",
+        "task063_merged_commit": "4205e79ac53e56b03949bf266f2a3b074a651d71",
+        "task063_status": "SOURCE_MERGED_INERT",
+        "task065_status": "UNAVAILABLE",
+        "credential_enrollment_status": "UNAVAILABLE",
+        "broker_reconciliation_status": "UNAVAILABLE",
+        "runtime_installation_status": "UNAVAILABLE",
         "production_execution_available": 0,
     }
 )
@@ -808,6 +814,20 @@ class OwnerApprovalRail:
                 "consumer_review_sha256": DEPENDENCY_PINS["task059_review_sha256"],
                 "consumer_source_sha256": DEPENDENCY_PINS[
                     "approval_consumer_source_sha256"
+                ],
+                "task063_merged_commit": DEPENDENCY_PINS[
+                    "task063_merged_commit"
+                ],
+                "task063_status": DEPENDENCY_PINS["task063_status"],
+                "task065_status": DEPENDENCY_PINS["task065_status"],
+                "credential_enrollment_status": DEPENDENCY_PINS[
+                    "credential_enrollment_status"
+                ],
+                "broker_reconciliation_status": DEPENDENCY_PINS[
+                    "broker_reconciliation_status"
+                ],
+                "runtime_installation_status": DEPENDENCY_PINS[
+                    "runtime_installation_status"
                 ],
                 "production_execution_available": DEPENDENCY_PINS[
                     "production_execution_available"

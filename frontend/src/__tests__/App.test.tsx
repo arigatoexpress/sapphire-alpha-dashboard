@@ -115,7 +115,7 @@ describe('evidence contract', () => {
   it('renders missing pause truth as unavailable instead of clear', () => {
     const snapshot = liveSnapshot()
     snapshot.desk.safety_floor.pause_clear = null
-    const widgets = {
+    const widgets: import('../types').PublicWidgets = {
       gate: {
         state: 'unavailable',
         label: 'Pause state unavailable',
@@ -185,7 +185,7 @@ describe('evidence contract', () => {
 describe('honest empty state', () => {
   it('does not turn missing observations into zero, safe, or live', () => {
     expect(markup).toContain('not observed')
-    expect(markup).toContain('Waiting for the first report')
+    expect(markup).toContain('Pause state is unavailable')
     expect(markup).toContain('No event report yet')
     expect(markup).toContain('No component report has arrived yet')
     expect(markup).not.toContain('0 / 0')

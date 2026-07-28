@@ -50,6 +50,7 @@ const SECTIONS = [
   { href: '#timeline', label: 'Changed' },
   { href: '#evidence', label: 'Evidence' },
 ]
+const RUNTIME_TTL_SECONDS = 180
 
 function words(value: string | null | undefined) {
   return value ? value.replace(/_/g, ' ') : NOT_OBSERVED
@@ -86,14 +87,20 @@ function percent(value: number | null | undefined, digits = 0) {
   return value == null ? NOT_OBSERVED : `${(value * 100).toFixed(digits)}%`
 }
 
-export default function App() {
+export default function App(
+  { initialWidgets }: { initialWidgets?: PublicWidgets } = {},
+) {
   const build = useBuildIdentity()
   const { snapshot, error, loading } = useLiveTelemetry()
   const { snapshot: moss, error: mossError } = useMossSnapshot()
   const { fleet, error: fleetError } = useFleet()
-  const { widgets, error: widgetsError } = usePublicWidgets()
+  const { widgets: polledWidgets, error: widgetsError } = usePublicWidgets()
+  const widgets = initialWidgets ?? polledWidgets
 
-  const execution = snapshot?.desk?.execution ?? snapshot?.markets.execution ?? null
+  const execution =
+    snapshot?.status === 'live'
+      ? snapshot?.desk?.execution ?? snapshot?.markets.execution ?? null
+      : null
   const status = error ? 'unavailable' : (snapshot?.status ?? (loading ? 'warming' : 'not observed'))
   const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
   const gateCount = fleetCount(fleet, 'gates')
@@ -690,14 +697,24 @@ export function buildEvidenceSegments({
 }): EvidenceSegment[] {
   const observed = observedTime(snapshot?.observed_at)
   const freshness = formatAge(snapshot?.freshness_s)
-  const marketFreshness = formatAge(snapshot?.markets.feed_age_s)
+  const parentCurrent = snapshot?.status === 'live'
+  const marketFreshness = formatAge(
+    parentCurrent ? snapshot?.markets.feed_age_s : snapshot?.freshness_s,
+  )
+  const nestedUnavailable = snapshot?.status === 'stale' ? 'stale' : NOT_OBSERVED
   const liveTone = (value: string | null | undefined) =>
     errors.live ? 'degraded' as const : toneForValue(value)
   const fleetObservedAt =
     fleet && !isFleetCounts(fleet) ? observedTime(fleet.generated_at) : NOT_OBSERVED
   const fleetFreshness = formatAge(fleet?.snapshot_age_s)
+  const fleetCurrent =
+    fleet?.snapshot_age_s != null && fleet.snapshot_age_s <= RUNTIME_TTL_SECONDS
   const leaseCount = fleetCount(fleet, 'leases')
   const gateCount = fleetCount(fleet, 'gates')
+  const researchObservedAt = widgets?.research.clips
+    .map((clip) => clip.observed_at)
+    .filter((value) => !Number.isNaN(Date.parse(value)))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0]
 
   return [
     {
@@ -720,7 +737,7 @@ export function buildEvidenceSegments({
     {
       id: 'market',
       label: 'Market feed',
-      value: snapshot?.markets.status ?? NOT_OBSERVED,
+      value: parentCurrent ? snapshot?.markets.status ?? NOT_OBSERVED : nestedUnavailable,
       source: '/api/v1/live · markets',
       observedAt: observed,
       freshness: marketFreshness,
@@ -732,12 +749,12 @@ export function buildEvidenceSegments({
         : snapshot?.markets.events_per_min == null
           ? 'rate not measured'
           : 'rate measured',
-      tone: liveTone(snapshot?.markets.status),
+      tone: liveTone(parentCurrent ? snapshot?.markets.status : snapshot?.status),
     },
     {
       id: 'decisions',
       label: 'Decision gate',
-      value: snapshot?.markets.decision_gate ?? NOT_OBSERVED,
+      value: parentCurrent ? snapshot?.markets.decision_gate ?? NOT_OBSERVED : 'unknown',
       source: '/api/v1/live · desk',
       observedAt: observedTime(snapshot?.desk?.updated_at ?? snapshot?.observed_at),
       freshness,
@@ -749,12 +766,12 @@ export function buildEvidenceSegments({
         : snapshot?.desk
           ? 'bounded public counts'
           : 'no desk observation',
-      tone: liveTone(snapshot?.markets.decision_gate),
+      tone: liveTone(parentCurrent ? snapshot?.markets.decision_gate : snapshot?.status),
     },
     {
       id: 'execution',
       label: 'Execution',
-      value: words(execution),
+      value: parentCurrent ? words(execution) : 'unknown',
       source: '/api/v1/live · execution',
       observedAt: observed,
       freshness,
@@ -768,29 +785,29 @@ export function buildEvidenceSegments({
         : execution
           ? 'reported state'
           : 'no execution observation',
-      tone: liveTone(execution),
+      tone: liveTone(parentCurrent ? execution : snapshot?.status),
     },
     {
       id: 'research',
       label: 'Research',
-      value: widgets
+      value: researchObservedAt
         ? `${formatCount(widgets.research.clips.length)} reviewed`
         : NOT_OBSERVED,
       source: '/api/v1/widgets · research',
-      observedAt: observedTime(widgets?.rendered_at),
-      freshness: widgets?.rendered_at ? 'timestamp supplied; age not computed' : NOT_OBSERVED,
+      observedAt: observedTime(researchObservedAt),
+      freshness: researchObservedAt ? 'persisted timestamp; age not computed' : NOT_OBSERVED,
       authority: 'decision input',
       uncertainty: errors.widgets
         ? 'poll failed; value is from the last report'
-        : widgets
+        : researchObservedAt
           ? 'bounded reviewed clips; no freshness age'
-          : 'no watchboard observation',
+          : 'no persisted research observation',
       tone: errors.widgets ? 'degraded' : 'unknown',
     },
     {
       id: 'fleet',
       label: 'Coordination',
-      value: fleet
+      value: fleet && fleet.snapshot_age_s != null
         ? `${formatCount(leaseCount)} holds · ${formatCount(gateCount)} gates`
         : NOT_OBSERVED,
       source: '/api/fleet',
@@ -799,19 +816,25 @@ export function buildEvidenceSegments({
       authority: 'coordination only',
       uncertainty: errors.fleet
         ? 'poll failed; value is from the last report'
-        : fleet
+        : fleet?.snapshot_age_s != null
           ? isFleetCounts(fleet)
             ? 'counts-only projection; observation time absent'
             : 'sanitized fleet projection'
-          : 'no fleet observation',
-      tone: errors.fleet ? 'degraded' : fleet ? 'current' : 'unknown',
+          : 'no timed fleet observation',
+      tone: errors.fleet
+        ? 'degraded'
+        : fleetCurrent
+          ? 'current'
+          : fleet?.snapshot_age_s != null
+            ? 'degraded'
+            : 'unknown',
     },
     {
       id: 'moss',
       label: 'On-chain',
       value: moss?.status ?? NOT_OBSERVED,
       source: '/api/v1/moss',
-      observedAt: observedTime(moss?.served_at),
+      observedAt: observedTime(moss?.observed_at),
       freshness: formatAge(moss?.freshness_s),
       authority: moss?.authority ?? 'not established',
       uncertainty: errors.moss
@@ -859,7 +882,16 @@ function buildAttention({
     })
   }
 
-  if (widgets?.gate.killswitch) {
+  if (
+    widgets?.gate.pause_state === 'unknown' ||
+    widgets?.gate.killswitch == null
+  ) {
+    items.push({
+      label: 'Pause state is unavailable',
+      detail: 'No runtime or entry claim is admitted until both persisted pause sources are current.',
+      tone: 'degraded',
+    })
+  } else if (widgets.gate.killswitch) {
     items.push({
       label: 'Kill switch is engaged',
       detail: 'Any entry path remains ineligible until a separate approved resume transition.',

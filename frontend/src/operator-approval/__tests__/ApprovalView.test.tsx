@@ -136,6 +136,12 @@ const bundle: ApprovalBundleDTO = {
     consumer_result_sha256: '7'.repeat(64),
     consumer_review_sha256: 'a'.repeat(64),
     consumer_source_sha256: 'b'.repeat(64),
+    task063_merged_commit: '4205e79ac53e56b03949bf266f2a3b074a651d71',
+    task063_status: 'SOURCE_MERGED_INERT',
+    task065_status: 'UNAVAILABLE',
+    credential_enrollment_status: 'UNAVAILABLE',
+    broker_reconciliation_status: 'UNAVAILABLE',
+    runtime_installation_status: 'UNAVAILABLE',
     production_execution_available: 0,
   },
   eligibility: { eligible: true, reason_code: 'ELIGIBLE' },
@@ -179,6 +185,14 @@ describe('owner approval view', () => {
       `dest:${'7'.repeat(64)}`,
       'Quantity',
       'Not applicable',
+      '4205e79ac53e56b03949bf266f2a3b074a651d71',
+      'SOURCE_MERGED_INERT',
+      'Task 065',
+      'Credential enrollment',
+      'Broker reconciliation',
+      'Runtime installation',
+      'Production execution',
+      'UNAVAILABLE',
     ]) {
       expect(html).toContain(evidence)
     }

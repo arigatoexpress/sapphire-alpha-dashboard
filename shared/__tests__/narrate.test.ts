@@ -50,8 +50,8 @@ function snapshot(partial: Partial<LiveSnapshot> = {}): LiveSnapshot {
       feed_age_s: 1,
       events_per_min: 0,
       paper_strategies: 0,
-      decision_gate: 'telegram',
-      execution: 'off',
+      decision_gate: 'unknown',
+      execution: 'unknown',
     },
     events: [],
     desk: {
@@ -185,7 +185,7 @@ describe('narrate — healthy', () => {
       },
       nodes: [node({ id: 'intelligence', zone: 'intelligence' })],
       agents: [
-        { id: 'telegram-command-bot', role: 'service', state: 'working', activity: 'polling', verification: 'verified', provider_class: 'local CPU', updated_at: '2026-07-25T22:00:00+00:00' },
+        { id: 'notification-observer', role: 'service', state: 'working', activity: 'observing', verification: 'verified', provider_class: 'local CPU', updated_at: '2026-07-25T22:00:00+00:00' },
         { id: 'ollama-inference-host', role: 'service', state: 'working', activity: 'serving', verification: 'verified', provider_class: 'local GPU', updated_at: '2026-07-25T22:00:00+00:00' },
       ],
     })

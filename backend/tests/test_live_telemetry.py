@@ -86,7 +86,7 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             "feed_age_s": 4.2,
             "events_per_min": 19.0,
             "paper_strategies": 7,
-            "decision_gate": "telegram",
+            "decision_gate": "manual",
             "execution": "off",
         },
         "desk": {

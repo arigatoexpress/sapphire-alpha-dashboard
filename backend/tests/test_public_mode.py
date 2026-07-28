@@ -33,10 +33,15 @@ FORBIDDEN_SUBSTRINGS = [
 def public_mode(monkeypatch, tmp_path):
     # Reset the TV probe cache so the fixture's URL never leaks into other tests.
     monkeypatch.setattr(main, "_tv_probe_cache", {"ts": 0.0, "result": None})
-    # A Cloud Run instance does not have the operator's local telegram queue.
-    monkeypatch.setattr(main, "_TELEGRAM_DIR", tmp_path / "telegram-bot")
+    rh = tmp_path / "rh-chain"
+    rh.mkdir()
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", rh)
+    monkeypatch.setattr(
+        main,
+        "_PAUSE_SENTINELS",
+        {"mac": tmp_path / "missing-mac", "windows": tmp_path / "missing-windows"},
+    )
     monkeypatch.setenv("PUBLIC_READ_ONLY", "1")
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
     monkeypatch.setenv(
         "WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678"
     )
@@ -44,8 +49,7 @@ def public_mode(monkeypatch, tmp_path):
     monkeypatch.setenv(
         "TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090"
     )
-    monkeypatch.setenv(
-        "DASHBOARD_SKIN_BOOK",
+    (rh / "skin-book.json").write_text(
         json.dumps(
             {
                 "updated": 1783914740,
@@ -57,12 +61,21 @@ def public_mode(monkeypatch, tmp_path):
                 "limits": {"per_order_cap_pct": 5, "max_daily_usd": 100},
             }
         ),
+        encoding="utf-8",
     )
-    monkeypatch.setenv(
-        "DASHBOARD_SIGNALS_JSON",
+    (rh / "signals.json").write_text(
         json.dumps(
-            [{"instrument": "BTC", "side": "BUY", "venue": "on_chain", "confidence": "high"}]
+            [
+                {
+                    "instrument": "BTC",
+                    "side": "BUY",
+                    "venue": "on_chain",
+                    "confidence": "high",
+                    "timestamp": "2026-07-28T00:00:00Z",
+                }
+            ]
         ),
+        encoding="utf-8",
     )
     monkeypatch.setenv(
         "DASHBOARD_RESEARCH_CLIPS_JSON",
@@ -122,17 +135,13 @@ def test_anonymous_widgets_sanitized(public_mode):
 
     assert data["public_view"] is True
     # Gate: state booleans kept, caps/wallet dropped.
-    assert data["gate"]["state"] in {"killswitch", "armed", "disarmed"}
+    assert data["gate"]["state"] == "unavailable"
+    assert data["gate"]["killswitch"] is None
     assert "cap_usd" not in data["gate"]
     assert "wallet_address" not in data["gate"]
     # Wallet: no identifier, capital, position count, or inferred funding state.
     assert data["wallet"] == {"disclosure": "withheld"}
-    # Telegram: an absent Cloud Run-local file is unknown, not an observed zero,
-    # and an environment flag alone is not proof that polling is alive.
-    assert data["telegram_queue"]["pending"] is None
-    assert data["telegram_queue"]["recent_count"] is None
-    assert data["telegram_queue"]["status"] == "not_observed"
-    assert data["telegram_queue"]["proposals"] == []
+    assert "telegram_queue" not in data
     # Signals: symbol/side/time only — no confidence/venue (strategy internals).
     for sig in data["recent_signals"]:
         assert set(sig) == {"id", "instrument", "side", "timestamp"}
@@ -193,7 +202,7 @@ def test_authed_widgets_full_payload(public_mode):
     assert "public_view" not in data
     assert data["wallet"]["deployed_usd"] == 123.45
     assert data["wallet"]["limits"] == {"per_order_cap_pct": 5, "max_daily_usd": 100}
-    assert data["gate"]["cap_usd"] == 25
+    assert data["gate"]["cap_usd"] is None
     assert "endpoint" in data["tradingview"]
     assert data["recent_signals"][0]["confidence"] == "high"
     assert data["recent_signals"][0]["venue"] == "on_chain"

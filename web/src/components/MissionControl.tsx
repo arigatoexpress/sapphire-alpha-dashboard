@@ -43,7 +43,7 @@ function words(value: string | null | undefined) {
 function stateTone(value: string | null | undefined) {
   const normalized = String(value ?? '').toLowerCase()
   if (['live', 'current', 'verified'].includes(normalized)) return 'current'
-  if (['halted', 'off', 'gated', 'manual', 'telegram'].includes(normalized)) return 'held'
+  if (['halted', 'off', 'gated', 'manual'].includes(normalized)) return 'held'
   if (['stale', 'delayed', 'degraded', 'offline', 'failed'].includes(normalized)) {
     return 'degraded'
   }
@@ -80,16 +80,19 @@ export default function MissionControl() {
   }, [])
 
   const state = useMemo(() => {
-    const execution = live?.desk?.execution ?? live?.markets?.execution ?? null
+    const runtimeCurrent = live?.status === 'live'
+    const execution = runtimeCurrent
+      ? live?.desk?.execution ?? live?.markets?.execution ?? null
+      : null
     const retained = Boolean(error && live)
     return {
       status: error ? 'unavailable' : (live?.status ?? 'not observed'),
       observedAt: fmtObservedAt(live?.observed_at),
       freshness: error ? (retained ? `poll failed · last report ${fmtAge(live?.freshness_s)}` : 'poll failed') : fmtAge(live?.freshness_s),
-      execution: words(execution),
+      execution: runtimeCurrent ? words(execution) : 'unknown',
       executionTone: error ? (retained ? 'degraded' : 'unknown') : stateTone(execution),
-      market: words(live?.markets?.status),
-      gate: words(live?.markets?.decision_gate),
+      market: runtimeCurrent ? words(live?.markets?.status) : live?.status === 'stale' ? 'stale' : 'unknown',
+      gate: runtimeCurrent ? words(live?.markets?.decision_gate) : 'unknown',
       sourceTone: (value: string | null | undefined) =>
         error ? (retained && value ? 'degraded' : 'unknown') : stateTone(value),
     }

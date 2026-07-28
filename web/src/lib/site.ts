@@ -7,5 +7,5 @@ export const SITE_NAME = 'Sapphire Alpha'
 export const SITE_TAGLINE = 'Research-driven trading infrastructure you can inspect.'
 
 export const SITE_DESCRIPTION =
-  'Sapphire Alpha publishes data-backed market opinions with falsifiers and runs autonomous ' +
-  'execution only on designated agentic capital under caps and a kill switch.'
+  'Sapphire Alpha publishes data-backed market opinions with falsifiers and documents a ' +
+  'fail-closed execution design without claiming unavailable runtime state.'

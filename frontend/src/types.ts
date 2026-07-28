@@ -28,6 +28,7 @@ export type {
 export interface MossSnapshot {
   version: number
   status: import('@shared/telemetry').ServingStatus
+  observed_at: string | null
   freshness_s: number | null
   served_at: string
   network?: string
@@ -85,7 +86,7 @@ export interface PublicSignal {
   id: string
   instrument: string
   side: string
-  timestamp: string
+  timestamp: string | null
 }
 
 export interface PublicServiceHealth {
@@ -103,20 +104,14 @@ export interface PublicWidgets {
   gate: {
     state: string
     label: string
-    armed: boolean
-    killswitch: boolean
+    armed: boolean | null
+    killswitch: boolean | null
+    pause_state: 'active' | 'clear' | 'unknown'
     mode: string
-    executor_alive: boolean
-    updated_at: string
+    executor_alive: boolean | null
+    updated_at: string | null
   }
   wallet: { disclosure: string }
-  telegram_queue: {
-    pending: number | null
-    gate: string
-    status: string
-    recent_count: number | null
-    proposals: []
-  }
   recent_signals: PublicSignal[]
   research: {
     clips: PublicResearchClip[]
@@ -131,7 +126,7 @@ export interface PublicWidgets {
   }
   tradingview: {
     status: string
-    last_ping: string
+    last_ping: string | null
     pending_alerts: number | null
   }
   business_health: {
@@ -143,7 +138,6 @@ export interface PublicWidgets {
   system_health: {
     dashboard: string
     gate: string
-    telegram: string
     tradingview: string
     timestamp: string
   }

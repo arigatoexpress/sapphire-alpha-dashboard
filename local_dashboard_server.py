@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
-import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -29,9 +28,9 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from live_telemetry import validate_snapshot  # type: ignore[import]
-from main import _build_identity as _runtime_build_identity  # type: ignore[import]
-from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]
+from live_telemetry import validate_snapshot  # type: ignore[import]  # noqa: E402
+from main import _build_identity as _runtime_build_identity  # type: ignore[import]  # noqa: E402
+from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]  # noqa: E402
 
 
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -94,22 +93,16 @@ def _empty_widgets() -> dict[str, Any]:
     rendered_at = _utc_now()
     return {
         "gate": {
-            "state": "killswitch",
-            "label": "Local fallback stopped",
-            "armed": False,
-            "killswitch": True,
-            "mode": "offline",
-            "executor_alive": False,
-            "updated_at": rendered_at,
+            "state": "unavailable",
+            "label": "Pause state unavailable",
+            "armed": None,
+            "killswitch": None,
+            "pause_state": "unknown",
+            "mode": "unavailable",
+            "executor_alive": None,
+            "updated_at": None,
         },
         "wallet": {"disclosure": "withheld"},
-        "telegram_queue": {
-            "pending": None,
-            "gate": "telegram",
-            "status": "not_observed",
-            "recent_count": None,
-            "proposals": [],
-        },
         "recent_signals": [],
         "research": {
             "clips": [],
@@ -124,7 +117,7 @@ def _empty_widgets() -> dict[str, Any]:
         },
         "tradingview": {
             "status": "not_observed",
-            "last_ping": "",
+            "last_ping": None,
             "pending_alerts": None,
         },
         "business_health": {
@@ -139,8 +132,7 @@ def _empty_widgets() -> dict[str, Any]:
         },
         "system_health": {
             "dashboard": "ok",
-            "gate": "killswitch",
-            "telegram": "not_observed",
+            "gate": "unavailable",
             "tradingview": "not_observed",
             "timestamp": rendered_at,
         },

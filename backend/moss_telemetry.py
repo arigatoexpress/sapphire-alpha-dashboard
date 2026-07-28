@@ -142,6 +142,7 @@ def public_projection(snapshot: dict[str, Any], *, now: float) -> dict[str, Any]
     age = max(0.0, now - observed)
     return {
         "version": 1,
+        "observed_at": snapshot["observed_at"],
         "network": "MegaETH",
         "asset": "USDm",
         "usdm_band": _usdm_band(snapshot["usdm"]),
@@ -159,6 +160,7 @@ def _empty(*, public: bool, now: float) -> dict[str, Any]:
         "version": 1,
         "network": "MegaETH",
         "status": "offline",
+        "observed_at": None,
         "freshness_s": None,
         "served_at": datetime.fromtimestamp(now, UTC).isoformat(),
     }

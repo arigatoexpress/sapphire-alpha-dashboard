@@ -47,12 +47,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 try:
-    from . import public_vault_map, telegram_miniapp, transparency
+    from . import public_vault_map, transparency
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
 except ImportError:  # Tests import `main` directly from backend/.
     import public_vault_map
-    import telegram_miniapp
     import transparency
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
@@ -311,7 +310,25 @@ _IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 # Canonical local state paths (Mac). Cloud Run uses env overrides.
 _HOME = Path.home()
 _RH_CHAIN_DIR = _HOME / "ops-state" / "rh-chain"
-_TELEGRAM_DIR = _HOME / "ops-state" / "telegram-bot"
+_OBSERVATIONS_DIR = _HOME / "ops-state" / "sapphire-observations"
+_PAUSE_SENTINELS: dict[str, Path] = {
+    "mac": _HOME / ".sapphire" / "autonomous_trading_pause",
+    "windows": _RH_CHAIN_DIR / "windows-pause-observation.json",
+}
+_RUNTIME_TTL_SECONDS = 180.0
+
+_RUNTIME_READINESS: dict[str, Any] = {
+    "schema_version": "sapphire-runtime-readiness/v1",
+    "task063": {
+        "status": "SOURCE_MERGED_INERT",
+        "merged_commit": "4205e79ac53e56b03949bf266f2a3b074a651d71",
+    },
+    "task065": {"status": "UNAVAILABLE"},
+    "credential_enrollment": "UNAVAILABLE",
+    "broker_reconciliation": "UNAVAILABLE",
+    "runtime_installation": "UNAVAILABLE",
+    "production_execution": "UNAVAILABLE",
+}
 
 
 def _mask_address(addr: str | None) -> str | None:
@@ -415,6 +432,13 @@ async def healthz(request: Request) -> dict[str, Any]:
 async def api_health(request: Request) -> dict[str, Any]:
     """Public health endpoint that avoids Cloud Run /healthz interception."""
     return await healthz(request)
+
+
+@app.get("/api/v1/readiness")
+@limiter.limit("30/minute")
+async def api_runtime_readiness(request: Request) -> dict[str, Any]:
+    """Source/dependency readiness; this endpoint grants no runtime authority."""
+    return json.loads(json.dumps(_RUNTIME_READINESS))
 
 
 @app.get("/api/build")
@@ -535,7 +559,7 @@ async def api_transparency(
     """Explanation-ledger pane: operator full detail or sanitized public bands."""
     public = user == PUBLIC_USER
     ledger = Path(_env("DASHBOARD_EXPLANATIONS_PATH", "")
-                  or (_TELEGRAM_DIR / transparency.LEDGER_NAME))
+                  or (_OBSERVATIONS_DIR / transparency.LEDGER_NAME))
     return transparency.snapshot(ledger, public=public)
 
 
@@ -548,152 +572,207 @@ def _read_json(path: Path) -> Any:
     return None
 
 
-def _read_jsonl(path: Path, limit: int = 20) -> list[dict[str, Any]]:
-    """Read the last `limit` JSON lines from a file."""
-    rows: list[dict[str, Any]] = []
+def _persisted_time(value: Any) -> datetime | None:
     try:
-        if not path.exists():
-            return rows
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        for line in text.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if isinstance(obj, dict):
-                    rows.append(obj)
-            except json.JSONDecodeError:
-                continue
-    except Exception as exc:
-        log.warning("failed to read jsonl %s: %s", path, exc)
-    return rows[-limit:] if limit else rows
-
-
-def _sanitize_proposal(raw: dict[str, Any], idx: int) -> dict[str, Any]:
-    """Strip PII from a Telegram proposal/decision and return display-safe fields."""
-    # Drop any key that looks like PII.
-    pii_keys = {"chat_id", "user_id", "username", "first_name", "last_name", "phone", "email"}
-    safe: dict[str, Any] = {}
-    for key, value in raw.items():
-        low = key.lower()
-        if low in pii_keys or "secret" in low or "password" in low or "token" in low:
-            continue
-        if low in {"wallet_address", "address"} and isinstance(value, str):
-            safe[key] = _mask_address(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            parsed = datetime.fromtimestamp(float(value), UTC)
+        elif isinstance(value, str) and value:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         else:
-            safe[key] = value
-
-    out: dict[str, Any] = {
-        "id": f"prop-{idx:03d}",
-        "action": safe.get("action", safe.get("type", "proposal")),
-        "instrument": safe.get("instrument", safe.get("symbol", "—")),
-        "side": safe.get("side", "—"),
-        "confidence": safe.get("confidence", "medium"),
-        "status": safe.get("status", "pending"),
-        "timestamp": safe.get("timestamp", safe.get("created_at", datetime.now(UTC).isoformat())),
-    }
-    if "wallet_address" in safe:
-        out["wallet_address"] = safe["wallet_address"]
-    return out
+            return None
+    except (ValueError, OSError, OverflowError):
+        return None
+    return parsed.astimezone(UTC) if parsed.tzinfo is not None else None
 
 
-def _executor_heartbeat() -> dict[str, Any]:
-    """Executor liveness from local heartbeat or env override."""
-    env = _env("DASHBOARD_EXECUTOR_HEARTBEAT", "").strip()
-    data: dict[str, Any] = {}
-    if env:
-        try:
-            data = json.loads(env)
-        except json.JSONDecodeError:
-            data = {"status": env}
-    else:
-        data = _read_json(_RH_CHAIN_DIR / "executor-heartbeat.json") or {}
+def _observation_time(data: dict[str, Any]) -> datetime | None:
+    for key in ("observed_at", "updated_at", "updated", "last_seen", "timestamp", "epoch"):
+        if (parsed := _persisted_time(data.get(key))) is not None:
+            return parsed
+    return None
 
+
+def _executor_heartbeat(*, now: datetime | None = None) -> dict[str, Any]:
+    """Executor liveness from one persisted heartbeat; absence stays unknown."""
+    now = now or datetime.now(UTC)
+    data = _read_json(_RH_CHAIN_DIR / "executor-heartbeat.json")
+    if not isinstance(data, dict):
+        return {"status": "unknown", "alive": None, "last_seen": None, "pid": None}
+
+    observed = _observation_time(data)
+    current = (
+        observed is not None
+        and 0 <= (now - observed).total_seconds() <= _RUNTIME_TTL_SECONDS
+    )
     status_str = str(data.get("status", "unknown")).lower()
-    alive = status_str in {"alive", "ok", "running", "healthy"} or _safe_bool(data.get("alive"))
+    reported_alive = status_str in {"alive", "ok", "running", "healthy"} or (
+        data.get("alive") is True
+    )
     return {
-        "status": status_str if status_str not in {"", "none"} else "unknown",
-        "alive": alive,
-        "last_seen": data.get("last_seen") or data.get("timestamp") or data.get("epoch"),
-        "pid": data.get("pid"),
+        "status": status_str if current else "unknown",
+        "alive": reported_alive if current else None,
+        "last_seen": observed.isoformat() if observed is not None else None,
+        "pid": data.get("pid") if current else None,
     }
 
 
 def _skin_book() -> dict[str, Any]:
-    """Read skin book from canonical file or env override."""
-    env = _env("DASHBOARD_SKIN_BOOK", "").strip()
-    data: dict[str, Any] = {}
-    if env:
-        try:
-            data = json.loads(env)
-        except json.JSONDecodeError:
-            data = {}
-    else:
-        data = _read_json(_RH_CHAIN_DIR / "skin-book.json") or {}
+    """Read only a persisted skin-book observation."""
+    data = _read_json(_RH_CHAIN_DIR / "skin-book.json")
+    if not isinstance(data, dict):
+        data = {}
 
     positions = data.get("positions", [])
     fills = data.get("fills", [])
+    observed = _observation_time(data)
     return {
-        "updated_at": datetime.fromtimestamp(data.get("updated", 0), UTC).isoformat()
-        if data.get("updated")
-        else datetime.now(UTC).isoformat(),
-        "mode": data.get("mode", "telegram"),
+        "updated_at": observed.isoformat() if observed is not None else None,
+        "mode": data.get("mode") or "unavailable",
         "banner": data.get("banner", "Skin book"),
         "deployed_usd": _safe_float(data.get("deployed_usd")),
         "n_open": int(data.get("n_open", len(positions))),
         "positions_count": len(positions),
         "fills_count": len(fills),
-        "skin_in_game": _safe_bool(data.get("skin_in_game", False)),
+        "skin_in_game": (
+            data.get("skin_in_game")
+            if isinstance(data.get("skin_in_game"), bool)
+            else None
+        ),
         "limits": data.get("limits", {}),
     }
 
 
-def _gate_status() -> dict[str, Any]:
-    """Aggregate trading gate state from canonical state files or env."""
-    gate = _read_json(_RH_CHAIN_DIR / "gate.json") or {}
-    skin = _read_json(_RH_CHAIN_DIR / "skin-book.json") or {}
-    pause = _HOME / ".sapphire" / "autonomous_trading_pause"
-    box_pause = Path("C:/Users/aribs/.sapphire/autonomous_trading_pause")
+def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError
+        state = raw.get("state", "active")
+        observed = _observation_time(raw)
+        if observed is None:
+            observed = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        return {
+            "source": source,
+            "state": state,
+            "observed_at": observed.isoformat(),
+        }
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {"source": source, "state": "invalid", "observed_at": None}
 
-    # Env overrides allow the dashboard to reflect state when running on Cloud Run
-    # without access to the user's local filesystem.
-    env_armed = os.environ.get("DASHBOARD_ARMED", "")
-    env_mode = os.environ.get("DASHBOARD_MODE", "")
-    env_killswitch = os.environ.get("DASHBOARD_FORCE_KILLSWITCH", "")
 
-    armed = _safe_bool(env_armed) if env_armed else _safe_bool(gate.get("armed", skin.get("armed", False)))
-    mode = env_mode or gate.get("mode") or skin.get("mode") or "telegram"
-    killswitch = _safe_bool(env_killswitch) if env_killswitch else (pause.exists() or box_pause.exists())
+def _evaluate_pause_truth(
+    observations: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Resolve two persisted pause sources without treating absence as clear."""
+    now = now or datetime.now(UTC)
+    states: dict[str, set[str]] = {"mac": set(), "windows": set()}
+    observed_times: list[datetime] = []
+    clear_is_current = True
+    invalid = False
+    for item in observations:
+        if not isinstance(item, dict):
+            invalid = True
+            continue
+        source = item.get("source")
+        state = item.get("state")
+        observed = _persisted_time(item.get("observed_at"))
+        if source not in states or state not in {"active", "clear"} or observed is None:
+            invalid = True
+            continue
+        states[source].add(state)
+        observed_times.append(observed)
+        if state == "clear":
+            age = (now - observed).total_seconds()
+            clear_is_current = clear_is_current and 0 <= age <= _RUNTIME_TTL_SECONDS
 
-    if killswitch:
-        state = "killswitch"
-        label = "Killswitch engaged"
-    elif armed:
-        state = "armed"
-        label = "Armed — Telegram gate"
+    if invalid or any(len(values) != 1 for values in states.values()):
+        state = "unknown"
+    elif any("active" in values for values in states.values()):
+        state = "active"
+    elif clear_is_current:
+        state = "clear"
     else:
-        state = "disarmed"
-        label = "Disarmed"
+        state = "unknown"
+    return {
+        "state": state,
+        "clear": True if state == "clear" else False if state == "active" else None,
+        "observed_at": (
+            min(observed_times).isoformat() if observed_times else None
+        ),
+    }
 
-    wallet_addr = _env("WALLET_ADDRESS") or skin.get("wallet_address")
+
+def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
+    """Project one persisted gate and two fail-closed pause observations."""
+    now = now or datetime.now(UTC)
+    raw_gate = _read_json(_RH_CHAIN_DIR / "gate.json")
+    gate = raw_gate if isinstance(raw_gate, dict) else {}
+    observations = [
+        item
+        for item in gate.get("pause_sources", [])
+        if isinstance(item, dict)
+    ] if isinstance(gate.get("pause_sources"), list) else []
+    for source, path in _PAUSE_SENTINELS.items():
+        if (item := _pause_file_observation(source, path)) is not None:
+            observations.append(item)
+    pause = _evaluate_pause_truth(observations, now=now)
+
+    gate_observed = _observation_time(gate)
+    gate_current = (
+        gate_observed is not None
+        and 0 <= (now - gate_observed).total_seconds() <= _RUNTIME_TTL_SECONDS
+    )
+    reported_mode = gate.get("mode")
+    mode = (
+        reported_mode
+        if gate_current and reported_mode in {"bounded_auto", "manual", "off"}
+        else "unavailable"
+    )
+
+    if pause["state"] == "active":
+        state, label, armed, killswitch = "paused", "Pause active", False, True
+    elif pause["state"] != "clear" or not gate_current:
+        state, label, armed, killswitch = (
+            "unavailable",
+            "Pause state unavailable",
+            None,
+            None,
+        )
+        mode = "unavailable"
+    else:
+        armed = gate.get("armed") if isinstance(gate.get("armed"), bool) else None
+        killswitch = False
+        if armed is None or mode == "unavailable":
+            state, label = "unavailable", "Gate state unavailable"
+        elif armed:
+            state, label = "armed", "Bounded gate armed"
+        else:
+            state, label = "disarmed", "Gate disarmed"
+
+    wallet_addr = gate.get("wallet_address")
     return {
         "state": state,
         "label": label,
         "armed": armed,
         "killswitch": killswitch,
+        "pause_state": pause["state"],
         "mode": mode,
         "wallet_address": _mask_address(wallet_addr),
-        "cap_usd": int(_env("MAX_ORDER_USD", "25")),
-        "executor_alive": _executor_heartbeat()["alive"],
-        "updated_at": datetime.now(UTC).isoformat(),
+        "cap_usd": gate.get("cap_usd") if gate_current else None,
+        "executor_alive": _executor_heartbeat(now=now)["alive"],
+        "updated_at": gate_observed.isoformat() if gate_observed is not None else None,
     }
 
 
 def _wallet_status() -> dict[str, Any]:
     """Privacy-preserving wallet / PnL tile."""
     skin = _skin_book()
-    wallet_addr = _env("WALLET_ADDRESS") or (_read_json(_RH_CHAIN_DIR / "skin-book.json") or {}).get("wallet_address")
+    raw = _read_json(_RH_CHAIN_DIR / "skin-book.json")
+    wallet_addr = raw.get("wallet_address") if isinstance(raw, dict) else None
     return {
         "address": _mask_address(wallet_addr),
         "deployed_usd": skin["deployed_usd"],
@@ -706,88 +785,9 @@ def _wallet_status() -> dict[str, Any]:
     }
 
 
-def _magnum_status() -> dict[str, Any]:
-    """Magnum Opus overnight lab — local harness projection (read-only)."""
-    gate = _read_json(_RH_CHAIN_DIR / "gate.json") or {}
-    fr = _read_json(_RH_CHAIN_DIR / "free-reign.json") or {}
-    l2 = _read_json(_RH_CHAIN_DIR / "l2-wallet-snapshot.json") or {}
-    adapt = _read_json(_RH_CHAIN_DIR / "overnight-adapt.json") or {}
-    health = _read_json(_RH_CHAIN_DIR / "agent-health-state.json") or {}
-    night = _read_json(_HOME / "ops-state" / "sov-lab" / "night" / "latest.json") or {}
-    moss = _read_json(_HOME / "ops-state" / "moss" / "session.json") or {}
-    limits = fr.get("limits") if isinstance(fr.get("limits"), dict) else {}
-    top = (adapt.get("universe") or {}).get("top_fillable_candidates") or []
-    candidates = [
-        str(t.get("symbol") or "")
-        for t in top[:8]
-        if isinstance(t, dict) and t.get("symbol")
-    ]
-    moss_ok = bool(moss) and not moss.get("revoked")
-    moss_exp = moss.get("expiry")
-    return {
-        "product": "magnum-opus",
-        "gate_armed": _safe_bool(gate.get("armed")),
-        "mode": gate.get("mode") or "—",
-        "free_reign": _safe_bool(fr.get("enabled")),
-        "daily_cap_usd": limits.get("daily_cap_usd"),
-        "per_trade_verified_usd": limits.get("per_trade_cap_verified_usd"),
-        "per_trade_thesis_usd": limits.get("per_trade_cap_thesis_usd"),
-        "l2_eth": l2.get("eth"),
-        "l2_address_masked": _mask_address(l2.get("address")),
-        "health": health.get("overall") or "—",
-        "night_severity": night.get("severity") or "—",
-        "night_issues": list(night.get("issues") or [])[:5],
-        "moss_ok": moss_ok,
-        "moss_expiry": moss_exp,
-        "candidates": candidates,
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
-
-
-def _telegram_queue() -> dict[str, Any]:
-    """Surface observed Telegram state without inventing Cloud Run-local liveness."""
-    queue_path = _TELEGRAM_DIR / "pending_queue.json"
-    decisions_path = _TELEGRAM_DIR / "decisions.jsonl"
-
-    data = _read_json(queue_path)
-    queue_observed = isinstance(data, list)
-    pending = len(data) if queue_observed else None
-
-    decisions = _read_jsonl(decisions_path, limit=10)
-    proposals = [_sanitize_proposal(d, i + 1) for i, d in enumerate(decisions)]
-
-    # If a pending_queue.json entry is a dict, treat it as a proposal too.
-    if isinstance(data, list):
-        for i, item in enumerate(data[:10]):
-            if isinstance(item, dict):
-                proposals.insert(0, _sanitize_proposal(item, len(proposals) + 1))
-
-    polling_config = _env("TELEGRAM_BOT_POLLING", "").strip()
-    if not queue_observed or not polling_config:
-        status = "not_observed"
-    else:
-        status = "polling" if _safe_bool(polling_config) else "paused"
-
-    return {
-        "pending": pending,
-        "gate": "telegram",
-        "status": status,
-        "recent_count": min(pending, 5) if pending is not None else None,
-        "proposals": proposals[:8],
-    }
-
-
 def _recent_signals() -> list[dict[str, Any]]:
     """Recent observed trading signals with synthetic display identifiers."""
-    env = _env("DASHBOARD_SIGNALS_JSON", "").strip()
-    data: Any = None
-    if env:
-        try:
-            data = json.loads(env)
-        except json.JSONDecodeError:
-            data = None
-    if data is None:
-        data = _read_json(_RH_CHAIN_DIR / "signals.json")
+    data = _read_json(_RH_CHAIN_DIR / "signals.json")
 
     if isinstance(data, list):
         return [
@@ -797,7 +797,7 @@ def _recent_signals() -> list[dict[str, Any]]:
                 "side": s.get("side", "-"),
                 "venue": s.get("venue", "manual"),
                 "confidence": s.get("confidence", "medium"),
-                "timestamp": s.get("timestamp", datetime.now(UTC).isoformat()),
+                "timestamp": s.get("timestamp"),
             }
             for i, s in enumerate(data[:12])
         ]
@@ -963,7 +963,7 @@ async def _probe_tradingview_webhook() -> dict[str, Any]:
         result = {
             "status": "standby",
             "endpoint": "not configured",
-            "last_ping": datetime.now(UTC).isoformat(),
+            "last_ping": None,
             "pending_alerts": 0,
             "recent_log": [],
             "probe": {"name": "tradingview_webhook", "status": "not_configured"},
@@ -975,19 +975,25 @@ async def _probe_tradingview_webhook() -> dict[str, Any]:
     probe = await _probe_health("tradingview_webhook", health_url, timeout=3.0)
     status_label = "ok" if probe["status"] == "ok" else "degraded"
     pending_alerts = 0
+    last_ping: str | None = None
     try:
         if probe["status"] == "ok":
             async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
                 r = await client.get(url.rstrip("/") + "/alerts?limit=1")
                 if r.status_code == 200:
-                    pending_alerts = int(r.json().get("total", 0))
+                    payload = r.json()
+                    pending_alerts = int(payload.get("total", 0))
+                    alerts = payload.get("alerts")
+                    if isinstance(alerts, list) and alerts and isinstance(alerts[0], dict):
+                        observed = _observation_time(alerts[0])
+                        last_ping = observed.isoformat() if observed is not None else None
     except Exception:
         pass
 
     result = {
         "status": status_label,
         "endpoint": url,
-        "last_ping": datetime.now(UTC).isoformat(),
+        "last_ping": last_ping,
         "pending_alerts": pending_alerts,
         "recent_log": [],
         "probe": probe,
@@ -1051,7 +1057,6 @@ async def _system_health() -> dict[str, Any]:
     return {
         "dashboard": "ok",
         "gate": _gate_status()["state"],
-        "telegram": _telegram_queue()["status"],
         "tradingview": tv["status"],
         "timestamp": datetime.now(UTC).isoformat(),
     }
@@ -1071,6 +1076,7 @@ def _public_gate(gate: dict[str, Any]) -> dict[str, Any]:
         "label": gate["label"],
         "armed": gate["armed"],
         "killswitch": gate["killswitch"],
+        "pause_state": gate["pause_state"],
         "mode": gate["mode"],
         "executor_alive": gate["executor_alive"],
         "updated_at": gate["updated_at"],
@@ -1079,16 +1085,6 @@ def _public_gate(gate: dict[str, Any]) -> dict[str, Any]:
 
 def _public_wallet(_wallet: dict[str, Any]) -> dict[str, Any]:
     return {"disclosure": "withheld"}
-
-
-def _public_telegram(queue: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "pending": queue["pending"],
-        "gate": queue["gate"],
-        "status": queue["status"],
-        "recent_count": queue["recent_count"],
-        "proposals": [],  # proposal bodies are operator-only
-    }
 
 
 def _public_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1147,7 +1143,6 @@ def _public_system_health(health: dict[str, Any]) -> dict[str, Any]:
     return {
         "dashboard": health["dashboard"],
         "gate": health["gate"],
-        "telegram": health["telegram"],
         "tradingview": health["tradingview"],
         "timestamp": health["timestamp"],
     }
@@ -1184,7 +1179,6 @@ async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> 
     full = {
         "gate": _gate_status(),
         "wallet": _wallet_status(),
-        "telegram_queue": _telegram_queue(),
         "recent_signals": _recent_signals(),
         "research": _research_feed(),
         "tradingview": await _tradingview_status(),
@@ -1197,7 +1191,6 @@ async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> 
             "public_view": True,
             "gate": _public_gate(full["gate"]),
             "wallet": _public_wallet(full["wallet"]),
-            "telegram_queue": _public_telegram(full["telegram_queue"]),
             "recent_signals": _public_signals(full["recent_signals"]),
             "research": _public_research(full["research"]),
             "tradingview": _public_tradingview(full["tradingview"]),
@@ -1369,152 +1362,6 @@ async def frontend_assets(filename: str, request: Request, user: str = Depends(a
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(path)
-
-
-# ---------------------------------------------------------------------------
-# Telegram Mini App surface (read-only; approvals stay on the bot's button rail)
-# ---------------------------------------------------------------------------
-
-_MINIAPP_HTML = Path(__file__).resolve().parent / "static" / "miniapp.html"
-_DEFAULT_DECISION_BOT_URL = "https://t.me/sapphirerelaybot"
-_PRIVATE_NO_STORE = {"Cache-Control": "no-store"}
-
-
-def _observed_file_at(path: Path) -> str | None:
-    try:
-        return datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
-    except OSError:
-        return None
-
-
-def _miniapp_inbox() -> dict[str, Any]:
-    """Project the pending queue as a file-backed snapshot, never as liveness."""
-    path = _TELEGRAM_DIR / "pending_queue.json"
-    if not path.is_file():
-        return {
-            "status": "not_observed",
-            "pending": None,
-            "items": [],
-            "observed_at": None,
-        }
-
-    raw = _read_json(path)
-    observed_at = _observed_file_at(path)
-    if not isinstance(raw, list):
-        return {
-            "status": "unavailable",
-            "pending": None,
-            "items": [],
-            "observed_at": observed_at,
-        }
-
-    items = [
-        telegram_miniapp.sanitize_proposal(item, index + 1)
-        for index, item in enumerate(raw[:50])
-        if isinstance(item, dict)
-    ]
-    urgency_rank = {"critical": 0, "high": 1, "normal": 2, "low": 3}
-    items.sort(
-        key=lambda item: (
-            urgency_rank.get(str(item.get("urgency")), 4),
-            str(item.get("expires_at") or "9999"),
-        )
-    )
-    return {
-        "status": "snapshot",
-        "pending": len(raw),
-        "items": items,
-        "observed_at": observed_at,
-    }
-
-
-def _decision_bot_url() -> str:
-    configured = _env("TG_MINIAPP_DECISION_URL", "").strip()
-    if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]{5,64}", configured):
-        return configured
-    return _DEFAULT_DECISION_BOT_URL
-
-
-def tg_auth(request: Request) -> telegram_miniapp.TelegramUser:
-    """Authenticate a Mini App API request via `Authorization: tma <initData>`."""
-    try:
-        return telegram_miniapp.authenticate_header(request.headers.get("Authorization"))
-    except telegram_miniapp.InitDataError as exc:
-        if str(exc) == "bot token not configured":
-            raise HTTPException(status_code=503, detail="miniapp not configured") from exc
-        raise HTTPException(
-            status_code=401,
-            detail="invalid telegram credentials",
-            headers={"WWW-Authenticate": "tma"},
-        ) from exc
-
-
-@app.get("/miniapp", response_class=FileResponse)
-@limiter.limit("60/minute")
-async def miniapp_page(request: Request) -> Response:
-    """Public static shell; all data behind /api/tg/* (validated initData)."""
-    if not _MINIAPP_HTML.is_file():
-        raise HTTPException(status_code=404, detail="miniapp not built")
-    return FileResponse(
-        _MINIAPP_HTML,
-        media_type="text/html",
-        headers=_PRIVATE_NO_STORE,
-    )
-
-
-@app.get("/api/tg/summary")
-@limiter.limit("60/minute")
-async def api_tg_summary(
-    request: Request,
-    response: Response,
-    _user: telegram_miniapp.TelegramUser = Depends(tg_auth),
-) -> dict[str, Any]:
-    """Private decision inbox projection for the read-only Mini App."""
-    response.headers.update(_PRIVATE_NO_STORE)
-    return {
-        "inbox": _miniapp_inbox(),
-        "decision_url": _decision_bot_url(),
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
-
-
-@app.get("/api/tg/decisions")
-@limiter.limit("60/minute")
-async def api_tg_decisions(
-    request: Request,
-    response: Response,
-    _user: telegram_miniapp.TelegramUser = Depends(tg_auth),
-) -> dict[str, Any]:
-    """Read-only outcome history with honest file-observation semantics."""
-    response.headers.update(_PRIVATE_NO_STORE)
-    path = _TELEGRAM_DIR / "decisions.jsonl"
-    if not path.is_file():
-        return {
-            "status": "not_observed",
-            "decisions": [],
-            "count": None,
-            "observed_at": None,
-        }
-
-    rows = list(reversed(_read_jsonl(path, limit=50)))
-    if not rows:
-        try:
-            has_unreadable_content = bool(path.read_text(encoding="utf-8").strip())
-        except OSError:
-            has_unreadable_content = True
-        if has_unreadable_content:
-            return {
-                "status": "unavailable",
-                "decisions": [],
-                "count": None,
-                "observed_at": _observed_file_at(path),
-            }
-    return {
-        "status": "snapshot",
-        "decisions": [telegram_miniapp.sanitize_decision(r, i + 1) for i, r in enumerate(rows)],
-        "count": len(rows),
-        "observed_at": _observed_file_at(path),
-    }
 
 
 # ---------------------------------------------------------------------------

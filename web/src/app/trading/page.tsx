@@ -13,8 +13,8 @@ import {
 export const metadata: Metadata = {
   title: 'Trading',
   description:
-    'Robinhood Agentic free-reign strategy on designated rails — bounded by hard caps, ' +
-    'wallet fences, Super Heavy orchestration, and a kill switch that fails closed.',
+    'An inert design contract for bounded execution on designated rails. Runtime, broker, ' +
+    'credential, and production availability are not claimed.',
   alternates: { canonical: '/trading/' },
 }
 
@@ -22,24 +22,24 @@ const MODES = [
   {
     tone: 'ice' as const,
     label: 'Halted',
-    body: 'Kill switch present, or a hard safety veto. No order path is open.',
+    body: 'Design state: a pause or hard safety veto leaves no order path open.',
   },
   {
     tone: 'degraded' as const,
     label: 'Off',
-    body: 'Desk is observing. Paper may run; nothing with real capital is proposed.',
+    body: 'Design state: observation or paper work carries no capital authority.',
   },
   {
     tone: 'sapphire' as const,
     label: 'Gated',
-    body: 'Armed under caps. Every real action still waits for a human on the approval rail.',
+    body: 'Design state: a separately proven gate would still bind every real action.',
   },
   {
     tone: 'verified' as const,
     label: 'Free-reign',
     body:
-      'Armed agentic mode. Qualifying proposals on designated rails auto-approve under ' +
-      'clip-to-cap limits — kill switch, wallet fence, and daily caps still bind.',
+      'Design state only: bounded autonomy requires current pause, broker, credential, ' +
+      'runtime, and reconciliation evidence before it can exist.',
   },
 ]
 
@@ -110,9 +110,29 @@ export default function Trading() {
     <>
       <PageHeader
         eyebrow="Trading"
-        title="Agentic on designated rails."
-        lede="The desk runs a Robinhood Agentic free-reign strategy on capital that is explicitly allowed to take risk. Every path to an order still passes through limits it cannot modify, and a switch a human can always throw."
+        title="A bounded execution design."
+        lede="This page documents an inert contract. It does not establish that a broker, wallet, credential, runtime, pause source, or production execution path is currently available."
       />
+
+      <section className="mx-auto max-w-6xl px-6 pt-10">
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <Eyebrow>Design contract</Eyebrow>
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-ink-dim">
+                Task 063 source is merged but inert. Task 065, credential enrollment,
+                broker reconciliation, runtime installation, and production execution
+                remain unavailable until separately proven.
+              </p>
+            </div>
+            <StatusChip tone="degraded">Runtime unavailable</StatusChip>
+          </div>
+          <p className="mt-5 text-sm text-ink">
+            No control on this page can clear a pause, arm a gate, approve an action, or
+            place an order.
+          </p>
+        </Panel>
+      </section>
 
       <section className="mx-auto max-w-6xl px-6 pt-10">
         <div className="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
@@ -134,10 +154,9 @@ export default function Trading() {
             </h2>
             <p className="mt-6 text-base leading-relaxed text-ink-dim">
               A signal is not an order. Research, VPIN, TA, and TV alerts become proposals.
-              Free-reign easy auto-approves only when the gate is armed, the kill switch is
-              absent, the wallet is fenced, and the ticket fits (or clips into) the lane cap.
-              Gated mode still waits for a human. Any check that cannot complete stops the
-              sequence.
+              The proposed free-reign path could advance only after separately proven,
+              current pause, gate, wallet, broker, and cap observations. Any unknown check
+              stops the sequence. This diagram is not runtime telemetry.
             </p>
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
               <Verified>Fail-closed by construction</Verified>
@@ -146,21 +165,17 @@ export default function Trading() {
           </div>
 
           <Terminal
-            title="execution trace — free-reign easy · RH agentic"
+            title="design trace — runtime unavailable"
             scanline
             lines={[
               { prompt: true, text: 'desk propose --symbol HOOD --side buy --lane thesis' },
               { text: '' },
-              { text: 'check  wallet_fence      agentic_allowed', tone: 'verified' },
-              { text: 'check  killswitch        absent', tone: 'verified' },
-              { text: 'check  gate              ARMED', tone: 'verified' },
-              { text: 'check  free_reign        easy · auto_approve', tone: 'verified' },
-              { text: 'check  per_trade_cap     clip-to-cap', tone: 'sapphire' },
-              { text: 'check  daily_cap         within limit', tone: 'verified' },
-              { text: 'check  venue_slots       brokerage ok', tone: 'verified' },
+              { text: 'observe pause_sources    UNAVAILABLE', tone: 'dim' },
+              { text: 'observe broker           UNAVAILABLE', tone: 'dim' },
+              { text: 'observe credentials      UNAVAILABLE', tone: 'dim' },
+              { text: 'observe runtime          UNAVAILABLE', tone: 'dim' },
               { text: '' },
-              { text: '→ ledger auto-approve via free_reign', tone: 'verified' },
-              { text: '→ executor consume → RH Agentic MCP', tone: 'dim' },
+              { text: '→ no action admitted', tone: 'dim' },
             ]}
           />
         </div>
@@ -178,7 +193,7 @@ export default function Trading() {
         </h2>
         <dl className="mt-12 border-t border-line">
           {RAILS.map((rail) => (
-            <Row key={rail.term} term={rail.term} status={<Verified>enforced</Verified>}>
+            <Row key={rail.term} term={rail.term} status={<StatusChip tone="ice">design</StatusChip>}>
               {rail.body}
             </Row>
           ))}
@@ -197,7 +212,7 @@ export default function Trading() {
         </h2>
         <dl className="mt-12 border-t border-line">
           {STACK.map((item) => (
-            <Row key={item.term} term={item.term} status={<Verified>live</Verified>}>
+            <Row key={item.term} term={item.term} status={<StatusChip tone="ice">documented</StatusChip>}>
               {item.body}
             </Row>
           ))}
@@ -215,9 +230,9 @@ export default function Trading() {
             </h2>
             <div className="mt-7 space-y-5 text-base leading-relaxed text-ink-dim">
               <p>
-                It is an autonomous execution system running on designated test and agentic
-                wallets — including a Robinhood Agentic brokerage account — with risk
-                deliberately accepted on those envelopes.
+                It is a source-level design for bounded execution on designated test and
+                agentic rails. The public site does not claim that those rails are installed,
+                reconciled, enrolled, unpaused, or running.
               </p>
               <p>
                 It is not a managed fund, it does not take outside capital, and nothing on

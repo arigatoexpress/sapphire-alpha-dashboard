@@ -139,7 +139,7 @@ def _sample_live(*, sequence: int = 4242) -> dict[str, Any]:
             "feed_age_s": 4.2,
             "events_per_min": 19.0,
             "paper_strategies": 7,
-            "decision_gate": "telegram",
+            "decision_gate": "manual",
             "execution": "off",
         },
         "events": [
