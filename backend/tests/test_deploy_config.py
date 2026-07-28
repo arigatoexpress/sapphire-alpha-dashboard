@@ -48,6 +48,21 @@ def test_deploy_script_never_sends_inline_secrets_or_live_state():
     assert 'SERVICE_NAME="${SERVICE_NAME:-' not in content
 
 
+def test_deploy_script_binds_exact_personal_project():
+    content = (ROOT / "deploy.sh").read_text(encoding="utf-8")
+    assert 'PROJECT_ID="sapphire-479610"' in content
+    assert 'PROJECT_ID="${PROJECT_ID:-' not in content
+    assert '--project="${PROJECT_ID}"' in content
+    assert 'REGION="us-central1"' in content
+    assert 'SERVICE_NAME="sapphire-alpha-dashboard"' in content
+
+
+def test_ordinary_deploy_does_not_request_access_policy_mutation():
+    content = (ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+    assert "--allow-unauthenticated" not in content
+    assert "--no-allow-unauthenticated" not in content
+
+
 def test_dockerfile_bakes_build_identity_into_runtime_image():
     content = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     for declaration in (
