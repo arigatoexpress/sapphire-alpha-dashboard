@@ -28,8 +28,14 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from live_telemetry import validate_snapshot  # type: ignore[import]  # noqa: E402
-from main import _build_identity as _runtime_build_identity  # type: ignore[import]  # noqa: E402
+from live_telemetry import (  # type: ignore[import]  # noqa: E402
+    _age_runtime_projection,
+    validate_snapshot,
+)
+from main import (  # type: ignore[import]  # noqa: E402
+    _build_identity as _runtime_build_identity,
+    _readiness_snapshot as _runtime_readiness,
+)
 from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]  # noqa: E402
 
 
@@ -51,6 +57,12 @@ def _build_live_snapshot() -> dict[str, Any]:
     now = time.time()
     observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
     freshness_s = round(max(0.0, now - observed), 1)
+    _age_runtime_projection(
+        projected,
+        now=now,
+        snapshot_observed_at=observed,
+        stale_after_seconds=180,
+    )
     projected.update(
         {
             "status": "live" if freshness_s <= 180 else "stale",
@@ -66,6 +78,7 @@ def _empty_moss_snapshot() -> dict[str, Any]:
     return {
         "version": 1,
         "status": "offline",
+        "observed_at": None,
         "freshness_s": None,
         "served_at": _utc_now(),
         "public_view": True,
@@ -82,8 +95,8 @@ def _empty_moss_snapshot() -> dict[str, Any]:
 def _empty_fleet_counts() -> dict[str, Any]:
     return {
         "public_view": True,
-        "leases": 0,
-        "gates_open": 0,
+        "leases": None,
+        "gates_open": None,
         "snapshot_age_s": None,
     }
 
@@ -188,6 +201,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         if self.path == "/api/build":
             self._send_json(200, _runtime_build_identity(), cache_control="no-store")
+            return
+
+        if self.path == "/api/v1/readiness":
+            self._send_json(200, _runtime_readiness(), cache_control="no-store")
             return
 
         if self.path == "/api/v1/live":

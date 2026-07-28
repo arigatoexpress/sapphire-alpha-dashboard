@@ -32,6 +32,7 @@ import logging
 import os
 import re
 import secrets
+import stat
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -313,9 +314,11 @@ _RH_CHAIN_DIR = _HOME / "ops-state" / "rh-chain"
 _OBSERVATIONS_DIR = _HOME / "ops-state" / "sapphire-observations"
 _PAUSE_SENTINELS: dict[str, Path] = {
     "mac": _HOME / ".sapphire" / "autonomous_trading_pause",
-    "windows": _RH_CHAIN_DIR / "windows-pause-observation.json",
+    "rh_chain": _RH_CHAIN_DIR / "killswitch",
 }
 _RUNTIME_TTL_SECONDS = 180.0
+_MAX_PAUSE_DOCUMENT_BYTES = 64 * 1024
+_MAX_FLEET_FUTURE_SKEW_SECONDS = 5.0
 
 _RUNTIME_READINESS: dict[str, Any] = {
     "schema_version": "sapphire-runtime-readiness/v1",
@@ -323,7 +326,20 @@ _RUNTIME_READINESS: dict[str, Any] = {
         "status": "SOURCE_MERGED_INERT",
         "merged_commit": "4205e79ac53e56b03949bf266f2a3b074a651d71",
     },
-    "task065": {"status": "UNAVAILABLE"},
+    "task065": {
+        "status": "SOURCE_MERGED_INERT",
+        "reviewed_head": "2d76f2a3254e5d21ca917a01f945ab1b64912aa0",
+        "merged_commit": "f19270df630ef0cb67d439e00e07e70121dae4de",
+        "result_sha256": (
+            "5fba3c1802fa75ea49801fedb07f4a48cdeaefbe7ef8cd776621f6b8e5b5e916"
+        ),
+        "review_sha256": (
+            "49367a90974b4c4605aa2d2c5e004c7cec9eb0841e73062d16f8bf14f2277cfc"
+        ),
+        "outcome": "TWO_ATTENDANCES_REQUIRED",
+        "one_attendance": "UNAVAILABLE",
+        "production_execution": "UNAVAILABLE",
+    },
     "credential_enrollment": "UNAVAILABLE",
     "broker_reconciliation": "UNAVAILABLE",
     "runtime_installation": "UNAVAILABLE",
@@ -438,6 +454,11 @@ async def api_health(request: Request) -> dict[str, Any]:
 @limiter.limit("30/minute")
 async def api_runtime_readiness(request: Request) -> dict[str, Any]:
     """Source/dependency readiness; this endpoint grants no runtime authority."""
+    return _readiness_snapshot()
+
+
+def _readiness_snapshot() -> dict[str, Any]:
+    """Return an isolated copy of the inert source/dependency receipt."""
     return json.loads(json.dumps(_RUNTIME_READINESS))
 
 
@@ -642,24 +663,177 @@ def _skin_book() -> dict[str, Any]:
     }
 
 
-def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
+def _invalid_pause_observation(source: str) -> dict[str, Any]:
+    return {"source": source, "state": "invalid", "observed_at": None}
+
+
+def _open_pause_parent(directory: Path) -> int:
+    """Open an absolute directory one non-symlink component at a time."""
+    if not directory.is_absolute() or any(
+        component in {"", ".", ".."} for component in directory.parts[1:]
+    ):
+        raise OSError("pause parent must be an absolute normalized path")
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    current = os.open(os.sep, flags)
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        for component in directory.parts[1:]:
+            next_fd = os.open(component, flags, dir_fd=current)
+            os.close(current)
+            current = next_fd
+        return current
+    except Exception:
+        os.close(current)
+        raise
+
+
+def _stable_stat_identity(value: os.stat_result) -> tuple[int, ...]:
+    """Fields whose drift makes one persisted read unverifiable."""
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_uid,
+        value.st_gid,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
+    """Read one pause sentinel through a single verified descriptor.
+
+    Path checks followed by ``read_text`` are vulnerable to symlink and
+    replacement races.  The descriptor is opened without following symlinks,
+    checked before and after the bounded read, and matched back to the current
+    path.  Group/world-readable pause state is harmless, but another identity
+    must never be able to write it.
+    """
+    parent_fd: int | None = None
+    file_fd: int | None = None
+    fresh_parent_fd: int | None = None
+    try:
+        parent_fd = _open_pause_parent(path.parent)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return _invalid_pause_observation(source)
+
+    try:
+        parent_before = os.fstat(parent_fd)
+        if (
+            not stat.S_ISDIR(parent_before.st_mode)
+            or parent_before.st_uid != os.geteuid()
+            or parent_before.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        ):
+            return _invalid_pause_observation(source)
+
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        try:
+            file_fd = os.open(path.name, flags, dir_fd=parent_fd)
+        except FileNotFoundError:
+            return None
+        except OSError:
+            return _invalid_pause_observation(source)
+
+        before = os.fstat(file_fd)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+            or before.st_nlink != 1
+            or before.st_size > _MAX_PAUSE_DOCUMENT_BYTES
+        ):
+            return _invalid_pause_observation(source)
+
+        chunks: list[bytes] = []
+        remaining = _MAX_PAUSE_DOCUMENT_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(file_fd, min(8192, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        payload = b"".join(chunks)
+        after = os.fstat(file_fd)
+        parent_after = os.fstat(parent_fd)
+        try:
+            path_after = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            fresh_parent_fd = _open_pause_parent(path.parent)
+            fresh_parent = os.fstat(fresh_parent_fd)
+            fresh_path = os.stat(
+                path.name,
+                dir_fd=fresh_parent_fd,
+                follow_symlinks=False,
+            )
+        except OSError:
+            return _invalid_pause_observation(source)
+        stable_descriptor = _stable_stat_identity(before) == _stable_stat_identity(after)
+        stable_parent = (
+            _stable_stat_identity(parent_before)
+            == _stable_stat_identity(parent_after)
+            == _stable_stat_identity(fresh_parent)
+        )
+        same_path_object = (
+            stat.S_ISREG(path_after.st_mode)
+            and stat.S_ISREG(fresh_path.st_mode)
+            and _stable_stat_identity(after)
+            == _stable_stat_identity(path_after)
+            == _stable_stat_identity(fresh_path)
+        )
+        if (
+            not stable_descriptor
+            or not stable_parent
+            or not same_path_object
+            or len(payload) != after.st_size
+            or len(payload) > _MAX_PAUSE_DOCUMENT_BYTES
+        ):
+            return _invalid_pause_observation(source)
+
+        raw = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+        )
         if not isinstance(raw, dict):
             raise ValueError
         state = raw.get("state", "active")
         observed = _observation_time(raw)
-        if observed is None:
-            observed = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        if state == "active" and observed is None:
+            observed = _persisted_time(raw.get("created_at"))
+        if state not in {"active", "clear"} or observed is None:
+            return _invalid_pause_observation(source)
         return {
             "source": source,
             "state": state,
             "observed_at": observed.isoformat(),
+            "_source_identity": (after.st_dev, after.st_ino),
         }
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {"source": source, "state": "invalid", "observed_at": None}
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return _invalid_pause_observation(source)
+    finally:
+        if fresh_parent_fd is not None:
+            os.close(fresh_parent_fd)
+        if file_fd is not None:
+            os.close(file_fd)
+        if parent_fd is not None:
+            os.close(parent_fd)
 
 
 def _evaluate_pause_truth(
@@ -669,10 +843,11 @@ def _evaluate_pause_truth(
 ) -> dict[str, Any]:
     """Resolve two persisted pause sources without treating absence as clear."""
     now = now or datetime.now(UTC)
-    states: dict[str, set[str]] = {"mac": set(), "windows": set()}
+    states: dict[str, set[str]] = {"mac": set(), "rh_chain": set()}
     observed_times: list[datetime] = []
     clear_is_current = True
     invalid = False
+    source_identities: set[tuple[int, int]] = set()
     for item in observations:
         if not isinstance(item, dict):
             invalid = True
@@ -680,9 +855,22 @@ def _evaluate_pause_truth(
         source = item.get("source")
         state = item.get("state")
         observed = _persisted_time(item.get("observed_at"))
+        identity = item.get("_source_identity")
         if source not in states or state not in {"active", "clear"} or observed is None:
             invalid = True
             continue
+        if (
+            not isinstance(identity, (list, tuple))
+            or len(identity) != 2
+            or any(type(value) is not int for value in identity)
+        ):
+            invalid = True
+            continue
+        normalized_identity = (identity[0], identity[1])
+        if normalized_identity in source_identities:
+            invalid = True
+            continue
+        source_identities.add(normalized_identity)
         states[source].add(state)
         observed_times.append(observed)
         if state == "clear":
@@ -711,11 +899,7 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     raw_gate = _read_json(_RH_CHAIN_DIR / "gate.json")
     gate = raw_gate if isinstance(raw_gate, dict) else {}
-    observations = [
-        item
-        for item in gate.get("pause_sources", [])
-        if isinstance(item, dict)
-    ] if isinstance(gate.get("pause_sources"), list) else []
+    observations: list[dict[str, Any]] = []
     for source, path in _PAUSE_SENTINELS.items():
         if (item := _pause_file_observation(source, path)) is not None:
             observations.append(item)
@@ -1266,13 +1450,25 @@ def _no_paths(value: Any) -> str:
     return text[:120]
 
 
-def _whitelist_fleet(raw: Any) -> dict[str, Any]:
+def _whitelist_fleet(
+    raw: Any,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
     """Reduce an untrusted fleet.json to the exact serving shape."""
     if not isinstance(raw, dict):
         return dict(_EMPTY_FLEET)
     generated_at = raw.get("generated_at")
-    if not isinstance(generated_at, str) or _fleet_age_seconds(generated_at) is None:
+    age_s = _fleet_age_seconds(generated_at, now=now)
+    if not isinstance(generated_at, str) or age_s is None:
         return dict(_EMPTY_FLEET)
+    if age_s > _RUNTIME_TTL_SECONDS:
+        return {
+            "generated_at": generated_at,
+            "leases": [],
+            "gates": [],
+            "counts": {"leases": None, "gates_open": None},
+        }
     leases = [
         {
             "agent": _no_paths(lease.get("agent")),
@@ -1301,15 +1497,23 @@ def _whitelist_fleet(raw: Any) -> dict[str, Any]:
     }
 
 
-def _fleet_age_seconds(generated_at: str | None) -> float | None:
+def _fleet_age_seconds(
+    generated_at: str | None,
+    *,
+    now: datetime | None = None,
+) -> float | None:
     if not generated_at:
         return None
     try:
         gen = datetime.fromisoformat(generated_at)
         if gen.tzinfo is None:
             gen = gen.replace(tzinfo=UTC)
-        return max(0.0, round((datetime.now(UTC) - gen).total_seconds(), 1))
-    except ValueError:
+        observed_now = now or datetime.now(UTC)
+        delta = (observed_now - gen).total_seconds()
+        if delta < -_MAX_FLEET_FUTURE_SKEW_SECONDS:
+            return None
+        return round(max(0.0, delta), 1)
+    except (TypeError, ValueError):
         return None
 
 

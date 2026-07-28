@@ -197,11 +197,7 @@ def test_pause_clear_requires_two_descriptor_identities() -> None:
 def test_duplicate_pause_json_keys_are_rejected(tmp_path: Path) -> None:
     candidate = tmp_path / "duplicate.json"
     candidate.write_text(
-        (
-            '{"state":"active","state":"clear",'
-            f'"observed_at":"{NOW.isoformat()}"'
-            "}"
-        ),
+        (f'{{"state":"active","state":"clear","observed_at":"{NOW.isoformat()}"}}'),
         encoding="utf-8",
     )
 
@@ -399,9 +395,7 @@ def test_embedded_gate_pause_claims_cannot_replace_canonical_files(
 def test_stale_parent_expires_future_skewed_agent_claim() -> None:
     observed = NOW
     sample = _sample(observed_at=observed.isoformat(), sequence=9301)
-    sample["agents"][0]["updated_at"] = (
-        observed + timedelta(seconds=50)
-    ).isoformat()
+    sample["agents"][0]["updated_at"] = (observed + timedelta(seconds=50)).isoformat()
     snapshot = validate_snapshot(sample)
     store = _store(snapshot, received_at=observed.timestamp())
 
@@ -499,9 +493,7 @@ def test_stale_fleet_snapshot_withdraws_current_values() -> None:
                 "expires_at": old.isoformat(),
             }
         ],
-        "gates": [
-            {"id": 1, "title": "stale gate", "age_hours": 1, "status": "open"}
-        ],
+        "gates": [{"id": 1, "title": "stale gate", "age_hours": 1, "status": "open"}],
     }
 
     projected = main._whitelist_fleet(raw, now=NOW)

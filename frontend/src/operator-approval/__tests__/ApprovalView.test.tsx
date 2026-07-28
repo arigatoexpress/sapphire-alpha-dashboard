@@ -138,7 +138,7 @@ const bundle: ApprovalBundleDTO = {
     consumer_source_sha256: 'b'.repeat(64),
     task063_merged_commit: '4205e79ac53e56b03949bf266f2a3b074a651d71',
     task063_status: 'SOURCE_MERGED_INERT',
-    task065_status: 'UNAVAILABLE',
+    task065_status: 'SOURCE_MERGED_INERT',
     credential_enrollment_status: 'UNAVAILABLE',
     broker_reconciliation_status: 'UNAVAILABLE',
     runtime_installation_status: 'UNAVAILABLE',

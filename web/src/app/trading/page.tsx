@@ -47,40 +47,40 @@ const RAILS = [
   {
     term: 'RH Agentic MCP',
     body:
-      'Brokerage execution for equities and single-leg options on the designated agentic ' +
-      'account only. Crypto placement is split off the MCP path. Non-agentic accounts are ' +
-      'rejected at the tool boundary.',
+      'Proposed equities rail for the designated agentic account only. Option capability ' +
+      'is not established; a separate bounded repair may add sell-to-close for one proven ' +
+      'existing option, never an option purchase, roll, or exercise.',
   },
   {
     term: 'Free-reign easy',
     body:
-      'When armed, the policy layer auto-approves brokerage (and designated L2 tracks) ' +
-      'through the same ledger a human approval uses. Account-scale envelopes — not ' +
-      'toy ticket sizes. Oversized intent clips to the lane cap instead of bouncing.',
+      'Design intent: an independently armed policy could admit brokerage and designated ' +
+      'L2 actions through the same ledger a human approval uses. Any such path remains ' +
+      'unavailable until every required observation is separately proven current.',
   },
   {
     term: 'Account-scale envelopes',
     body:
-      'Verified / thesis / L2 lanes share a large daily envelope sized for the full ' +
-      'agentic book. Hard stops remain kill switch + wallet fence only.',
+      'The proposed verified, thesis, and L2 lanes would share bounded daily envelopes. ' +
+      'This source description supplies no capital authority or current lane capacity.',
   },
   {
     term: 'Per-venue positions',
     body:
-      'Open-position limits are counted per venue so brokerage and on-chain books do not ' +
-      'starve each other under a single global slot budget.',
+      'The design counts open-position limits per venue so brokerage and on-chain books ' +
+      'would not share one ambiguous slot budget.',
   },
   {
     term: 'Kill switch',
     body:
-      'A sentinel file on either host halts execution. Presence is checked before every ' +
-      'action, and an unreadable check is treated as present.',
+      'The contract requires two canonical pause observations and fails closed on any ' +
+      'missing, stale, unreadable, or unverifiable source.',
   },
   {
     term: 'Wallet fence',
     body:
-      'Execution is restricted to a registry of designated addresses and the agentic ' +
-      'brokerage account. A wallet not in the registry cannot be traded against.',
+      'The proposed executor would be restricted to designated addresses and the agentic ' +
+      'brokerage account. This page establishes neither registry nor wallet availability.',
   },
 ]
 
@@ -95,13 +95,13 @@ const STACK = [
     term: 'VPIN / TA / TV',
     body:
       'Flow-toxicity (VPIN), technical alerts, and TradingView webhooks feed proposals. ' +
-      'Signals are advisory until they pass the gate and free-reign or human approval.',
+      'Signals remain advisory and cannot establish current execution authority.',
   },
   {
     term: 'Windows plant',
     body:
-      'GPU executor hosts the schtasks plant: free-reign tick, executor consume, VPIN, ' +
-      'orchestrator heartbeat. Mac remains control plane and RH MCP gate.',
+      'The Windows GPU node is the intended executor host. Scheduled tasks, credentials, ' +
+      'broker reconciliation, and production execution are currently unavailable.',
   },
 ]
 

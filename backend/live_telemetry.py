@@ -1155,27 +1155,52 @@ def _age_seconds(now: float, value: Any) -> float | None:
 
 def _expire_desk_runtime(desk: dict[str, Any]) -> None:
     """Withdraw control-plane claims while retaining their persisted timestamp."""
-    desk["execution"] = "unknown"
-    desk["feeds"] = {"fresh": None, "total": None}
-    autonomy = desk.get("autonomy")
-    if isinstance(autonomy, dict):
-        autonomy.update(
+    desk["posture"] = "unknown"
+    desk["leader"] = "unknown"
+    validation = desk.get("validation")
+    if isinstance(validation, dict):
+        validation.update(
             {
-                "active": False,
-                "new_entries": "waiting",
-                "reason": "runtime observation unavailable",
+                "oos_pass": None,
+                "oos_total": None,
+                "conflicts": None,
+                "conflict_details": [],
+                "replay_span_hours": None,
+                "replay_data_through": None,
             }
         )
-    desk["safety_floor"] = {
-        "gate_valid": False,
-        "pause_clear": None,
-        "ledger": "unknown",
-        "bounded_policy": False,
-    }
+    decisions = desk.get("decisions")
+    if isinstance(decisions, dict):
+        for key in tuple(decisions):
+            decisions[key] = None
+    desk["execution"] = "unknown"
+    desk["feeds"] = {"fresh": None, "total": None}
+    desk["tracks"] = []
+    desk["autonomy"] = _autonomy(None)
+    desk["safety_floor"] = _safety_floor(None)
     risk = desk.get("risk")
     if isinstance(risk, dict):
-        risk["ledger_state"] = "unknown"
-        risk["new_risk"] = "unknown"
+        risk.update(
+            {
+                "ledger_state": "unknown",
+                "realized_drawdown_pct": None,
+                "drawdown_limit_pct": None,
+                "budget_remaining_pct": None,
+                "new_risk": "unknown",
+            }
+        )
+    experiment = desk.get("experiment")
+    if isinstance(experiment, dict):
+        experiment.update(
+            {
+                "status": "unknown",
+                "qualified_days": None,
+                "required_days": None,
+                "last_committed_date": None,
+                "collector": "unknown",
+            }
+        )
+    desk["epistemics"] = _epistemics(None)
 
 
 def _age_runtime_projection(
@@ -1204,7 +1229,7 @@ def _age_runtime_projection(
         if isinstance(age, (int, float)) and not isinstance(age, bool):
             age = round(max(0.0, float(age)) + elapsed, 3)
             node["freshness_s"] = age
-            if age > stale_after_seconds:
+            if not parent_current or age > stale_after_seconds:
                 node["status"] = "unknown"
                 node["activity_rate"] = None
 
@@ -1217,7 +1242,7 @@ def _age_runtime_projection(
         if not isinstance(agent, dict):
             continue
         age = _age_seconds(now, agent.get("updated_at"))
-        if age is None or age > stale_after_seconds:
+        if not parent_current or age is None or age > stale_after_seconds:
             agent["state"] = "offline"
             agent["verification"] = "pending"
             agent["activity"] = "Capability observation unavailable"
@@ -1257,7 +1282,7 @@ def _age_runtime_projection(
             age = track.get("freshness_s")
             if isinstance(age, (int, float)) and not isinstance(age, bool):
                 track["freshness_s"] = round(max(0.0, float(age)) + elapsed, 3)
-                if track["freshness_s"] > stale_after_seconds:
+                if not parent_current or track["freshness_s"] > stale_after_seconds:
                     track["status"] = "stale"
         epistemics = desk.get("epistemics")
         if isinstance(epistemics, dict):

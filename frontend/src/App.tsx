@@ -65,7 +65,11 @@ function isFleetCounts(fleet: FleetData | FleetCounts): fleet is FleetCounts {
 }
 
 function fleetCount(fleet: FleetData | FleetCounts | null, key: 'leases' | 'gates') {
-  if (!fleet) return null
+  if (
+    !fleet ||
+    fleet.snapshot_age_s == null ||
+    fleet.snapshot_age_s > RUNTIME_TTL_SECONDS
+  ) return null
   if (isFleetCounts(fleet)) return key === 'leases' ? fleet.leases : fleet.gates_open
   return key === 'leases' ? fleet.counts.leases : fleet.counts.gates_open
 }
@@ -105,7 +109,10 @@ export default function App(
   const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
   const gateCount = fleetCount(fleet, 'gates')
   const leaseCount = fleetCount(fleet, 'leases')
-  const epistemics = snapshot?.desk?.epistemics
+  const epistemics =
+    snapshot?.status === 'live' && snapshot.desk?.epistemics?.fresh
+      ? snapshot.desk.epistemics
+      : null
   const thesis = epistemics?.thesis
 
   const segments = useMemo(
@@ -330,13 +337,17 @@ function ThesisPulse({
   snapshot: LiveSnapshot | null
   execution: string | null
 }) {
-  const epistemics = snapshot?.desk?.epistemics
+  const runtimeCurrent = snapshot?.status === 'live'
+  const epistemics =
+    runtimeCurrent && snapshot.desk?.epistemics?.fresh
+      ? snapshot.desk.epistemics
+      : null
   const thesis = epistemics?.thesis
   const regime = epistemics?.regime
   const learning = epistemics?.learning
   const falsifier = epistemics?.falsifiers?.[0]
-  const autonomy = snapshot?.desk?.autonomy
-  const floor = snapshot?.desk?.safety_floor
+  const autonomy = runtimeCurrent ? snapshot.desk?.autonomy : null
+  const floor = runtimeCurrent ? snapshot.desk?.safety_floor : null
   const floorChecks = floor
     ? [floor.gate_valid, floor.pause_clear, floor.ledger === 'reconciled', floor.bounded_policy]
     : []
@@ -807,7 +818,7 @@ export function buildEvidenceSegments({
     {
       id: 'fleet',
       label: 'Coordination',
-      value: fleet && fleet.snapshot_age_s != null
+      value: fleetCurrent && leaseCount != null && gateCount != null
         ? `${formatCount(leaseCount)} holds · ${formatCount(gateCount)} gates`
         : NOT_OBSERVED,
       source: '/api/fleet',
@@ -817,9 +828,11 @@ export function buildEvidenceSegments({
       uncertainty: errors.fleet
         ? 'poll failed; value is from the last report'
         : fleet?.snapshot_age_s != null
-          ? isFleetCounts(fleet)
-            ? 'counts-only projection; observation time absent'
-            : 'sanitized fleet projection'
+          ? !fleetCurrent
+            ? 'snapshot expired; counts withdrawn'
+            : isFleetCounts(fleet)
+              ? 'counts-only projection; observation time absent'
+              : 'sanitized fleet projection'
           : 'no timed fleet observation',
       tone: errors.fleet
         ? 'degraded'
@@ -905,7 +918,8 @@ function buildAttention({
     })
   }
 
-  const blocked = snapshot?.desk?.decisions.blocked
+  const blocked =
+    snapshot?.status === 'live' ? snapshot.desk?.decisions.blocked : null
   if (blocked != null && blocked > 0) {
     items.push({
       label: `${blocked} ${blocked === 1 ? 'decision is' : 'decisions are'} policy-blocked`,
