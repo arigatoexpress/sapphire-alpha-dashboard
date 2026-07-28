@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -102,6 +104,145 @@ def test_group_or_world_writable_pause_document_is_unverifiable(
     }
 
 
+def test_fifo_pause_source_is_rejected_without_blocking(tmp_path: Path) -> None:
+    candidate = tmp_path / "pause.fifo"
+    os.mkfifo(candidate)
+    repo = Path(__file__).parents[2]
+    script = (
+        "from pathlib import Path\n"
+        "import main\n"
+        f"result = main._pause_file_observation('mac', Path({str(candidate)!r}))\n"
+        "assert result == "
+        "{'source': 'mac', 'state': 'invalid', 'observed_at': None}\n"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo,
+        env={**os.environ, "PYTHONPATH": f"{repo / 'backend'}:{repo}"},
+        capture_output=True,
+        text=True,
+        timeout=1,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_device_pause_source_is_rejected() -> None:
+    assert main._pause_file_observation("mac", Path(os.devnull)) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_hardlinked_pause_source_is_not_independent(tmp_path: Path) -> None:
+    original = tmp_path / "original.json"
+    alias = tmp_path / "alias.json"
+    original.write_text(
+        json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    os.link(original, alias)
+
+    assert main._pause_file_observation("mac", original) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+    assert main._pause_file_observation("windows", alias) == {
+        "source": "windows",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_two_pause_sources_aliasing_one_inode_never_clear() -> None:
+    shared_identity = (123, 456)
+    observations = [
+        {
+            "source": source,
+            "state": "clear",
+            "observed_at": NOW.isoformat(),
+            "_source_identity": shared_identity,
+        }
+        for source in ("mac", "windows")
+    ]
+
+    resolved = main._evaluate_pause_truth(observations, now=NOW)
+
+    assert resolved["state"] == "unknown"
+    assert resolved["clear"] is None
+
+
+def test_duplicate_pause_json_keys_are_rejected(tmp_path: Path) -> None:
+    candidate = tmp_path / "duplicate.json"
+    candidate.write_text(
+        (
+            '{"state":"active","state":"clear",'
+            f'"observed_at":"{NOW.isoformat()}"'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    assert main._pause_file_observation("mac", candidate) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_symlinked_pause_parent_is_rejected(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    candidate = real_parent / "pause.json"
+    candidate.write_text(
+        json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    alias_parent = tmp_path / "alias"
+    os.symlink(real_parent, alias_parent)
+
+    assert main._pause_file_observation("mac", alias_parent / candidate.name) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
+def test_pause_parent_mode_drift_during_read_is_rejected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    parent = tmp_path / "admitted"
+    parent.mkdir(mode=0o700)
+    candidate = parent / "pause.json"
+    candidate.write_text(
+        json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    original_read = main.os.read
+    changed = False
+
+    def drifting_read(fd: int, size: int) -> bytes:
+        nonlocal changed
+        chunk = original_read(fd, size)
+        if not changed:
+            changed = True
+            parent.chmod(0o755)
+        return chunk
+
+    monkeypatch.setattr(main.os, "read", drifting_read)
+
+    assert main._pause_file_observation("mac", candidate) == {
+        "source": "mac",
+        "state": "invalid",
+        "observed_at": None,
+    }
+
+
 def test_stale_parent_expires_future_skewed_agent_claim() -> None:
     observed = NOW
     sample = _sample(observed_at=observed.isoformat(), sequence=9301)
@@ -116,6 +257,39 @@ def test_stale_parent_expires_future_skewed_agent_claim() -> None:
     assert result["status"] == "stale"
     assert result["agents"][0]["state"] == "offline"
     assert result["agents"][0]["verification"] == "pending"
+
+
+def test_stale_parent_withdraws_track_and_epistemic_claims() -> None:
+    observed = NOW
+    sample = _sample(observed_at=observed.isoformat(), sequence=9303)
+    snapshot = validate_snapshot(sample)
+    store = _store(snapshot, received_at=observed.timestamp())
+
+    result = store.get(now=(observed + timedelta(seconds=181)).timestamp())
+
+    assert result["status"] == "stale"
+    assert result["desk"]["tracks"] == []
+    assert result["desk"]["epistemics"] == {
+        "updated_ts": None,
+        "fresh": False,
+        "thesis": None,
+        "regime": {
+            "label": "unknown",
+            "fit": None,
+            "data_quality": None,
+            "drivers": [],
+        },
+        "falsifiers": [],
+        "learning": {
+            "status": "unavailable",
+            "open": None,
+            "resolved": None,
+            "mean_brier": None,
+            "accuracy": None,
+            "lessons": 0,
+            "updated_ts": None,
+        },
+    }
 
 
 def test_local_fallback_uses_canonical_parent_aging(monkeypatch) -> None:
@@ -185,6 +359,18 @@ def test_stale_fleet_snapshot_withdraws_current_values() -> None:
         "gates": [],
         "counts": {"leases": None, "gates_open": None},
     }
+
+
+def test_materially_future_fleet_snapshot_is_unverifiable() -> None:
+    future = NOW + timedelta(minutes=10)
+    raw = {
+        "generated_at": future.isoformat(),
+        "leases": [],
+        "gates": [],
+    }
+
+    assert main._fleet_age_seconds(future.isoformat(), now=NOW) is None
+    assert main._whitelist_fleet(raw, now=NOW) == main._EMPTY_FLEET
 
 
 def test_readiness_pins_task065_source_and_negative_runtime_outcome() -> None:
