@@ -85,7 +85,7 @@ def test_symlinked_pause_documents_never_clear_the_gate(tmp_path: Path) -> None:
     assert resolved["clear"] is None
 
 
-def test_group_or_world_accessible_pause_document_is_unverifiable(
+def test_group_or_world_writable_pause_document_is_unverifiable(
     tmp_path: Path,
 ) -> None:
     candidate = tmp_path / "pause.json"
@@ -93,7 +93,7 @@ def test_group_or_world_accessible_pause_document_is_unverifiable(
         json.dumps({"state": "clear", "observed_at": NOW.isoformat()}),
         encoding="utf-8",
     )
-    candidate.chmod(0o644)
+    candidate.chmod(0o666)
 
     assert main._pause_file_observation("mac", candidate) == {
         "source": "mac",
