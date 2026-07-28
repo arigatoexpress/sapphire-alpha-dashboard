@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import re
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -33,7 +34,11 @@ def _fetch(url: str) -> tuple[int, str]:
         return error.code, error.read().decode("utf-8", errors="replace")
 
 
-def verify(base_url: str, expected_sha: str, fetch: Fetch = _fetch) -> dict[str, Any]:
+def verify(
+    base_url: str,
+    expected_identity: dict[str, Any],
+    fetch: Fetch = _fetch,
+) -> dict[str, Any]:
     base = base_url.rstrip("/")
     checks: dict[str, bool] = {}
     status, body = fetch(f"{base}/api/build")
@@ -42,18 +47,7 @@ def verify(base_url: str, expected_sha: str, fetch: Fetch = _fetch) -> dict[str,
         build = json.loads(body)
     except json.JSONDecodeError:
         build = {}
-    checks["source_sha"] = build.get("source_sha") == expected_sha
-    checks["complete"] = build.get("complete") is True
-
-    surfaces = build.get("surfaces") if isinstance(build.get("surfaces"), dict) else {}
-    for name in ("operator", "public"):
-        surface = surfaces.get(name) if isinstance(surfaces.get(name), dict) else {}
-        digest = surface.get("manifest_sha256")
-        checks[f"{name}_manifest"] = (
-            isinstance(digest, str)
-            and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
-            and surface.get("asset_count", 0) > 0
-        )
+    checks["build_identity_exact"] = build == expected_identity
 
     for name, (path, marker) in PAGE_CONTRACTS.items():
         page_status, page = fetch(f"{base}{path}")
@@ -61,7 +55,11 @@ def verify(base_url: str, expected_sha: str, fetch: Fetch = _fetch) -> dict[str,
 
     result: dict[str, Any] = {
         "ok": all(checks.values()),
-        "expected_sha": expected_sha,
+        "expected_identity_sha256": hashlib.sha256(
+            json.dumps(
+                expected_identity, sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest(),
         "checks": checks,
     }
     # Actual runtime identifiers are useful evidence only after every check
@@ -69,21 +67,41 @@ def verify(base_url: str, expected_sha: str, fetch: Fetch = _fetch) -> dict[str,
     # environment or future canary can never be reflected into logs.
     if result["ok"]:
         result.update(
-            deployed_sha=build.get("source_sha"),
-            build_id=build.get("build_id"),
-            runtime_revision=build.get("runtime_revision"),
+            deployed_sha=expected_identity["source_sha"],
+            build_id=expected_identity["build_id"],
+            runtime_revision=expected_identity["runtime_revision"],
         )
     return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("expected_sha", help="exact 40- or 64-character source SHA")
+    parser.add_argument(
+        "expected_identity",
+        type=Path,
+        help="canonical JSON containing the exact expected /api/build payload",
+    )
     parser.add_argument("--base-url", default="https://sapphirealpha.xyz")
     args = parser.parse_args()
 
     try:
-        result = verify(args.base_url, args.expected_sha)
+        raw = args.expected_identity.read_bytes()
+        expected = json.loads(raw)
+        if (
+            not isinstance(expected, dict)
+            or raw
+            != (
+                json.dumps(
+                    expected,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                )
+                + "\n"
+            ).encode()
+        ):
+            raise ValueError("non-canonical expected identity")
+        result = verify(args.base_url, expected)
     except Exception:
         result = {
             "ok": False,
