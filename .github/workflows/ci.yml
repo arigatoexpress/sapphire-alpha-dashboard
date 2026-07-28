@@ -18,13 +18,23 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install --require-hashes -r requirements.lock
       - name: Run tests
         env:
           AUTH_USERNAME: testuser
           AUTH_PASSWORD: testpass-strong-99
           PYTHONPATH: "${{ github.workspace }}/backend"
         run: python -m pytest tests/ -q
+
+  immutable-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify npm integrity and downloaded asset SHA-256
+        run: python scripts/verify_build_inputs.py --network-assets
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -83,7 +93,7 @@ jobs:
   container-smoke:
     name: combined immutable-image smoke
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-build, web-build]
+    needs: [backend-tests, immutable-inputs, frontend-build, web-build]
     steps:
       - uses: actions/checkout@v4
       - name: Build exact combined image

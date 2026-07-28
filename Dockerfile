@@ -1,15 +1,28 @@
 # Both frontend stages import ../shared/theme.css, so each one recreates the
 # repo-relative layout (/repo/shared next to /repo/<app>) rather than flattening.
 
-# --- Operator live desk (Vite/React SPA, served at /dashboard) ----------------
-FROM node:24-slim AS frontend-build
+# python:3.11.15-slim-trixie (multi-platform manifest)
+FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93 AS input-verifier
 
 WORKDIR /repo
+COPY scripts/verify_build_inputs.py ./scripts/verify_build_inputs.py
+COPY deploy/assets.sha256.json ./deploy/assets.sha256.json
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+COPY web/package.json web/package-lock.json ./web/
+RUN python scripts/verify_build_inputs.py --network-assets \
+    && touch /verified-build-inputs
+
+# --- Operator live desk (Vite/React SPA, served at /dashboard) ----------------
+# node:24-bookworm-slim (multi-platform manifest)
+FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS frontend-build
+
+WORKDIR /repo
+COPY --from=input-verifier /verified-build-inputs /verified-build-inputs
 COPY shared ./shared
 
 WORKDIR /repo/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install
+RUN npm ci
 COPY frontend/index.html frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts ./
 COPY frontend/src ./src
 COPY frontend/public ./public
@@ -17,17 +30,16 @@ RUN npm run build
 
 # --- Public marketing site (Next.js static export, served at /) --------------
 # Independent of the stage above, so BuildKit runs both concurrently.
-FROM node:24-slim AS web-build
+# node:24-bookworm-slim (multi-platform manifest)
+FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS web-build
 
 WORKDIR /repo
+COPY --from=input-verifier /verified-build-inputs /verified-build-inputs
 COPY shared ./shared
 
 WORKDIR /repo/web
 COPY web/package.json web/package-lock.json ./
-# `npm install` rather than `npm ci` for the same reason as the stage above:
-# platform-specific optional dependencies (here, the Next.js SWC binaries)
-# differ between the Mac that wrote the lockfile and this linux image.
-RUN npm install
+RUN npm ci
 COPY web/next.config.ts web/tsconfig.json web/postcss.config.mjs ./
 COPY web/src ./src
 # The published research corpus. lib/research.ts reads it at build time to
@@ -35,20 +47,19 @@ COPY web/src ./src
 # is absent, the corpus reads as empty, and `output: export` fails the build with
 # the misleading "missing generateStaticParams()" (see the note in lib/research.ts).
 COPY web/content ./content
-# `next build` fetches the Google fonts declared via next/font at build time and
-# inlines them, so the deployed site makes no third-party font request.
 RUN npm run build
 
 # --- Runtime ------------------------------------------------------------------
-FROM python:3.11-slim
+# python:3.11.15-slim-trixie (multi-platform manifest)
+FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
 WORKDIR /app
 
 ARG SAPPHIRE_BUILD_SHA=unknown
 ARG SAPPHIRE_BUILD_ID=unknown
 
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY backend/ ./backend/
 COPY --from=frontend-build /repo/frontend/dist ./frontend/dist

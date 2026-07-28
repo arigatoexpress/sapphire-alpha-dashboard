@@ -1,67 +1,67 @@
-steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    entrypoint: bash
-    args:
-      - '-ceu'
-      - |
-        if [[ "${PROJECT_ID}" != "sapphire-479610" ]]; then
-          echo "Refusing Cloud Build project ${PROJECT_ID}; expected sapphire-479610" >&2
-          exit 2
-        fi
-        if [[ ! "${_BUILD_SHA}" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
-          echo "_BUILD_SHA must be an exact 40- or 64-character lowercase Git SHA" >&2
-          exit 2
-        fi
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
-      - '--build-arg'
-      - 'SAPPHIRE_BUILD_SHA=${_BUILD_SHA}'
-      - '--build-arg'
-      - 'SAPPHIRE_BUILD_ID=$BUILD_ID'
-      - '-f'
-      - 'Dockerfile'
-      - '.'
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'sapphire-alpha-dashboard'
-      - '--project'
-      - 'sapphire-479610'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
-      - '--service-account'
-      - 'sapphire-dashboard-sa@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--update-env-vars'
-      - 'AUTH_USERNAME=sapphire,PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=0,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1'
-      # Do NOT --set-secrets AUTH_PASSWORD here: live service already has it as a
-      # plain env var (type mismatch fails deploy). Rotate to Secret Manager only
-      # via a deliberate one-shot ops step, then re-enable --set-secrets.
-
-images:
-  - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
-
-substitutions:
-  # This default exists only so Cloud Build can parse the config. Step 0 fails
-  # closed unless callers replace it with the exact clean-tree commit.
-  _BUILD_SHA: unknown
-
-# The image now builds two frontends (Vite dashboard + Next.js marketing site)
-# alongside the Python runtime. That comfortably exceeds Cloud Build's 10-minute
-# default on a cold layer cache.
-timeout: 1800s
-
-options:
-  logging: LEGACY
+{
+  "steps": [
+    {
+      "name": "gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:96a99902b17be6192e01bd94067d72e9c1c017a042ad970e98eb576070562058",
+      "entrypoint": "python3",
+      "args": [
+        "scripts/deploy_contract.py",
+        "verify-build",
+        "--descriptor-zlib-b64",
+        "${_ACTION_DESCRIPTOR_ZLIB_B64}",
+        "--descriptor-sha256",
+        "${_ACTION_DESCRIPTOR_SHA256}",
+        "--build-id",
+        "$BUILD_ID"
+      ]
+    },
+    {
+      "name": "gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284",
+      "args": [
+        "build",
+        "-t",
+        "gcr.io/sapphire-479610/sapphire-alpha-dashboard:$BUILD_ID",
+        "--build-arg",
+        "SAPPHIRE_BUILD_SHA=${_BUILD_SHA}",
+        "--build-arg",
+        "SAPPHIRE_BUILD_ID=$BUILD_ID",
+        "-f",
+        "Dockerfile",
+        "."
+      ]
+    },
+    {
+      "name": "gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284",
+      "args": [
+        "push",
+        "gcr.io/sapphire-479610/sapphire-alpha-dashboard:$BUILD_ID"
+      ]
+    },
+    {
+      "name": "gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:96a99902b17be6192e01bd94067d72e9c1c017a042ad970e98eb576070562058",
+      "entrypoint": "bash",
+      "args": [
+        "-ceu",
+        "python3 scripts/deploy_contract.py predeploy-cas --descriptor-zlib-b64 \"${_ACTION_DESCRIPTOR_ZLIB_B64}\" --descriptor-sha256 \"${_ACTION_DESCRIPTOR_SHA256}\" --build-id \"$BUILD_ID\" && exec gcloud run deploy sapphire-alpha-dashboard --project sapphire-479610 --image \"gcr.io/sapphire-479610/sapphire-alpha-dashboard:$BUILD_ID\" --region us-central1 --platform managed --service-account sapphire-dashboard-sa@sapphire-479610.iam.gserviceaccount.com --update-env-vars AUTH_USERNAME=sapphire,PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=0,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1"
+      ]
+    }
+  ],
+  "images": [
+    "gcr.io/sapphire-479610/sapphire-alpha-dashboard:$BUILD_ID"
+  ],
+  "substitutions": {
+    "_ACTION_DESCRIPTOR_ZLIB_B64": "unknown",
+    "_ACTION_DESCRIPTOR_SHA256": "unknown",
+    "_BUILD_SHA": "unknown",
+    "_SOURCE_ARCHIVE_SHA256": "unknown",
+    "_SOURCE_GENERATION": "unknown",
+    "_SOURCE_MANIFEST_SHA256": "unknown",
+    "_SOURCE_OBJECT": "unknown"
+  },
+  "timeout": "1800s",
+  "options": {
+    "logging": "LEGACY",
+    "sourceProvenanceHash": [
+      "SHA256"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "sapphire/network-assets/v1",
+  "assets": [
+    {
+      "name": "@fontsource/inter@5.3.0",
+      "url": "https://registry.npmjs.org/@fontsource/inter/-/inter-5.3.0.tgz",
+      "sha256": "02034af8d41dcc67ac8eab88f642e129bb8a2e8922abf30229c32725f54d8fd6"
+    },
+    {
+      "name": "@fontsource/jetbrains-mono@5.3.0",
+      "url": "https://registry.npmjs.org/@fontsource/jetbrains-mono/-/jetbrains-mono-5.3.0.tgz",
+      "sha256": "1bbea47d1387406da5b6ccc4184cc61eae6851cc0db5c1d9bbd088ea9daa0b4a"
+    },
+    {
+      "name": "@fontsource/newsreader@5.3.0",
+      "url": "https://registry.npmjs.org/@fontsource/newsreader/-/newsreader-5.3.0.tgz",
+      "sha256": "7f1d2c554aeecf94161c07b45dc99fcea400b2f1293605e27df5d0e64856a024"
+    },
+    {
+      "name": "@fontsource/space-grotesk@5.3.0",
+      "url": "https://registry.npmjs.org/@fontsource/space-grotesk/-/space-grotesk-5.3.0.tgz",
+      "sha256": "2adb650694b6387b1862fee8b086a3a47ce9f32c10f20b8ec109aa1fcdfd07b7"
+    }
+  ]
+}

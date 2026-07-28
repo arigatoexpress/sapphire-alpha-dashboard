@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
+from io import BytesIO
+from urllib.error import HTTPError
 
+from scripts import verify_deployment
 from scripts.verify_deployment import PAGE_CONTRACTS, verify
 
 
@@ -59,6 +62,28 @@ def test_verify_deployment_fails_on_wrong_source_or_missing_marker():
     assert result["ok"] is False
     assert result["checks"]["source_sha"] is False
     assert result["checks"]["public_home"] is False
+    assert "deployed_sha" not in result
+    assert "build_id" not in result
+    assert "runtime_revision" not in result
+
+
+def test_fetch_turns_real_http_error_into_expected_status(monkeypatch):
+    error = HTTPError(
+        "https://example.test/api/build",
+        404,
+        "not found",
+        {},
+        BytesIO(b'{"detail":"not found"}'),
+    )
+    monkeypatch.setattr(
+        verify_deployment,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(error),
+    )
+    assert verify_deployment._fetch("https://example.test/api/build") == (
+        404,
+        '{"detail":"not found"}',
+    )
 
 
 def test_readback_markers_are_pinned_to_source_contracts():
