@@ -10,6 +10,19 @@ import type { NextConfig } from 'next'
  */
 const nextConfig: NextConfig = {
   output: 'export',
+  // Next otherwise invents a fresh random build ID on every invocation and
+  // embeds it in the static RSC payload, making byte-exact release review
+  // impossible. Production receives the closed source SHA from Docker.
+  generateBuildId: async () => {
+    const sourceSha = process.env.SAPPHIRE_BUILD_SHA ?? 'local-development'
+    if (
+      sourceSha !== 'local-development' &&
+      !/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(sourceSha)
+    ) {
+      throw new Error('SAPPHIRE_BUILD_SHA must be an exact source identity')
+    }
+    return sourceSha
+  },
   // Emits `out/<route>/index.html`, which is unambiguous to serve from Python.
   trailingSlash: true,
   images: { unoptimized: true },

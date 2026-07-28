@@ -28,10 +28,18 @@ COPY frontend/src ./src
 COPY frontend/public ./public
 RUN npm run build
 
+# Export-only proof target used by the descriptor drafter. `scratch` has no
+# mutable base image and exposes only the bytes served by the runtime.
+FROM scratch AS frontend-proof
+COPY --from=frontend-build /repo/frontend/dist /surface
+
 # --- Public marketing site (Next.js static export, served at /) --------------
 # Independent of the stage above, so BuildKit runs both concurrently.
 # node:24-bookworm-slim (multi-platform manifest)
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS web-build
+
+ARG SAPPHIRE_BUILD_SHA=unknown
+ENV SAPPHIRE_BUILD_SHA=${SAPPHIRE_BUILD_SHA}
 
 WORKDIR /repo
 COPY --from=input-verifier /verified-build-inputs /verified-build-inputs
@@ -48,6 +56,9 @@ COPY web/src ./src
 # the misleading "missing generateStaticParams()" (see the note in lib/research.ts).
 COPY web/content ./content
 RUN npm run build
+
+FROM scratch AS web-proof
+COPY --from=web-build /repo/web/out /surface
 
 # --- Runtime ------------------------------------------------------------------
 # python:3.11.15-slim-trixie (multi-platform manifest)

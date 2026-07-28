@@ -5,13 +5,11 @@
       "entrypoint": "python3",
       "args": [
         "scripts/deploy_contract.py",
-        "verify-build",
+        "verify-workspace",
         "--descriptor-zlib-b64",
         "${_ACTION_DESCRIPTOR_ZLIB_B64}",
         "--descriptor-sha256",
-        "${_ACTION_DESCRIPTOR_SHA256}",
-        "--build-id",
-        "$BUILD_ID"
+        "${_ACTION_DESCRIPTOR_SHA256}"
       ]
     },
     {
@@ -35,14 +33,6 @@
         "push",
         "gcr.io/sapphire-479610/sapphire-alpha-dashboard:$BUILD_ID"
       ]
-    },
-    {
-      "name": "gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:96a99902b17be6192e01bd94067d72e9c1c017a042ad970e98eb576070562058",
-      "entrypoint": "bash",
-      "args": [
-        "-ceu",
-        "python3 scripts/deploy_contract.py predeploy-cas --descriptor-zlib-b64 \"${_ACTION_DESCRIPTOR_ZLIB_B64}\" --descriptor-sha256 \"${_ACTION_DESCRIPTOR_SHA256}\" --build-id \"$BUILD_ID\" && exec gcloud run deploy sapphire-alpha-dashboard --project sapphire-479610 --image \"gcr.io/sapphire-479610/sapphire-alpha-dashboard:$BUILD_ID\" --region us-central1 --platform managed --service-account sapphire-dashboard-sa@sapphire-479610.iam.gserviceaccount.com --update-env-vars AUTH_USERNAME=sapphire,PUBLIC_READ_ONLY=1,PUBLIC_TELEMETRY_DELAY_SECONDS=0,TELEMETRY_STORE=firestore,TELEMETRY_FIRESTORE_COLLECTION=sapphire_live_v1"
-      ]
     }
   ],
   "images": [
@@ -52,7 +42,10 @@
     "_ACTION_DESCRIPTOR_ZLIB_B64": "unknown",
     "_ACTION_DESCRIPTOR_SHA256": "unknown",
     "_BUILD_SHA": "unknown",
+    "_SOURCE_TREE_SHA": "unknown",
     "_SOURCE_ARCHIVE_SHA256": "unknown",
+    "_SOURCE_ARCHIVE_MD5": "unknown",
+    "_SOURCE_FILE_COUNT": "unknown",
     "_SOURCE_GENERATION": "unknown",
     "_SOURCE_MANIFEST_SHA256": "unknown",
     "_SOURCE_OBJECT": "unknown"

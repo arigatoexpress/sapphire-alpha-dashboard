@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 from io import BytesIO
 import json
+import os
+from pathlib import Path
+import tarfile
 from urllib.error import HTTPError
 import zlib
 
@@ -17,10 +21,12 @@ from scripts import deploy_contract as guard
 SENTINEL = "never-emit-runtime-canary"
 READY = "sapphire-alpha-dashboard-00073-kv2"
 CREATED = "sapphire-alpha-dashboard-00074-p42"
-READY_DIGEST = "sha256:" + "a" * 64
-CREATED_DIGEST = "sha256:" + "b" * 64
+READY_DIGEST = guard.IMAGE_REPOSITORY + "@sha256:" + "a" * 64
+CREATED_DIGEST = guard.IMAGE_REPOSITORY + "@sha256:" + "b" * 64
 SOURCE_SHA = "c" * 40
+TREE_SHA = "1" * 40
 ARCHIVE_SHA = "d" * 64
+ARCHIVE_MD5 = "2" * 32
 MANIFEST_SHA = "e" * 64
 
 
@@ -46,7 +52,7 @@ def _policy() -> dict:
 
 def _service(environment: list[dict] | None = None) -> dict:
     return {
-        "metadata": {"generation": 82},
+        "metadata": {"generation": 82, "resourceVersion": "AAXY-example"},
         "spec": {
             "template": {
                 "spec": {
@@ -118,13 +124,17 @@ def _descriptor() -> dict:
         },
         "source": {
             "commit_sha": SOURCE_SHA,
+            "tree_sha": TREE_SHA,
             "archive_sha256": ARCHIVE_SHA,
+            "archive_md5": ARCHIVE_MD5,
             "manifest_sha256": MANIFEST_SHA,
             "file_count": 200,
             "bucket": guard.STAGING_BUCKET,
             "object": f"source/sapphire/{ARCHIVE_SHA}.tar.gz",
             "generation": 123456,
-            "bucket_configuration_sha256": "f" * 64,
+            "bucket_resource_sha256": "f" * 64,
+            "bucket_iam_sha256": "3" * 64,
+            "project_number": guard.PROJECT_NUMBER,
         },
         "precondition": precondition,
         "postcondition": {
@@ -132,6 +142,24 @@ def _descriptor() -> dict:
             "service_account": precondition["service_account"],
             "environment": precondition["environment"],
             "service_url": precondition["service_url"],
+            "build_identity": {
+                "schema": 1,
+                "source_sha": SOURCE_SHA,
+                "surfaces": {
+                    "operator": {
+                        "entrypoint_url": "/dashboard",
+                        "entrypoint_sha256": "4" * 64,
+                        "asset_count": 10,
+                        "manifest_sha256": "5" * 64,
+                    },
+                    "public": {
+                        "entrypoint_url": "/",
+                        "entrypoint_sha256": "6" * 64,
+                        "asset_count": 20,
+                        "manifest_sha256": "7" * 64,
+                    },
+                },
+            },
         },
         "artifacts": guard.artifact_hashes(),
     }
@@ -144,8 +172,9 @@ def _build_record(descriptor: dict, descriptor_sha: str) -> dict:
         "object": source["object"],
         "generation": str(source["generation"]),
     }
-    exact_key = f"gs://{source['bucket']}/{source['object']}"
-    archive_b64 = base64.b64encode(bytes.fromhex(ARCHIVE_SHA)).decode()
+    exact_key = f"gs://{source['bucket']}/{source['object']}#{source['generation']}"
+    archive_b64 = base64.urlsafe_b64encode(bytes.fromhex(ARCHIVE_SHA)).decode()
+    archive_md5_b64 = base64.urlsafe_b64encode(bytes.fromhex(ARCHIVE_MD5)).decode()
     return {
         "id": "build-123",
         "status": "SUCCESS",
@@ -154,7 +183,10 @@ def _build_record(descriptor: dict, descriptor_sha: str) -> dict:
             "resolvedStorageSource": copy.deepcopy(storage),
             "fileHashes": {
                 exact_key: {
-                    "fileHash": [{"type": "SHA256", "value": archive_b64}]
+                    "fileHash": [
+                        {"type": "MD5", "value": archive_md5_b64},
+                        {"type": "SHA256", "value": archive_b64},
+                    ]
                 }
             },
         },
@@ -164,17 +196,35 @@ def _build_record(descriptor: dict, descriptor_sha: str) -> dict:
             ).decode(),
             "_ACTION_DESCRIPTOR_SHA256": descriptor_sha,
             "_BUILD_SHA": SOURCE_SHA,
+            "_SOURCE_TREE_SHA": TREE_SHA,
             "_SOURCE_ARCHIVE_SHA256": ARCHIVE_SHA,
+            "_SOURCE_ARCHIVE_MD5": ARCHIVE_MD5,
+            "_SOURCE_FILE_COUNT": str(source["file_count"]),
             "_SOURCE_GENERATION": str(source["generation"]),
             "_SOURCE_MANIFEST_SHA256": MANIFEST_SHA,
             "_SOURCE_OBJECT": source["object"],
         },
+        "images": [f"{guard.IMAGE_REPOSITORY}:build-123"],
         "results": {
             "images": [
                 {
-                    "name": f"{guard.IMAGE_REPOSITORY}:build-123",
                     "digest": "sha256:" + "9" * 64,
-                }
+                    "name": guard.IMAGE_REPOSITORY,
+                    "artifactRegistryPackage": (
+                        "projects/sapphire-479610/locations/us/repositories/gcr.io/"
+                        "packages/sapphire-alpha-dashboard/versions/sha256:" + "9" * 64
+                    ),
+                    "pushTiming": {"startTime": "start", "endTime": "end"},
+                },
+                {
+                    "digest": "sha256:" + "9" * 64,
+                    "name": f"{guard.IMAGE_REPOSITORY}:build-123",
+                    "artifactRegistryPackage": (
+                        "projects/sapphire-479610/locations/us/repositories/gcr.io/"
+                        "packages/sapphire-alpha-dashboard/versions/sha256:" + "9" * 64
+                    ),
+                    "pushTiming": {"startTime": "start", "endTime": "end"},
+                },
             ]
         },
     }
@@ -188,7 +238,9 @@ def test_real_http_error_404_is_observed(monkeypatch):
         {},
         BytesIO(b'{"detail":"not found"}'),
     )
-    monkeypatch.setattr(guard, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(error))
+    monkeypatch.setattr(
+        guard, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(error)
+    )
     assert guard.fetch_http("https://service.example.test/api/build") == (
         404,
         '{"detail":"not found"}',
@@ -200,7 +252,9 @@ def test_real_http_error_404_is_observed(monkeypatch):
     [
         lambda service, policy: service["metadata"].update(generation=83),
         lambda service, policy: service["status"].update(observedGeneration=83),
-        lambda service, policy: service["status"].update(latestReadyRevisionName=CREATED),
+        lambda service, policy: service["status"].update(
+            latestReadyRevisionName=CREATED
+        ),
         lambda service, policy: service["status"].update(
             traffic=[{"percent": 99, "revisionName": READY}]
         ),
@@ -243,7 +297,15 @@ def test_combined_source_and_remote_drift_never_reaches_a_mutation():
 
 @pytest.mark.parametrize(
     "mutation",
-    ["missing_submitted_generation", "wrong_key", "extra_hash", "resolved_generation"],
+    [
+        "missing_submitted_generation",
+        "wrong_key",
+        "extra_hash",
+        "resolved_generation",
+        "alternate_source",
+        "extra_storage_field",
+        "extra_provenance_field",
+    ],
 )
 def test_source_provenance_requires_exact_generation_and_file_hash_key(mutation):
     descriptor = _descriptor()
@@ -258,9 +320,73 @@ def test_source_provenance_requires_exact_generation_and_file_hash_key(mutation)
         provenance["fileHashes"]["extra"] = copy.deepcopy(
             next(iter(provenance["fileHashes"].values()))
         )
-    else:
+    elif mutation == "resolved_generation":
         provenance["resolvedStorageSource"]["generation"] = "999"
+    elif mutation == "alternate_source":
+        build["source"]["gitSource"] = {"url": "https://attacker.invalid/repo"}
+    elif mutation == "extra_storage_field":
+        build["source"]["storageSource"]["extra"] = True
+    else:
+        provenance["resolvedRepoSource"] = {"repoName": "attacker"}
     assert guard.source_provenance_exact(build, descriptor) is False
+
+
+def test_real_cloud_build_fixture_uses_generation_key_and_urlsafe_digest():
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "cloudbuild-storage-provenance.json"
+        ).read_text(encoding="utf-8")
+    )
+    descriptor = _descriptor()
+    descriptor["source"].update(
+        bucket=fixture["source"]["storageSource"]["bucket"],
+        object=fixture["source"]["storageSource"]["object"],
+        generation=int(fixture["source"]["storageSource"]["generation"]),
+        archive_sha256=fixture["expected"]["archive_sha256"],
+        archive_md5=fixture["expected"]["archive_md5"],
+    )
+    assert guard.source_provenance_exact(fixture, descriptor) is True
+
+
+def test_descriptor_schema_is_recursively_closed_and_substitution_is_bounded():
+    descriptor = _descriptor()
+    descriptor["source"]["attacker_extension"] = True
+    with pytest.raises(guard.ContractViolation, match="descriptor mismatch"):
+        guard._require_descriptor_shape(descriptor)
+
+    descriptor = _descriptor()
+    descriptor["padding"] = "x" * 10_000
+    with pytest.raises(guard.ContractViolation, match="descriptor mismatch"):
+        guard._require_descriptor_shape(descriptor)
+    with pytest.raises(guard.ContractViolation, match="substitution"):
+        guard.encode_descriptor(os.urandom(5000))
+
+
+@pytest.mark.parametrize("status", ["WORKING", "QUEUED", "FAILURE", "CANCELLED"])
+def test_release_build_must_be_terminal_success(status):
+    descriptor = _descriptor()
+    descriptor_sha = "1" * 64
+    build = _build_record(descriptor, descriptor_sha)
+    build["status"] = status
+    with pytest.raises(guard.ContractViolation, match="build identity mismatch"):
+        guard.verify_build_record(
+            descriptor,
+            descriptor_sha,
+            "build-123",
+            run=_runner(build=build),
+            require_success=True,
+        )
+
+
+def test_build_results_require_one_digest_across_package_and_exact_build_tag():
+    descriptor = _descriptor()
+    build = _build_record(descriptor, "1" * 64)
+    immutable = guard.immutable_image(build, "build-123")
+    assert immutable.endswith("sha256:" + "9" * 64)
+
+    build["results"]["images"][1]["digest"] = "sha256:" + "8" * 64
+    with pytest.raises(guard.ContractViolation, match="build output image mismatch"):
+        guard.immutable_image(build, "build-123")
 
 
 def test_build_record_rejects_arbitrary_custom_substitution():
@@ -298,15 +424,30 @@ def test_postdeploy_requires_generation_plus_one_and_built_digest(monkeypatch):
             }
         ],
         "build_endpoint_status": 200,
+        "build_identity": {
+            **descriptor["postcondition"]["build_identity"],
+            "build_id": "build-123",
+            "runtime_service": guard.SERVICE,
+            "runtime_revision": "sapphire-alpha-dashboard-00075-new",
+            "complete": True,
+        },
     }
-    monkeypatch.setattr(guard, "verify_build_record", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(
+        guard, "verify_build_record", lambda *_args, **_kwargs: {"ok": True}
+    )
     monkeypatch.setattr(guard, "live_snapshot", lambda *_args, **_kwargs: current)
+
+    def fetch(url):
+        if url.endswith("/api/build"):
+            return 200, json.dumps(current["build_identity"])
+        return _fetch(url)
+
     result = guard.verify_postdeploy(
         descriptor,
         descriptor_sha,
         "build-123",
         run=_runner(build=build),
-        fetch=_fetch,
+        fetch=fetch,
     )
     assert result["ok"] is True
 
@@ -317,7 +458,7 @@ def test_postdeploy_requires_generation_plus_one_and_built_digest(monkeypatch):
             descriptor_sha,
             "build-123",
             run=_runner(build=build),
-            fetch=_fetch,
+            fetch=fetch,
         )
 
 
@@ -348,3 +489,194 @@ def test_descriptor_hash_is_raw_byte_exact_and_failure_is_constant(tmp_path, cap
     output = capsys.readouterr().out
     assert SENTINEL not in output
     assert json.loads(output)["error"] == "contract violation"
+
+
+def test_git_manifest_and_archive_are_deterministic_and_byte_sensitive(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "a.txt").write_bytes(b"alpha")
+    executable = tmp_path / "bin" / "run"
+    executable.parent.mkdir()
+    executable.write_bytes(b"#!/bin/sh\n")
+    executable.chmod(0o755)
+
+    records = [
+        {"path": "a.txt", "mode": "100644"},
+        {"path": "bin/run", "mode": "100755"},
+    ]
+    monkeypatch.setattr(guard, "tracked_files", lambda _root=tmp_path: records)
+    first = guard.seal_source(tmp_path)
+    second = guard.seal_source(tmp_path)
+    assert first == second
+    assert first["file_count"] == 2
+    assert hashlib.sha256(first["archive"]).hexdigest() == first["archive_sha256"]
+
+    (tmp_path / "a.txt").write_bytes(b"changed")
+    changed = guard.seal_source(tmp_path)
+    assert changed["manifest_sha256"] != first["manifest_sha256"]
+    assert changed["archive_sha256"] != first["archive_sha256"]
+
+
+def test_provider_replacement_carries_resource_version_and_digest_only():
+    descriptor = _descriptor()
+    service = _service()
+    image = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
+
+    replacement = guard.prepare_service_replacement(service, descriptor, image)
+
+    assert replacement["metadata"]["resourceVersion"] == "AAXY-example"
+    assert "status" not in replacement
+    assert replacement["spec"]["template"]["spec"]["containers"][0]["image"] == image
+    assert replacement["spec"]["traffic"] == [{"latestRevision": True, "percent": 100}]
+    environment = replacement["spec"]["template"]["spec"]["containers"][0]["env"]
+    by_name = {item["name"]: item for item in environment}
+    assert by_name["AUTH_PASSWORD"]["value"] == SENTINEL
+    assert {
+        name: by_name[name]["value"] for name in guard.PUBLIC_ENVIRONMENT
+    } == guard.PUBLIC_ENVIRONMENT
+
+    with pytest.raises(guard.ContractViolation, match="immutable image"):
+        guard.prepare_service_replacement(
+            service,
+            descriptor,
+            f"{guard.IMAGE_REPOSITORY}:mutable",
+        )
+
+
+def test_provider_cas_requires_an_exact_new_resource_version(monkeypatch):
+    descriptor = _descriptor()
+    service = _service()
+    image = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
+    monkeypatch.setattr(
+        guard,
+        "verify_predeploy_cas",
+        lambda *_args, **_kwargs: {"ok": True},
+    )
+
+    for response in (
+        {"metadata": {"name": guard.SERVICE}},
+        {
+            "metadata": {
+                "name": guard.SERVICE,
+                "resourceVersion": descriptor["precondition"]["resource_version"],
+            }
+        },
+        {"metadata": {"name": "other-service", "resourceVersion": "new-version"}},
+    ):
+        with pytest.raises(
+            guard.ContractViolation, match="provider compare-and-swap rejected"
+        ):
+            guard.deploy_with_provider_cas(
+                descriptor,
+                image,
+                run=_runner(service=service),
+                fetch=_fetch,
+                replace=lambda _replacement, response=response: response,
+            )
+
+    result = guard.deploy_with_provider_cas(
+        descriptor,
+        image,
+        run=_runner(service=service),
+        fetch=_fetch,
+        replace=lambda _replacement: {
+            "metadata": {
+                "name": guard.SERVICE,
+                "resourceVersion": "new-version",
+            }
+        },
+    )
+    assert result["ok"] is True
+
+
+def test_extracted_workspace_must_equal_the_sealed_manifest(tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    extracted = tmp_path / "extracted"
+    source_root.mkdir()
+    extracted.mkdir()
+    (source_root / "a.txt").write_bytes(b"alpha")
+    records = [{"path": "a.txt", "mode": "100644"}]
+    monkeypatch.setattr(guard, "tracked_files", lambda _root=source_root: records)
+    sealed = guard.seal_source(source_root)
+    archive = tmp_path / "source.tar.gz"
+    archive.write_bytes(sealed["archive"])
+    with tarfile.open(archive, "r:gz") as tar:
+        tar.extractall(extracted, filter="data")
+    descriptor = {
+        "source": {key: sealed[key] for key in ("manifest_sha256", "file_count")}
+    }
+
+    assert guard.verify_workspace(descriptor, extracted)["ok"] is True
+    (extracted / "a.txt").write_bytes(b"drift")
+    with pytest.raises(guard.ContractViolation, match="source manifest mismatch"):
+        guard.verify_workspace(descriptor, extracted)
+
+
+def test_registry_readback_must_resolve_build_tag_to_exact_digest():
+    immutable = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
+
+    def runner(argv):
+        assert f"{guard.IMAGE_REPOSITORY}:build-123" in argv
+        return json.dumps(
+            {
+                "image_summary": {
+                    "digest": "sha256:" + "8" * 64,
+                    "fully_qualified_digest": immutable,
+                    "registry": "gcr.io",
+                    "repository": "sapphire-479610/sapphire-alpha-dashboard",
+                }
+            }
+        )
+
+    assert guard.verify_registry_digest("build-123", immutable, runner)["ok"] is True
+    with pytest.raises(guard.ContractViolation, match="registry image mismatch"):
+        guard.verify_registry_digest(
+            "build-123",
+            f"{guard.IMAGE_REPOSITORY}@sha256:{'9' * 64}",
+            runner,
+        )
+
+
+def test_bucket_ownership_iam_and_generation_bytes_are_all_bound():
+    descriptor = _descriptor()
+    archive = b"exact staged archive bytes"
+    bucket = {
+        "name": guard.STAGING_BUCKET,
+        "projectNumber": guard.PROJECT_NUMBER,
+        "metageneration": "3",
+    }
+    policy = {"bindings": [{"role": "roles/storage.objectViewer"}], "etag": "abc"}
+    source = descriptor["source"]
+    source["archive_sha256"] = hashlib.sha256(archive).hexdigest()
+    source["archive_md5"] = hashlib.md5(archive, usedforsecurity=False).hexdigest()
+    source["bucket_resource_sha256"] = guard.sha256_bytes(guard.canonical(bucket))
+    source["bucket_iam_sha256"] = guard.sha256_bytes(guard.canonical(policy))
+
+    def runner(argv):
+        command = " ".join(argv)
+        if "buckets describe" in command:
+            assert "--raw" in argv
+            return json.dumps(bucket)
+        if "get-iam-policy" in command:
+            return json.dumps(policy)
+        if "objects describe" in command:
+            assert "--raw" in argv
+            assert f"#{source['generation']}" in command
+            return json.dumps(
+                {
+                    "bucket": guard.STAGING_BUCKET,
+                    "name": source["object"],
+                    "generation": str(source["generation"]),
+                    "md5Hash": base64.urlsafe_b64encode(
+                        bytes.fromhex(source["archive_md5"])
+                    ).decode(),
+                }
+            )
+        raise AssertionError(command)
+
+    result = guard.verify_bucket_and_object(descriptor, runner, lambda _argv: archive)
+    assert result["object_generation"] == str(source["generation"])
+
+    policy["bindings"].append({"role": "roles/storage.admin"})
+    with pytest.raises(guard.ContractViolation, match="bucket contract mismatch"):
+        guard.verify_bucket_and_object(descriptor, runner, lambda _argv: archive)

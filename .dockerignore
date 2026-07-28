@@ -9,3 +9,4 @@ web/.next
 web/out
 .DS_Store
 .git
+.sapphire-source-manifest.json

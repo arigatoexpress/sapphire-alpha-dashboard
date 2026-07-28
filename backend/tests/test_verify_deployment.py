@@ -29,6 +29,7 @@ def _build_payload(sha: str) -> dict:
 
 def test_verify_deployment_binds_revision_and_three_public_markers():
     sha = "c" * 40
+    expected = _build_payload(sha)
     responses = {
         "/api/build": json.dumps(_build_payload(sha)),
         "/": '<section id="public-title">',
@@ -42,7 +43,7 @@ def test_verify_deployment_binds_revision_and_three_public_markers():
         path = url.removeprefix("https://example.test")
         return 200, responses[path]
 
-    result = verify("https://example.test/", sha, fetch)
+    result = verify("https://example.test/", expected, fetch)
 
     assert result["ok"] is True
     assert result["runtime_revision"] == "sapphire-alpha-dashboard-00042-abc"
@@ -51,20 +52,41 @@ def test_verify_deployment_binds_revision_and_three_public_markers():
 
 def test_verify_deployment_fails_on_wrong_source_or_missing_marker():
     expected = "d" * 40
+    expected_identity = _build_payload(expected)
 
     def fetch(url: str) -> tuple[int, str]:
         if url.endswith("/api/build"):
             return 200, json.dumps(_build_payload("e" * 40))
         return 200, "wrong page"
 
-    result = verify("https://example.test", expected, fetch)
+    result = verify("https://example.test", expected_identity, fetch)
 
     assert result["ok"] is False
-    assert result["checks"]["source_sha"] is False
+    assert result["checks"]["build_identity_exact"] is False
     assert result["checks"]["public_home"] is False
     assert "deployed_sha" not in result
     assert "build_id" not in result
     assert "runtime_revision" not in result
+
+
+def test_verify_deployment_rejects_arbitrary_well_formed_surface_hashes():
+    expected = _build_payload("d" * 40)
+    observed = json.loads(json.dumps(expected))
+    observed["surfaces"]["public"]["manifest_sha256"] = "f" * 64
+
+    def fetch(url: str) -> tuple[int, str]:
+        if url.endswith("/api/build"):
+            return 200, json.dumps(observed)
+        if url.endswith("/dashboard"):
+            return 200, '<div id="root"></div>'
+        if url.endswith("/research/calibration-2026-07-27/"):
+            return 200, "<title>Learning loop — wins, losses, calibration"
+        return 200, '<section id="public-title">'
+
+    result = verify("https://example.test", expected, fetch)
+
+    assert result["ok"] is False
+    assert result["checks"]["build_identity_exact"] is False
 
 
 def test_fetch_turns_real_http_error_into_expected_status(monkeypatch):

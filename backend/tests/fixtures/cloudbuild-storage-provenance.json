@@ -1,0 +1,34 @@
+{
+  "expected": {
+    "archive_md5": "c4a5e1b885c4bbb9e01af9cff507be77",
+    "archive_sha256": "4acfe40d623eee63359089ec40aedd1a3b8a92716f8907c276b37ecf0bf271de"
+  },
+  "source": {
+    "storageSource": {
+      "bucket": "sapphire-479610_cloudbuild",
+      "generation": "1785104119797143",
+      "object": "source/1785104118.782776-a38a9ff9f758473cb5680639bc33d473.tgz"
+    }
+  },
+  "sourceProvenance": {
+    "fileHashes": {
+      "gs://sapphire-479610_cloudbuild/source/1785104118.782776-a38a9ff9f758473cb5680639bc33d473.tgz#1785104119797143": {
+        "fileHash": [
+          {
+            "type": "MD5",
+            "value": "xKXhuIXEu7ngGvnP9Qe-dw=="
+          },
+          {
+            "type": "SHA256",
+            "value": "Ss_kDWI-7mM1kInsQK7dGjuKknFviQfCdrN-zwvycd4="
+          }
+        ]
+      }
+    },
+    "resolvedStorageSource": {
+      "bucket": "sapphire-479610_cloudbuild",
+      "generation": "1785104119797143",
+      "object": "source/1785104118.782776-a38a9ff9f758473cb5680639bc33d473.tgz"
+    }
+  }
+}
