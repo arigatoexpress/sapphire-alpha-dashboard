@@ -87,6 +87,77 @@ describe('evidence contract', () => {
     expect(segments[0].uncertainty).toContain('last report')
   })
 
+  it('refuses fresh-looking nested values when the persisted parent is stale', () => {
+    const snapshot = liveSnapshot()
+    snapshot.status = 'stale'
+    snapshot.markets.status = 'current'
+    snapshot.markets.decision_gate = 'manual'
+    snapshot.markets.execution = 'gated'
+    snapshot.desk.execution = 'gated'
+
+    const segments = buildEvidenceSegments({
+      snapshot,
+      widgets: null,
+      moss: null,
+      fleet: null,
+      execution: snapshot.desk.execution,
+      errors: { live: '', widgets: '', fleet: '', moss: '' },
+    })
+
+    expect(segments[1].value).toBe('stale')
+    expect(segments[2].value).toBe('unknown')
+    expect(segments[3].value).toBe('unknown')
+    for (const segment of segments.slice(0, 4)) {
+      expect(segment.tone).toBe('degraded')
+    }
+  })
+
+  it('renders missing pause truth as unavailable instead of clear', () => {
+    const snapshot = liveSnapshot()
+    snapshot.desk.safety_floor.pause_clear = null
+    const widgets = {
+      gate: {
+        state: 'unavailable',
+        label: 'Pause state unavailable',
+        armed: null,
+        killswitch: null,
+        pause_state: 'unknown',
+        mode: 'unavailable',
+        executor_alive: null,
+        updated_at: null,
+      },
+      wallet: { disclosure: 'withheld' },
+      recent_signals: [],
+      research: {
+        clips: [],
+        live: false,
+        policy: {
+          research_role: 'evidence_not_authority',
+          single_input_cap: 0.35,
+          minimum_independent_checks: 2,
+          can_set_conviction: false,
+          can_authorize_execution: false,
+        },
+      },
+      tradingview: { status: 'standby', last_ping: null, pending_alerts: null },
+      business_health: { services: [], ok_count: 0, total: 0, timestamp: '' },
+      system_health: {
+        dashboard: 'ok',
+        gate: 'unavailable',
+        tradingview: 'standby',
+        timestamp: '',
+      },
+      rendered_at: '2026-07-28T18:00:00Z',
+    }
+
+    const markupWithUnknownPause = renderToStaticMarkup(
+      <App initialWidgets={widgets} />,
+    )
+
+    expect(markupWithUnknownPause).toContain('Pause state is unavailable')
+    expect(markupWithUnknownPause).not.toContain('Pause is clear')
+  })
+
   it('orders the thesis pulse and changes before evidence details', () => {
     expect(markup.indexOf('01 · Thesis pulse')).toBeLessThan(
       markup.indexOf('02 · Needs attention'),
