@@ -26,9 +26,9 @@ const bundle: ApprovalBundleDTO = {
   creator: 'codex-approval-bundle',
   purpose_class: 'RISK_REDUCTION',
   scope: {
-    environment: `env:${'a'.repeat(64)}`,
-    account: `acct:${'b'.repeat(64)}`,
-    destination: `dest:${'c'.repeat(64)}`,
+    environment: [`env:${'a'.repeat(64)}`, `env:${'9'.repeat(64)}`],
+    account: [`acct:${'b'.repeat(64)}`, `acct:${'8'.repeat(64)}`],
+    destination: [`dest:${'c'.repeat(64)}`, `dest:${'7'.repeat(64)}`],
   },
   actions: [
     {
@@ -61,7 +61,7 @@ const bundle: ApprovalBundleDTO = {
         symbol: `symbol:${'f'.repeat(64)}`,
         asset: `asset:${'1'.repeat(64)}`,
         side: 'SELL',
-        quantity: { value: 1, unit: 'CONTRACT' },
+        quantity: null,
         max_notional: { amount_minor: 5000, currency: 'USD', scale: 2 },
         order_type: 'LIMIT',
         limit_price: { amount_minor: 2500, currency: 'USD', scale: 2 },
@@ -174,9 +174,17 @@ describe('owner approval view', () => {
       '20 bps',
       'Approval is not execution',
       'Consumer disarmed',
+      `env:${'9'.repeat(64)}`,
+      `acct:${'8'.repeat(64)}`,
+      `dest:${'7'.repeat(64)}`,
+      'Quantity',
+      'Not applicable',
     ]) {
       expect(html).toContain(evidence)
     }
+    expect(html).toContain(
+      '<h4>Financial terms</h4><p>Not applicable</p>',
+    )
     expect(html).toContain('Re-verify owner')
     expect(html).not.toContain('Approve exact bundle')
     expect(html).not.toContain('Refuse bundle')

@@ -30,6 +30,7 @@ from owner_approval import (
     PROTECTED_AUTHORITY_IDS,
     ActivationState,
     ActivationVerifier,
+    ChallengeMacAuthority,
     FleetLeaseCompilerPort,
     OwnerApprovalRail,
     RailRefused,
@@ -46,10 +47,20 @@ PASSWORD = "owner-test-password-99"
 BUNDLE_ID = "approval-20260728-risk-trim"
 BUNDLE_SHA = hashlib.sha256(b"exact-reviewed-bundle").hexdigest()
 PROTECTED_SERVICE = PROTECTED_AUTHORITY_IDS[0]
+CHALLENGE_KEY = b"copied-owner-session-key-material"
 
 
 def _utc(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _challenge_mac(content: dict) -> str:
+    return hmac.new(
+        CHALLENGE_KEY,
+        b"owner-approval-session-challenge/v1\0"
+        + canonical_json(content).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _action(action_id: str = "trim-edge", *, service: str | None = None) -> dict:
@@ -232,6 +243,16 @@ class FakeCompiler:
         *,
         operation_key: str,
     ) -> str:
+        supplied_mac = content.get("challenge_attestation_sha256")
+        unsigned = {
+            key: value
+            for key, value in content.items()
+            if key != "challenge_attestation_sha256"
+        }
+        if type(supplied_mac) is not str or not hmac.compare_digest(
+            supplied_mac, _challenge_mac(unsigned)
+        ):
+            raise RailRefused("ATTENDED_CHALLENGE_UNAUTHENTICATED")
         receipt_sha = hashlib.sha256(
             canonical_json(content).encode("utf-8")
         ).hexdigest()
@@ -332,6 +353,7 @@ def rail(tmp_path: Path) -> tuple[OwnerApprovalRail, FakeCompiler, Path]:
         clock=lambda: NOW,
         token_bytes=lambda size: bytes([next(counter)]) * size,
         session_registry_path=tmp_path / "sessions.sqlite3",
+        challenge_attestor=_challenge_mac,
     )
     return instance, compiler, registry
 
@@ -452,6 +474,32 @@ def test_activation_requires_owner_private_mac_and_exact_registry(
     assert verifier.verify(NOW).reason_code == "ACTIVATION_FILE_INVALID"
 
 
+def test_owner_session_challenge_attestation_is_exact_and_key_bound(
+    tmp_path: Path,
+) -> None:
+    key = tmp_path / "activation.key"
+    key.write_bytes(CHALLENGE_KEY)
+    key.chmod(0o600)
+    authority = ChallengeMacAuthority(key)
+    content = {
+        "schema_version": "attended-approval-receipt/v1",
+        "challenge_id": "challenge-1",
+        "bundle_id": BUNDLE_ID,
+        "approval_statement": "Approve this exact immutable bundle.",
+        "owner_identity": OWNER,
+        "approver_class": "HUMAN",
+        "issued_at": _utc(NOW),
+        "expires_at": _utc(NOW + timedelta(minutes=5)),
+    }
+
+    attestation = authority.attest(content)
+    assert authority.verify(content, attestation) is True
+    assert authority.verify({**content, "bundle_id": "substituted"}, attestation) is False
+
+    key.chmod(0o644)
+    assert authority.verify(content, attestation) is False
+
+
 def test_inspection_is_exact_ordered_and_read_only(rail) -> None:
     instance, compiler, registry = rail
     before = registry.read_bytes()
@@ -528,11 +576,74 @@ def test_control_plane_self_modification_is_ineligible(tmp_path: Path) -> None:
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
+        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"] == {
         "eligible": False,
         "reason_code": "CONTROL_PLANE_SELF_MODIFICATION",
     }
+
+
+def test_protected_identities_use_valid_action_authority_prefixes() -> None:
+    prefixes = {value.partition(":")[0] for value in PROTECTED_AUTHORITY_IDS}
+    assert {"svc", "dest", "env", "acct"} <= prefixes
+    for prefix in ("svc", "dest", "env", "acct"):
+        protected = next(
+            value for value in PROTECTED_AUTHORITY_IDS if value.startswith(prefix + ":")
+        )
+        action = _action(
+            f"protected-{prefix}",
+            service=protected
+            if prefix == "svc"
+            else next(
+                value
+                for value in PROTECTED_AUTHORITY_IDS
+                if value.startswith("svc:")
+            ),
+        )
+        action_field = {
+            "dest": "destination",
+            "env": "environment",
+            "acct": "account",
+        }.get(prefix)
+        if action_field is not None:
+            action[action_field] = protected
+        assert OwnerApprovalRail._self_modifies(
+            {"actions": [action]},
+            PROTECTED_AUTHORITY_IDS,
+        )
+
+
+def test_display_preserves_valid_multi_value_scope(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry.sqlite3"
+    _initialize_registry(registry)
+    bundle = _bundle()
+    bundle["source"]["scope"] = {
+        "environment": [
+            "env:" + hashlib.sha256(b"personal").hexdigest(),
+            "env:" + hashlib.sha256(b"staging").hexdigest(),
+        ],
+        "account": [
+            "acct:" + hashlib.sha256(b"agentic").hexdigest(),
+            "acct:" + hashlib.sha256(b"paper").hexdigest(),
+        ],
+        "destination": [
+            "dest:" + hashlib.sha256(b"bounded").hexdigest(),
+            "dest:" + hashlib.sha256(b"preview").hexdigest(),
+        ],
+    }
+    compiler = FakeCompiler(bundle, registry)
+    instance = OwnerApprovalRail(
+        compiler=compiler,
+        activation=lambda _now: _active(),
+        clock=lambda: NOW,
+        token_bytes=os.urandom,
+        session_registry_path=tmp_path / "sessions.sqlite3",
+        challenge_attestor=_challenge_mac,
+    )
+    assert instance.inspect(BUNDLE_ID)["scope"] == bundle["source"]["scope"]
 
 
 @pytest.mark.parametrize(
@@ -578,6 +689,7 @@ def test_every_fixed_authority_id_is_protected_at_any_action_depth(
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
+        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"] == {
         "eligible": False,
@@ -596,6 +708,7 @@ def test_read_only_bootstrap_never_issues_challenge(tmp_path: Path) -> None:
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
+        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"]["reason_code"] == (
         "READ_ONLY_BOOTSTRAP"
@@ -630,6 +743,7 @@ def test_session_store_refuses_symlink_into_authority_registry(tmp_path: Path) -
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=session_link,
+        challenge_attestor=_challenge_mac,
     )
     with pytest.raises(RailRefused, match="SESSION_REGISTRY_INVALID"):
         instance.reauthenticate(BUNDLE_ID, OWNER)
@@ -723,6 +837,7 @@ def test_approval_recovers_idempotently_across_lifecycle_crash(
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
+        challenge_attestor=_challenge_mac,
     )
     challenge = instance.reauthenticate(BUNDLE_ID, OWNER)
     arguments = {
@@ -1066,9 +1181,10 @@ def test_exact_held_fleet_source_executes_without_ambient_import(
         b"from .core import HELD_CORE\n"
         b'BUNDLE_SCHEMA_VERSION = "held-test/v1"\n'
         b"class ApprovalBundleDB:\n"
-        b"    def __init__(self, path):\n"
+        b"    def __init__(self, path, *, _attended_challenge_verifier):\n"
         b"        self.path = path\n"
         b"        self.core_identity = HELD_CORE\n"
+        b"        self.challenge_verifier = _attended_challenge_verifier\n"
     )
     approvals_path.write_bytes(approvals_source)
     database = FleetLeaseCompilerPort._load_held_database(
@@ -1080,10 +1196,12 @@ def test_exact_held_fleet_source_executes_without_ambient_import(
         approvals_size=len(approvals_source),
         approvals_sha256=hashlib.sha256(approvals_source).hexdigest(),
         schema_version="held-test/v1",
+        challenge_verifier=lambda _content, _mac: True,
     )
     assert database.__class__.__module__.startswith("_sapphire_held_fleet_")
     assert database.path == registry
     assert database.core_identity == "exact-core-bytes"
+    assert database.challenge_verifier({}, "a" * 64)
 
 
 def test_public_app_excludes_owner_approval_and_local_runtime_is_exact(
