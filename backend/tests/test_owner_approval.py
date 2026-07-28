@@ -22,7 +22,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from owner_approval import (
-    ACTIVATION_SCHEMA,
     DISPLAY_ACTION_FIELDS,
     DISPLAY_FINANCIAL_FIELDS,
     DISPLAY_REVIEW_FIELDS,
@@ -30,14 +29,12 @@ from owner_approval import (
     PROTECTED_AUTHORITY_IDS,
     ActivationState,
     ActivationVerifier,
-    ChallengeMacAuthority,
     FleetLeaseCompilerPort,
     OwnerApprovalRail,
     RailRefused,
     canonical_json,
     create_owner_approval_router,
     local_context_reason,
-    registry_identity_sha256,
 )
 
 
@@ -47,20 +44,10 @@ PASSWORD = "owner-test-password-99"
 BUNDLE_ID = "approval-20260728-risk-trim"
 BUNDLE_SHA = hashlib.sha256(b"exact-reviewed-bundle").hexdigest()
 PROTECTED_SERVICE = PROTECTED_AUTHORITY_IDS[0]
-CHALLENGE_KEY = b"copied-owner-session-key-material"
 
 
 def _utc(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
-
-
-def _challenge_mac(content: dict) -> str:
-    return hmac.new(
-        CHALLENGE_KEY,
-        b"owner-approval-session-challenge/v1\0"
-        + canonical_json(content).encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
 
 
 def _action(action_id: str = "trim-edge", *, service: str | None = None) -> dict:
@@ -237,22 +224,16 @@ class FakeCompiler:
             }
         ]
 
+    def attended_authority_available(self) -> bool:
+        """Sealed unit-test authority; production always returns false."""
+        return True
+
     def provision_attended_approval_receipt(
         self,
         content: dict,
         *,
         operation_key: str,
     ) -> str:
-        supplied_mac = content.get("challenge_attestation_sha256")
-        unsigned = {
-            key: value
-            for key, value in content.items()
-            if key != "challenge_attestation_sha256"
-        }
-        if type(supplied_mac) is not str or not hmac.compare_digest(
-            supplied_mac, _challenge_mac(unsigned)
-        ):
-            raise RailRefused("ATTENDED_CHALLENGE_UNAUTHENTICATED")
         receipt_sha = hashlib.sha256(
             canonical_json(content).encode("utf-8")
         ).hexdigest()
@@ -353,7 +334,6 @@ def rail(tmp_path: Path) -> tuple[OwnerApprovalRail, FakeCompiler, Path]:
         clock=lambda: NOW,
         token_bytes=lambda size: bytes([next(counter)]) * size,
         session_registry_path=tmp_path / "sessions.sqlite3",
-        challenge_attestor=_challenge_mac,
     )
     return instance, compiler, registry
 
@@ -377,127 +357,32 @@ def test_local_context_rejects_cloud_container_wildcard_and_remote() -> None:
     )
 
 
-def test_activation_requires_owner_private_mac_and_exact_registry(
-    tmp_path: Path,
-) -> None:
-    registry = tmp_path / "registry.sqlite3"
-    _initialize_registry(registry)
-    key = tmp_path / "activation.key"
-    key.write_bytes(b"k" * 32)
-    key.chmod(0o600)
-    attestation = tmp_path / "activation.json"
-    issued = NOW - timedelta(minutes=1)
-    payload = {
-        "schema_version": ACTIVATION_SCHEMA,
-        "scope": "LOCAL_OWNER_APPROVAL_RAIL",
-        "pin_set_sha256": PIN_SET_SHA256,
-        "registry_identity_sha256": registry_identity_sha256(registry),
-        "legacy_gate_receipt_sha256": hashlib.sha256(b"legacy-gate").hexdigest(),
-        "nonce_sha256": hashlib.sha256(b"one-use-nonce").hexdigest(),
-        "issued_at": _utc(issued),
-        "expires_at": _utc(NOW + timedelta(minutes=30)),
-    }
-    payload["mac_sha256"] = hmac.new(
-        key.read_bytes(),
-        canonical_json(payload).encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    attestation.write_text(canonical_json(payload), encoding="utf-8")
-    attestation.chmod(0o600)
-    consumed: list[dict[str, str]] = []
+def test_activation_is_unconditionally_unavailable_until_task063() -> None:
+    state = ActivationVerifier().verify(NOW)
+    assert state.active is False
+    assert state.reason_code == "AUTHORITY_BOUNDARY_UNAVAILABLE"
 
-    def consume(**kwargs: str) -> bool:
-        consumed.append(kwargs)
-        return kwargs["receipt_sha256"] == payload["legacy_gate_receipt_sha256"]
 
-    verifier = ActivationVerifier(
-        registry_path=registry,
-        attestation_path=attestation,
-        key_path=key,
-        consume_legacy_receipt=consume,
-    )
-    state = verifier.verify(NOW)
-    assert state.active is True
-    assert state.protected_authority_ids == PROTECTED_AUTHORITY_IDS
-    assert len(consumed) == 1
+def test_production_rail_has_no_same_uid_challenge_secret_or_callback() -> None:
+    source_path = Path(__file__).parents[1] / "owner_approval.py"
+    source = source_path.read_text(encoding="utf-8")
+    assert "class ChallengeMacAuthority" not in source
+    assert "challenge_attestor" not in source
+    assert "challenge_attestation_sha256" not in source
+    assert "owner-approval-rail.key" not in source
+    assert "hmac.new(" not in source
 
-    phantom = ActivationVerifier(
-        registry_path=registry,
-        attestation_path=attestation,
-        key_path=key,
-        consume_legacy_receipt=lambda **_kwargs: False,
-    )
-    assert phantom.verify(NOW).reason_code == "LEGACY_RECEIPT_INVALID"
 
-    payload["protected_authority_ids"] = []
-    unsigned = {
-        key_name: value
-        for key_name, value in payload.items()
-        if key_name != "mac_sha256"
-    }
-    payload["mac_sha256"] = hmac.new(
-        key.read_bytes(),
-        canonical_json(unsigned).encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    attestation.write_text(canonical_json(payload), encoding="utf-8")
-    assert verifier.verify(NOW).reason_code == "ACTIVATION_FILE_INVALID"
-    payload.pop("protected_authority_ids")
-    payload["mac_sha256"] = hmac.new(
-        key.read_bytes(),
-        canonical_json(
+def test_production_compiler_refuses_receipt_without_privileged_authority() -> None:
+    compiler = FleetLeaseCompilerPort()
+    with pytest.raises(RailRefused, match="AUTHORITY_BOUNDARY_UNAVAILABLE"):
+        compiler.provision_attended_approval_receipt(
             {
-                key_name: value
-                for key_name, value in payload.items()
-                if key_name != "mac_sha256"
-            }
-        ).encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    attestation.write_text(canonical_json(payload), encoding="utf-8")
-
-    substituted_registry = tmp_path / "substituted.sqlite3"
-    substituted_registry.write_bytes(registry.read_bytes())
-    substituted_registry.chmod(0o600)
-    substituted = ActivationVerifier(
-        registry_path=substituted_registry,
-        attestation_path=attestation,
-        key_path=key,
-        consume_legacy_receipt=consume,
-    )
-    assert substituted.verify(NOW).reason_code == "ACTIVATION_BINDING_INVALID"
-
-    payload["mac_sha256"] = "f" * 64
-    attestation.write_text(canonical_json(payload), encoding="utf-8")
-    assert verifier.verify(NOW).reason_code == "ACTIVATION_MAC_INVALID"
-    attestation.chmod(0o644)
-    assert verifier.verify(NOW).reason_code == "ACTIVATION_FILE_INVALID"
-
-
-def test_owner_session_challenge_attestation_is_exact_and_key_bound(
-    tmp_path: Path,
-) -> None:
-    key = tmp_path / "activation.key"
-    key.write_bytes(CHALLENGE_KEY)
-    key.chmod(0o600)
-    authority = ChallengeMacAuthority(key)
-    content = {
-        "schema_version": "attended-approval-receipt/v1",
-        "challenge_id": "challenge-1",
-        "bundle_id": BUNDLE_ID,
-        "approval_statement": "Approve this exact immutable bundle.",
-        "owner_identity": OWNER,
-        "approver_class": "HUMAN",
-        "issued_at": _utc(NOW),
-        "expires_at": _utc(NOW + timedelta(minutes=5)),
-    }
-
-    attestation = authority.attest(content)
-    assert authority.verify(content, attestation) is True
-    assert authority.verify({**content, "bundle_id": "substituted"}, attestation) is False
-
-    key.chmod(0o644)
-    assert authority.verify(content, attestation) is False
+                "schema_version": "owner-approval-attended-receipt/v1",
+                "challenge_sha256": "a" * 64,
+            },
+            operation_key="forged-absent-session",
+        )
 
 
 def test_inspection_is_exact_ordered_and_read_only(rail) -> None:
@@ -576,7 +461,6 @@ def test_control_plane_self_modification_is_ineligible(tmp_path: Path) -> None:
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
-        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"] == {
         "eligible": False,
@@ -641,7 +525,6 @@ def test_display_preserves_valid_multi_value_scope(
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
-        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["scope"] == bundle["source"]["scope"]
 
@@ -689,7 +572,6 @@ def test_every_fixed_authority_id_is_protected_at_any_action_depth(
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
-        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"] == {
         "eligible": False,
@@ -708,7 +590,6 @@ def test_read_only_bootstrap_never_issues_challenge(tmp_path: Path) -> None:
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
-        challenge_attestor=_challenge_mac,
     )
     assert instance.inspect(BUNDLE_ID)["eligibility"]["reason_code"] == (
         "READ_ONLY_BOOTSTRAP"
@@ -743,7 +624,6 @@ def test_session_store_refuses_symlink_into_authority_registry(tmp_path: Path) -
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=session_link,
-        challenge_attestor=_challenge_mac,
     )
     with pytest.raises(RailRefused, match="SESSION_REGISTRY_INVALID"):
         instance.reauthenticate(BUNDLE_ID, OWNER)
@@ -837,7 +717,6 @@ def test_approval_recovers_idempotently_across_lifecycle_crash(
         clock=lambda: NOW,
         token_bytes=os.urandom,
         session_registry_path=tmp_path / "sessions.sqlite3",
-        challenge_attestor=_challenge_mac,
     )
     challenge = instance.reauthenticate(BUNDLE_ID, OWNER)
     arguments = {

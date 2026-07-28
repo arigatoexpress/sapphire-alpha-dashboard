@@ -183,6 +183,8 @@ const REASON_COPY: Record<string, string> = {
   ELIGIBLE: 'Every server-side precondition is current.',
   READ_ONLY_BOOTSTRAP:
     'This rail is installed inertly. A separate legacy attended enablement is still required.',
+  AUTHORITY_BOUNDARY_UNAVAILABLE:
+    'Approval stays disabled until the separately reviewed privileged owner-session authority is installed.',
   BUNDLE_EXPIRED: 'The exact bundle expired. Create and independently review a new bundle.',
   BUNDLE_CHANGED: 'The digest or revision changed. This browser snapshot has no authority.',
   BUNDLE_INCOMPLETE: 'The authoritative bundle is incomplete.',
@@ -828,7 +830,7 @@ export function ApprovalView({
                 className="decision-approve"
                 onClick={() => onDecision('APPROVE')}
               >
-                Approve exact bundle
+                GO FULLY AUTONOMOUS
               </button>
               <button
                 type="button"

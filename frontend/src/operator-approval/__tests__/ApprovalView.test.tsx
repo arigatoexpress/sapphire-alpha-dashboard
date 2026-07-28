@@ -186,7 +186,7 @@ describe('owner approval view', () => {
       '<h4>Financial terms</h4><p>Not applicable</p>',
     )
     expect(html).toContain('Re-verify owner')
-    expect(html).not.toContain('Approve exact bundle')
+    expect(html).not.toContain('GO FULLY AUTONOMOUS')
     expect(html).not.toContain('Refuse bundle')
   })
 
@@ -205,7 +205,7 @@ describe('owner approval view', () => {
       />,
     )
 
-    expect((html.match(/Approve exact bundle/g) ?? [])).toHaveLength(1)
+    expect((html.match(/GO FULLY AUTONOMOUS/g) ?? [])).toHaveLength(1)
     expect((html.match(/Refuse bundle/g) ?? [])).toHaveLength(1)
     expect((html.match(/class="decision-approve"/g) ?? [])).toHaveLength(1)
     expect((html.match(/class="decision-refuse"/g) ?? [])).toHaveLength(1)
@@ -220,6 +220,7 @@ describe('owner approval view', () => {
       'ALREADY_DECIDED',
       'CONTROL_PLANE_SELF_MODIFICATION',
       'READ_ONLY_BOOTSTRAP',
+      'AUTHORITY_BOUNDARY_UNAVAILABLE',
     ]) {
       const html = renderToStaticMarkup(
         <ApprovalView
@@ -238,7 +239,7 @@ describe('owner approval view', () => {
         />,
       )
       expect(html).toContain(reason)
-      expect(html).not.toContain('Approve exact bundle')
+      expect(html).not.toContain('GO FULLY AUTONOMOUS')
       expect(html).not.toContain('Refuse bundle')
     }
   })
@@ -258,7 +259,7 @@ describe('owner approval view', () => {
       />,
     )
     expect(html).toContain('SERVER_STATE_STALE')
-    expect(html).not.toContain('Approve exact bundle')
+    expect(html).not.toContain('GO FULLY AUTONOMOUS')
     expect(html).not.toContain('Refuse bundle')
     expect(html).not.toContain('Re-verify owner')
   })
