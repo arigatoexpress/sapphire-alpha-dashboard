@@ -4,6 +4,10 @@ steps:
     args:
       - '-ceu'
       - |
+        if [[ "${PROJECT_ID}" != "sapphire-479610" ]]; then
+          echo "Refusing Cloud Build project ${PROJECT_ID}; expected sapphire-479610" >&2
+          exit 2
+        fi
         if [[ ! "${_BUILD_SHA}" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
           echo "_BUILD_SHA must be an exact 40- or 64-character lowercase Git SHA" >&2
           exit 2
@@ -30,6 +34,8 @@ steps:
       - 'run'
       - 'deploy'
       - 'sapphire-alpha-dashboard'
+      - '--project'
+      - 'sapphire-479610'
       - '--image'
       - 'gcr.io/$PROJECT_ID/sapphire-alpha-dashboard:$BUILD_ID'
       - '--region'
