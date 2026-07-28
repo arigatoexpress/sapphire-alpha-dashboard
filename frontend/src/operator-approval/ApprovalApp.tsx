@@ -111,9 +111,9 @@ export type ApprovalBundleDTO = {
   creator: string
   purpose_class: string
   scope: {
-    environment: string
-    account: string
-    destination: string
+    environment: string | string[]
+    account: string | string[]
+    destination: string | string[]
   }
   actions: ApprovalAction[]
   execution_policy: {
@@ -273,6 +273,19 @@ function MoneyValue({ value }: { value: Money | null }) {
   )
 }
 
+function QuantityValue({
+  value,
+}: {
+  value: { value: number; unit: string } | null
+}) {
+  if (value === null) return <span>Not applicable</span>
+  return (
+    <span className="mono">
+      {value.value} {value.unit}
+    </span>
+  )
+}
+
 function ActionLedger({ action, index }: { action: ApprovalAction; index: number }) {
   return (
     <details className="action-ledger" open>
@@ -343,10 +356,13 @@ function ActionLedger({ action, index }: { action: ApprovalAction; index: number
             <h4>Financial terms</h4>
             <dl className="evidence-grid">
               <div>
-                <dt>Side / quantity</dt>
-                <dd className="mono">
-                  {action.financial.side} {action.financial.quantity?.value}{' '}
-                  {action.financial.quantity?.unit}
+                <dt>Side</dt>
+                <dd className="mono">{action.financial.side}</dd>
+              </div>
+              <div>
+                <dt>Quantity</dt>
+                <dd>
+                  <QuantityValue value={action.financial.quantity} />
                 </dd>
               </div>
               <div>
@@ -401,7 +417,12 @@ function ActionLedger({ action, index }: { action: ApprovalAction; index: number
               </div>
             </dl>
           </section>
-        ) : null}
+        ) : (
+          <section className="financial-terms">
+            <h4>Financial terms</h4>
+            <p>Not applicable</p>
+          </section>
+        )}
 
         <div className="action-evidence">
           <EvidenceList title="Preconditions" values={action.preconditions} />
@@ -424,6 +445,30 @@ function HashRow({ label, value }: { label: string; value: string }) {
     <div className="hash-row">
       <dt>{label}</dt>
       <dd className="mono">{value}</dd>
+    </div>
+  )
+}
+
+function AuthorityRow({
+  label,
+  value,
+}: {
+  label: string
+  value: string | string[]
+}) {
+  const values = Array.isArray(value) ? value : [value]
+  return (
+    <div className="hash-row">
+      <dt>{label}</dt>
+      <dd>
+        <ul className="authority-values">
+          {values.map((item) => (
+            <li className="mono" key={item}>
+              {item}
+            </li>
+          ))}
+        </ul>
+      </dd>
     </div>
   )
 }
@@ -569,9 +614,9 @@ export function ApprovalView({
           <section>
             <h3>Exact scope</h3>
             <dl className="stacked-definitions">
-              <HashRow label="Environment" value={bundle.scope.environment} />
-              <HashRow label="Account" value={bundle.scope.account} />
-              <HashRow label="Destination" value={bundle.scope.destination} />
+              <AuthorityRow label="Environment" value={bundle.scope.environment} />
+              <AuthorityRow label="Account" value={bundle.scope.account} />
+              <AuthorityRow label="Destination" value={bundle.scope.destination} />
             </dl>
           </section>
 

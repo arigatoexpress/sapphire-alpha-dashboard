@@ -100,6 +100,10 @@ owner identity `AUTH_USERNAME=ari`, a password of at least 12 characters, and
 owner-supplied local TLS paths in `OWNER_APPROVAL_TLS_CERT` and
 `OWNER_APPROVAL_TLS_KEY`. The launcher hard-codes `127.0.0.1:8099`, refuses
 Cloud/container markers and dependency drift, and has no host override.
+Each one-use owner-session challenge is domain-separated and authenticated by
+the separately activated owner key before the exact fleet-lease lifecycle can
+provision an attended receipt. A raw or invented challenge digest cannot call
+that public boundary directly.
 
 Reproduce that runtime from the repository root with Python 3.11 and the
 hash-locked dependency set:
@@ -122,10 +126,11 @@ OWNER_APPROVAL_TLS_KEY="$HOME/Library/Application Support/Sapphire/tls/owner.key
 backend/.venv/bin/python scripts/run_owner_approval_local.py
 ```
 
-The browser endpoint is then exactly `https://127.0.0.1:8099/operator-approval`.
-Creating a TLS key or starting this process does not create the separately
-attended activation artifact, legacy receipt, approval bundle, or broker
-adapter. Without those independent prerequisites the rail remains read-only.
+The browser endpoint is then
+`https://127.0.0.1:8099/operator/approvals/<exact-bundle-id>`. Creating a TLS
+key or starting this process does not create the separately attended
+activation artifact, legacy receipt, approval bundle, or broker adapter.
+Without those independent prerequisites the rail remains read-only.
 
 In another terminal, inspect the safe projection or push it to the local server:
 

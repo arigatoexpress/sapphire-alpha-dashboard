@@ -138,16 +138,16 @@ DEPENDENCY_PINS: Mapping[str, str | int] = MappingProxyType(
         "task061_merged_tree": "44d44b83c23c18758b81caee143c8adae067e92a",
         "task061_result_sha256": "40daab4625cd93ba71385aba0863077af5bf3bcc7b6a31f08604bf63518ce7a5",
         "task061_review_sha256": "8f56f716cc4d4cb98193c32cb1996375e630228164c15d0eceebfef11764d0b0",
-        "fleet_lease_version": "0.7.0",
-        "approval_schema_version": "3.0.0",
-        "approval_source_size": 160556,
-        "approval_source_sha256": "873bd0fc4acc7b4d767979f887f21c1165d0c236eae6be1918c30cb6b550dfc8",
+        "fleet_lease_version": "0.7.1",
+        "approval_schema_version": "3.1.0",
+        "approval_source_size": 185320,
+        "approval_source_sha256": "3ad1de8d2e8eb0c930f32487d5ce8e65363ad9c96f83f4bf165f62f7153a7784",
         "fleet_core_source_size": 10381,
         "fleet_core_source_sha256": "5ba04bd3092ac0093d15da8313302ffa9861a2f8249666a889839beb916d001d",
-        "fleet_lease_runtime_commit": "7154ad1008c416e0f4cc77990d0e3f58b776c975",
-        "fleet_lease_runtime_tree": "3effd0d81c5cb41604401718cd2e73695657a6f2",
-        "approval_harness_merged_commit": "7154ad1008c416e0f4cc77990d0e3f58b776c975",
-        "approval_harness_merged_tree": "3effd0d81c5cb41604401718cd2e73695657a6f2",
+        "fleet_lease_runtime_commit": "af4a32ee761772ab41983bcef9658e2a5f2cd5ad",
+        "fleet_lease_runtime_tree": "7f2b0cede4ac279bed18c3ec51a1dafbc6c08450",
+        "approval_harness_merged_commit": "af4a32ee761772ab41983bcef9658e2a5f2cd5ad",
+        "approval_harness_merged_tree": "7f2b0cede4ac279bed18c3ec51a1dafbc6c08450",
         "task059_merged_commit": "94d4df4d0b3bdbd11b10679c74d316936f8dec08",
         "task059_merged_tree": "0723948e4b730710ad0553bafa01e4f98eb0f94e",
         "task059_result_sha256": "5866a7dea2c0e677ea7109cd8f024028c76d59f8c589f4d6d4f8482766dec745",
@@ -168,12 +168,11 @@ _PROTECTED_LABELS = (
     "owner-approval-local-launcher",
     "owner-approval-cloud-deployment",
 )
-PROTECTED_AUTHORITY_IDS = tuple(
-    f"resource:{hashlib.sha256(label.encode('utf-8')).hexdigest()}"
-    for label in _PROTECTED_LABELS
-) + (
-    DEPENDENCY_PINS["approval_source_sha256"],
-    DEPENDENCY_PINS["fleet_core_source_sha256"],
+_PROTECTED_AUTHORITY_CLASSES = (
+    ("SERVICE", "svc"),
+    ("DESTINATION", "dest"),
+    ("ENVIRONMENT", "env"),
+    ("ACCOUNT", "acct"),
 )
 
 
@@ -190,6 +189,35 @@ def canonical_json(value: object) -> str:
 
 def canonical_sha256(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _protected_authority_id(
+    label: str,
+    authority_class: str,
+    prefix: str,
+) -> str:
+    descriptor = {
+        "schema_version": "1.0.0",
+        "authority_class": authority_class,
+        "resource_id": (
+            "resource:"
+            + hashlib.sha256(
+                f"sapphire-owner-approval:{label}".encode("ascii")
+            ).hexdigest()
+        ),
+        "scope_cardinality": "ONE",
+    }
+    return f"{prefix}:{canonical_sha256(descriptor)}"
+
+
+PROTECTED_AUTHORITY_IDS = tuple(
+    _protected_authority_id(label, authority_class, prefix)
+    for label in _PROTECTED_LABELS
+    for authority_class, prefix in _PROTECTED_AUTHORITY_CLASSES
+) + (
+    DEPENDENCY_PINS["approval_source_sha256"],
+    DEPENDENCY_PINS["fleet_core_source_sha256"],
+)
 
 
 PIN_SET_SHA256 = canonical_sha256(dict(DEPENDENCY_PINS))
@@ -456,11 +484,85 @@ def _artifact_matches(path: Path, expected: str) -> bool:
     )
 
 
+class ChallengeMacAuthority:
+    """Domain-separated challenge authority backed by the activation key."""
+
+    _DOMAIN = b"owner-approval-session-challenge/v1\0"
+
+    def __init__(self, key_path: Path) -> None:
+        self._key_path = key_path
+
+    def _key(self) -> bytes:
+        try:
+            descriptor = os.open(
+                self._key_path,
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+        except OSError:
+            raise RailRefused("CHALLENGE_AUTHORITY_UNAVAILABLE", 503) from None
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o600
+                or (hasattr(os, "geteuid") and before.st_uid != os.geteuid())
+                or not 32 <= before.st_size <= 4096
+            ):
+                raise RailRefused("CHALLENGE_AUTHORITY_UNAVAILABLE", 503)
+            key = os.read(descriptor, 4097)
+            after = os.fstat(descriptor)
+            if (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            ) != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            ):
+                raise RailRefused("CHALLENGE_AUTHORITY_UNAVAILABLE", 503)
+        finally:
+            os.close(descriptor)
+        if len(key) != before.st_size:
+            raise RailRefused("CHALLENGE_AUTHORITY_UNAVAILABLE", 503)
+        return key
+
+    def attest(self, content: dict) -> str:
+        if type(content) is not dict:
+            raise RailRefused("CHALLENGE_INVALID")
+        return hmac.new(
+            self._key(),
+            self._DOMAIN + canonical_json(content).encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def verify(self, content: dict, supplied_mac: str) -> bool:
+        if type(supplied_mac) is not str or not _SHA256_RE.fullmatch(supplied_mac):
+            return False
+        try:
+            expected = self.attest(content)
+        except RailRefused:
+            return False
+        return hmac.compare_digest(supplied_mac, expected)
+
+
 class FleetLeaseCompilerPort:
     """Execute the same held, verified public lifecycle implementation."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        challenge_verifier: Callable[[dict, str], bool],
+    ) -> None:
         self._database: Any | None = None
+        self._challenge_verifier = challenge_verifier
 
     @staticmethod
     def _held_source(path: Path, expected_size: int, expected_sha256: str) -> bytes:
@@ -529,6 +631,7 @@ class FleetLeaseCompilerPort:
         approvals_size: int,
         approvals_sha256: str,
         schema_version: str,
+        challenge_verifier: Callable[[dict, str], bool],
     ) -> Any:
         core_source = cls._held_source(core_path, core_size, core_sha256)
         approvals_source = cls._held_source(
@@ -563,7 +666,10 @@ class FleetLeaseCompilerPort:
             )
             if approvals.BUNDLE_SCHEMA_VERSION != schema_version:
                 raise RailRefused("DEPENDENCY_MISMATCH", 503)
-            return approvals.ApprovalBundleDB(registry_path)
+            return approvals.ApprovalBundleDB(
+                registry_path,
+                _attended_challenge_verifier=challenge_verifier,
+            )
         except RailRefused:
             raise
         except Exception:
@@ -622,6 +728,7 @@ class FleetLeaseCompilerPort:
                 approvals_size=int(DEPENDENCY_PINS["approval_source_size"]),
                 approvals_sha256=str(DEPENDENCY_PINS["approval_source_sha256"]),
                 schema_version=str(DEPENDENCY_PINS["approval_schema_version"]),
+                challenge_verifier=self._challenge_verifier,
             )
         return self._database
 
@@ -667,6 +774,7 @@ CREATE TABLE IF NOT EXISTS owner_approval_rail_challenges (
     statement_sha256 TEXT NOT NULL,
     pin_set_sha256 TEXT NOT NULL,
     registry_identity_sha256 TEXT NOT NULL,
+    challenge_attestation_sha256 TEXT NOT NULL,
     issued_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     state TEXT NOT NULL,
@@ -690,12 +798,14 @@ class OwnerApprovalRail:
         clock: Callable[[], datetime],
         token_bytes: Callable[[int], bytes],
         session_registry_path: Path,
+        challenge_attestor: Callable[[dict], str],
     ) -> None:
         self._compiler = compiler
         self._activation = activation
         self._clock = clock
         self._token_bytes = token_bytes
         self._session_registry_path = Path(os.path.abspath(session_registry_path))
+        self._challenge_attestor = challenge_attestor
 
     def _now(self) -> datetime:
         value = self._clock()
@@ -966,6 +1076,19 @@ class OwnerApprovalRail:
 
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.executescript(_RAIL_SCHEMA)
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(owner_approval_rail_challenges)"
+            )
+        }
+        if "challenge_attestation_sha256" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE owner_approval_rail_challenges
+                ADD COLUMN challenge_attestation_sha256 TEXT NOT NULL DEFAULT ''
+                """
+            )
 
     def reauthenticate(self, bundle_id: str, owner: str) -> ChallengeIssue:
         if type(owner) is not str or owner != OWNER_IDENTITY:
@@ -988,6 +1111,23 @@ class OwnerApprovalRail:
             dto["approval_statement"].encode("utf-8")
         ).hexdigest()
         activation = self._activation_now(now)
+        receipt_content = {
+            "schema_version": RECEIPT_SCHEMA,
+            "challenge_sha256": challenge_hash,
+            "bundle_sha256": dto["canonical_sha256"],
+            "statement_sha256": statement_hash,
+            "approver_identity": owner,
+            "approver_class": OWNER_CLASS,
+            "issued_at": _utc(now),
+            "expires_at": _utc(expires),
+        }
+        challenge_mac = self._challenge_attestor(receipt_content)
+        if (
+            type(challenge_mac) is not str
+            or not _SHA256_RE.fullmatch(challenge_mac)
+            or challenge_mac == "0" * 64
+        ):
+            raise RailRefused("CHALLENGE_AUTHORITY_INVALID", 503)
         with self._connection() as connection:
             self._ensure_schema(connection)
             connection.execute("BEGIN IMMEDIATE")
@@ -1014,8 +1154,9 @@ class OwnerApprovalRail:
                     challenge_sha256, session_sha256, csrf_sha256,
                     owner_identity, bundle_id, bundle_sha256, expected_rev,
                     statement_sha256, pin_set_sha256,
-                    registry_identity_sha256, issued_at, expires_at, state
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+                    registry_identity_sha256, challenge_attestation_sha256,
+                    issued_at, expires_at, state
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
                 """,
                 (
                     challenge_hash,
@@ -1028,6 +1169,7 @@ class OwnerApprovalRail:
                     statement_hash,
                     activation.pin_set_sha256,
                     activation.registry_identity_sha256,
+                    challenge_mac,
                     _utc(now),
                     _utc(expires),
                 ),
@@ -1060,6 +1202,7 @@ class OwnerApprovalRail:
             "approver_class": OWNER_CLASS,
             "issued_at": challenge["issued_at"],
             "expires_at": challenge["expires_at"],
+            "challenge_attestation_sha256": challenge["challenge_attestation_sha256"],
         }
         with self._connection() as connection:
             self._ensure_schema(connection)
@@ -1565,7 +1708,10 @@ def create_owner_approval_router(
 
 def production_rail() -> OwnerApprovalRail:
     """Build the fixed-path local profile. It creates no file or schema."""
-    compiler = FleetLeaseCompilerPort()
+    challenge_authority = ChallengeMacAuthority(ACTIVATION_KEY_PATH)
+    compiler = FleetLeaseCompilerPort(
+        challenge_verifier=challenge_authority.verify,
+    )
     verifier = ActivationVerifier(
         registry_path=CANONICAL_REGISTRY_PATH,
         attestation_path=ACTIVATION_PATH,
@@ -1578,6 +1724,7 @@ def production_rail() -> OwnerApprovalRail:
         clock=lambda: datetime.now(UTC),
         token_bytes=os.urandom,
         session_registry_path=SESSION_REGISTRY_PATH,
+        challenge_attestor=challenge_authority.attest,
     )
 
 
@@ -1586,6 +1733,7 @@ __all__ = [
     "ActivationState",
     "ActivationVerifier",
     "CANONICAL_REGISTRY_PATH",
+    "ChallengeMacAuthority",
     "ChallengeIssue",
     "DEPENDENCY_PINS",
     "DISPLAY_SCHEMA",
