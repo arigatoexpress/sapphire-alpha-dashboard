@@ -43,6 +43,39 @@
     "feeds": {
       "fresh": null,
       "total": null
+    },
+    "epistemics": {
+      "updated_ts": null,
+      "fresh": false,
+      "thesis": null,
+      "regime": {
+        "label": "unknown",
+        "fit": null,
+        "data_quality": null,
+        "drivers": []
+      },
+      "falsifiers": [],
+      "learning": {
+        "status": "unavailable",
+        "open": null,
+        "resolved": null,
+        "mean_brier": null,
+        "accuracy": null,
+        "lessons": 0,
+        "updated_ts": null
+      }
+    },
+    "autonomy": {
+      "desired": "off",
+      "active": false,
+      "new_entries": "waiting",
+      "reason": "not observed"
+    },
+    "safety_floor": {
+      "gate_valid": false,
+      "pause_clear": false,
+      "ledger": "unknown",
+      "bounded_policy": false
     }
   },
   "status": "offline",

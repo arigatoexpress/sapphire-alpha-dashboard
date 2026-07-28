@@ -182,6 +182,43 @@ export interface PublicTrack {
   freshness_s: number
 }
 
+export interface PublicThesis {
+  id: string
+  claim: string
+  probability: number
+  stance: string
+  confidence: string
+  data_quality: number
+  horizon_days: number
+  falsifier: string
+}
+
+export interface DeskEpistemics {
+  updated_ts: number | null
+  fresh: boolean
+  thesis: PublicThesis | null
+  regime: {
+    label: string
+    fit: number | null
+    data_quality: number | null
+    drivers: string[]
+  }
+  falsifiers: Array<{
+    claim_id: string
+    condition: string
+    status: 'clear' | 'watch' | 'triggered' | 'unknown'
+  }>
+  learning: {
+    status: 'bootstrapping' | 'learning' | 'unavailable'
+    open: number | null
+    resolved: number | null
+    mean_brier: number | null
+    accuracy: number | null
+    lessons: number
+    updated_ts: number | null
+  }
+}
+
 /**
  * Public-safe desk conclusions. This intentionally excludes instruments,
  * positions, balances, proposal ids, people, and named research sources.
@@ -235,6 +272,22 @@ export interface LiveDesk {
     required_days: number | null
     last_committed_date: string | null
     collector: 'current' | 'stale' | 'missing' | 'unknown'
+  }
+  /** Current thesis, regime fit, falsifiers, and outcome-learning state. */
+  epistemics: DeskEpistemics
+  /** Desired vs effective autonomy. This is observation, never a control. */
+  autonomy: {
+    desired: 'on' | 'off'
+    active: boolean
+    new_entries: 'available' | 'waiting'
+    reason: string
+  }
+  /** Minimal technical execution floor; historical simulation is not authority. */
+  safety_floor: {
+    gate_valid: boolean
+    pause_clear: boolean
+    ledger: 'reconciled' | 'unknown'
+    bounded_policy: boolean
   }
 }
 

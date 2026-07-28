@@ -11,11 +11,15 @@ import { liveSnapshot } from './fixture'
 const markup = renderToStaticMarkup(<App />)
 
 describe('anonymous decision observatory', () => {
-  it('opens on the operating boundary rather than a decorative dashboard', () => {
-    expect(markup).toContain('Decision observatory · read only')
-    expect(markup).toContain('Awaiting observed state.')
+  it('opens on the current thesis rather than a decorative dashboard', () => {
+    expect(markup).toContain('Decision observatory · read-only view')
+    expect(markup).toContain('Thesis now')
+    expect(markup).toContain('No thesis observed.')
+    expect(markup).toContain('Narrative &amp; regime')
+    expect(markup).toContain('What would change the view')
+    expect(markup).toContain('Learning loop')
+    expect(markup).toContain('Execution floor')
     expect(markup).toContain('Needs attention')
-    expect(markup).toContain('Read and review only')
     expect(markup).toContain('Evidence horizon')
   })
 
@@ -76,22 +80,21 @@ describe('evidence contract', () => {
     expect(segments[0].uncertainty).toContain('last report')
   })
 
-  it('orders attention and change before evidence details', () => {
-    expect(markup.indexOf('01 · Needs attention')).toBeLessThan(
-      markup.indexOf('02 · What changed'),
+  it('orders the thesis pulse and changes before evidence details', () => {
+    expect(markup.indexOf('01 · Thesis pulse')).toBeLessThan(
+      markup.indexOf('02 · Needs attention'),
     )
-    expect(markup.indexOf('02 · What changed')).toBeLessThan(
-      markup.indexOf('03 · Authority'),
+    expect(markup.indexOf('02 · Needs attention')).toBeLessThan(
+      markup.indexOf('03 · What changed'),
     )
-    expect(markup.indexOf('03 · Authority')).toBeLessThan(
+    expect(markup.indexOf('03 · What changed')).toBeLessThan(
       markup.indexOf('04 · Evidence'),
     )
   })
 
-  it('makes the non-authority boundary explicit', () => {
-    expect(markup).toContain('Evidence may challenge. It may not authorize.')
-    expect(markup).toContain('This surface cannot place a trade')
-    expect(markup).toContain('Anonymous · read only · no execution authority')
+  it('makes the control-surface boundary explicit', () => {
+    expect(markup).toContain('This page observes the desk.')
+    expect(markup).toContain('controls isolated')
   })
 
   it('never invents a deployed build identity and links to the manifest', () => {
@@ -116,6 +119,9 @@ describe('honest empty state', () => {
     expect(markup).not.toContain('System mesh')
     expect(markup).not.toContain('LIVE RAILS')
     expect(markup).not.toContain('Autonomous capital')
+    expect(markup).not.toMatch(/\bOOS\b/)
+    expect(markup).not.toMatch(/\bbacktest\b/i)
+    expect(markup).not.toMatch(/\bsealed trial\b/i)
   })
 
   it('states the measurement rule in plain language', () => {

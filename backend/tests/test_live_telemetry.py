@@ -155,6 +155,52 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
                 "last_committed_date": "2026-07-25",
                 "collector": "current",
             },
+            "epistemics": {
+                "updated_ts": 1785162653.5,
+                "fresh": True,
+                "thesis": {
+                    "id": "cycle-map",
+                    "claim": "A liquidity cycle remains useful as a regime map.",
+                    "probability": 0.63,
+                    "stance": "lean_yes",
+                    "confidence": "tentative",
+                    "data_quality": 0.96,
+                    "horizon_days": 365,
+                    "falsifier": "Observed liquidity breaks the expected regime.",
+                },
+                "regime": {
+                    "label": "uncertain",
+                    "fit": 0.53,
+                    "data_quality": 0.96,
+                    "drivers": ["Volatility remains contained."],
+                },
+                "falsifiers": [{
+                    "claim_id": "cycle-map",
+                    "condition": "Observed liquidity breaks the expected regime.",
+                    "status": "clear",
+                }],
+                "learning": {
+                    "status": "bootstrapping",
+                    "open": 12,
+                    "resolved": 0,
+                    "mean_brier": None,
+                    "accuracy": None,
+                    "lessons": 0,
+                    "updated_ts": 1785162653.5,
+                },
+            },
+            "autonomy": {
+                "desired": "on",
+                "active": False,
+                "new_entries": "waiting",
+                "reason": "execution halted",
+            },
+            "safety_floor": {
+                "gate_valid": True,
+                "pause_clear": False,
+                "ledger": "reconciled",
+                "bounded_policy": True,
+            },
         },
         "events": [
             {
@@ -246,6 +292,15 @@ def test_signed_ingest_and_operator_projection():
         "last_committed_date": "2026-07-25",
         "collector": "current",
     }
+    assert live["desk"]["epistemics"]["thesis"]["probability"] == 0.63
+    assert live["desk"]["epistemics"]["learning"]["status"] == "bootstrapping"
+    assert live["desk"]["autonomy"] == {
+        "desired": "on",
+        "active": False,
+        "new_entries": "waiting",
+        "reason": "execution halted",
+    }
+    assert live["desk"]["safety_floor"]["pause_clear"] is False
 
 
 def test_legacy_producer_without_desk_gets_honest_unknown_projection():

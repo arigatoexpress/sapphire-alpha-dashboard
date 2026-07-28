@@ -174,7 +174,7 @@ a {
   grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
   align-items: end;
   gap: clamp(42px, 9vw, 140px);
-  min-height: min(620px, 68vh);
+  min-height: min(560px, 62vh);
   padding: clamp(24px, 4vw, 56px) 0 clamp(48px, 6vw, 84px);
 }
 
@@ -191,14 +191,14 @@ a {
 }
 
 .observatory-opening h1 {
-  max-width: 8ch;
+  max-width: 17ch;
   margin: 24px 0 0;
   color: var(--color-ink);
   font-family: var(--font-conviction);
-  font-size: clamp(4.7rem, 10vw, 10.2rem);
+  font-size: clamp(3.7rem, 7.2vw, 7.8rem);
   font-weight: 500;
   letter-spacing: -0.07em;
-  line-height: 0.78;
+  line-height: 0.86;
   text-wrap: balance;
 }
 
@@ -241,6 +241,142 @@ a {
   font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.3;
+}
+
+.thesis-pulse {
+  scroll-margin-top: 90px;
+  padding: clamp(34px, 5vw, 58px) 0 clamp(52px, 7vw, 86px);
+  border-top: 1px solid var(--color-line-lit);
+}
+
+.thesis-pulse-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.65fr);
+  align-items: end;
+  gap: clamp(36px, 8vw, 120px);
+}
+
+.thesis-pulse-heading > div > p,
+.thesis-pulse-track li p {
+  margin: 0;
+  color: var(--color-sapphire);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.thesis-pulse-heading h2 {
+  margin: 12px 0 0;
+  color: var(--color-ink);
+  font-family: var(--font-conviction);
+  font-size: clamp(2.5rem, 4.7vw, 5rem);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 0.94;
+}
+
+.thesis-pulse-heading > p {
+  margin: 0;
+  padding-left: 18px;
+  border-left: 2px solid var(--color-sapphire);
+  color: var(--color-ink-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.thesis-pulse-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 42px 0 0;
+  padding: 0;
+  border-block: 1px solid var(--color-line-lit);
+  list-style: none;
+}
+
+.thesis-pulse-track::before {
+  position: absolute;
+  top: 31px;
+  right: 3%;
+  left: 3%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--color-sapphire), var(--color-line-lit));
+  content: '';
+}
+
+.thesis-pulse-track li {
+  --pulse-color: var(--color-ink-faint);
+  position: relative;
+  min-width: 0;
+  padding: 56px 22px 28px;
+  border-right: 1px solid var(--color-line);
+}
+
+.thesis-pulse-track li:last-child {
+  border-right: 0;
+}
+
+.thesis-pulse-track li::before {
+  position: absolute;
+  top: 26px;
+  left: 22px;
+  width: 10px;
+  height: 10px;
+  border: 3px solid var(--color-void);
+  outline: 1px solid var(--pulse-color);
+  background: var(--pulse-color);
+  content: '';
+}
+
+.thesis-pulse-track li[data-tone='current'] {
+  --pulse-color: var(--color-sapphire);
+}
+
+.thesis-pulse-track li[data-tone='held'] {
+  --pulse-color: var(--color-sapphire);
+}
+
+.thesis-pulse-track li[data-tone='degraded'] {
+  --pulse-color: var(--color-degraded);
+}
+
+.thesis-pulse-index {
+  position: absolute;
+  top: 15px;
+  right: 18px;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+
+.thesis-pulse-track h3 {
+  margin: 9px 0 0;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.thesis-pulse-track strong {
+  display: block;
+  margin-top: 22px;
+  color: var(--color-ink);
+  font-family: var(--font-conviction);
+  font-size: clamp(1.2rem, 1.8vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+}
+
+.thesis-pulse-track small {
+  display: block;
+  margin-top: 14px;
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.55;
 }
 
 .evidence-horizon {
@@ -794,7 +930,21 @@ a {
   }
 
   .observatory-opening h1 {
-    font-size: clamp(4.6rem, 16vw, 8rem);
+    font-size: clamp(3.7rem, 11vw, 6.4rem);
+  }
+
+  .thesis-pulse-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .thesis-pulse-track {
+    grid-template-columns: repeat(5, minmax(220px, 1fr));
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .thesis-pulse-track li {
+    scroll-snap-align: start;
   }
 
   .evidence-horizon-track {
@@ -851,10 +1001,10 @@ a {
   }
 
   .observatory-opening h1 {
-    max-width: 7ch;
+    max-width: 15ch;
     margin-top: 18px;
-    font-size: clamp(4.3rem, 23vw, 6.8rem);
-    line-height: 0.82;
+    font-size: clamp(3.25rem, 14vw, 5.6rem);
+    line-height: 0.88;
   }
 
   .observatory-lede {
@@ -863,6 +1013,18 @@ a {
 
   .observatory-opening-facts > div {
     grid-template-columns: 105px 1fr;
+  }
+
+  .thesis-pulse {
+    padding-top: 44px;
+  }
+
+  .thesis-pulse-track {
+    box-sizing: border-box;
+    width: calc(100% + 36px);
+    margin-inline: -18px;
+    padding-inline: 18px;
+    border-inline: 0;
   }
 
   .evidence-horizon-heading {

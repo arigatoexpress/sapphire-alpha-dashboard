@@ -45,9 +45,9 @@ interface AttentionItem {
 }
 
 const SECTIONS = [
+  { href: '#thesis', label: 'Thesis' },
   { href: '#attention', label: 'Attention' },
   { href: '#timeline', label: 'Changed' },
-  { href: '#authority', label: 'Authority' },
   { href: '#evidence', label: 'Evidence' },
 ]
 
@@ -82,6 +82,10 @@ function toneForValue(value: string | null | undefined): EvidenceTone {
   return 'unknown'
 }
 
+function percent(value: number | null | undefined, digits = 0) {
+  return value == null ? NOT_OBSERVED : `${(value * 100).toFixed(digits)}%`
+}
+
 export default function App() {
   const build = useBuildIdentity()
   const { snapshot, error, loading } = useLiveTelemetry()
@@ -94,6 +98,8 @@ export default function App() {
   const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
   const gateCount = fleetCount(fleet, 'gates')
   const leaseCount = fleetCount(fleet, 'leases')
+  const epistemics = snapshot?.desk?.epistemics
+  const thesis = epistemics?.thesis
 
   const segments = useMemo(
     () =>
@@ -134,18 +140,6 @@ export default function App() {
     ],
   )
 
-  const executionHeld = ['halted', 'off', 'gated'].includes(String(execution))
-  const headline = executionHeld
-    ? error
-      ? 'Telemetry unavailable.'
-      : 'Authority held.'
-    : error
-      ? 'Telemetry unavailable.'
-      : execution
-        ? `Execution ${words(execution)}.`
-        : 'Awaiting observed state.'
-  const executionDisplay =
-    error && execution ? `${words(execution)} · last report` : words(execution)
   const attentionCount = attention.length
     ? formatCount(attention.length)
     : snapshot?.observed_at
@@ -178,29 +172,38 @@ export default function App() {
       <main className="observatory-main">
         <section className="observatory-opening" aria-labelledby="observatory-title">
           <div>
-            <p className="observatory-kicker">Decision observatory · read only</p>
-            <h1 id="observatory-title">{headline}</h1>
+            <p className="observatory-kicker">Decision observatory · read-only view</p>
+            <h1 id="observatory-title">{thesis?.claim ?? 'No thesis observed.'}</h1>
             <p className="observatory-lede">
-              What changed, what needs attention, and what is allowed to act—without
-              pretending an absent measurement exists.
+              The current claim, regime fit, falsifier, learning record, and execution
+              availability—separated so conviction never hides uncertainty.
             </p>
           </div>
 
-          <div className="observatory-opening-facts" aria-label="Current operating boundary">
+          <div className="observatory-opening-facts" aria-label="Current thesis summary">
             <div>
-              <span>Execution</span>
-              <strong>{executionDisplay}</strong>
+              <span>Probability</span>
+              <strong>{percent(thesis?.probability)}</strong>
+            </div>
+            <div>
+              <span>Stance</span>
+              <strong>{words(thesis?.stance)}</strong>
+            </div>
+            <div>
+              <span>Horizon</span>
+              <strong>{thesis ? `${thesis.horizon_days} days` : NOT_OBSERVED}</strong>
             </div>
             <div>
               <span>Needs attention</span>
               <strong>{attentionCount}</strong>
             </div>
-            <div>
-              <span>Can act</span>
-              <strong>Read and review only</strong>
-            </div>
           </div>
         </section>
+
+        <ThesisPulse
+          snapshot={snapshot}
+          execution={execution}
+        />
 
         <EvidenceHorizon
           segments={segments}
@@ -211,7 +214,7 @@ export default function App() {
         <div className="observatory-decision-grid">
           <section id="attention" className="attention-panel" aria-labelledby="attention-title">
             <div className="section-heading">
-              <p>01 · Needs attention</p>
+              <p>02 · Needs attention</p>
               <h2 id="attention-title">The shortest path to a truthful state.</h2>
             </div>
             {attention.length ? (
@@ -237,44 +240,19 @@ export default function App() {
               </div>
             )}
             <p className="attention-boundary">
-              This surface cannot place a trade, clear a halt, change a cap, or approve
-              itself.
+              This page observes the desk. Start/stop, policy changes, custody, and orders
+              remain isolated control surfaces.
             </p>
           </section>
 
           <section id="timeline" className="timeline-panel" aria-labelledby="timeline-title">
             <div className="section-heading">
-              <p>02 · What changed</p>
+              <p>03 · What changed</p>
               <h2 id="timeline-title">Observed events, newest first.</h2>
             </div>
             <EventTimeline snapshot={snapshot} fallback={narration?.text} />
           </section>
         </div>
-
-        <section id="authority" className="authority-band" aria-labelledby="authority-title">
-          <div>
-            <p className="observatory-kicker">03 · Authority</p>
-            <h2 id="authority-title">Evidence may challenge. It may not authorize.</h2>
-          </div>
-          <dl>
-            <div>
-              <dt>Execution</dt>
-              <dd>{executionHeld ? 'No execution permitted' : words(execution)}</dd>
-            </div>
-            <div>
-              <dt>Decision gate</dt>
-              <dd>{words(snapshot?.markets.decision_gate)}</dd>
-            </div>
-            <div>
-              <dt>Research role</dt>
-              <dd>{words(widgets?.research.policy.research_role)}</dd>
-            </div>
-            <div>
-              <dt>Human gates</dt>
-              <dd>{formatCount(gateCount)}</dd>
-            </div>
-          </dl>
-        </section>
 
         <section id="evidence" className="evidence-ledger" aria-labelledby="evidence-title">
           <div className="section-heading section-heading--wide">
@@ -284,7 +262,7 @@ export default function App() {
             </div>
             <p>
               Open a ledger only when the decision needs it. The top of the page stays
-              reserved for exceptions and authority.
+              reserved for thesis, revision triggers, and execution availability.
             </p>
           </div>
 
@@ -316,7 +294,7 @@ export default function App() {
       </main>
 
       <footer className="observatory-footer">
-        <span>Sapphire Alpha · evidence before action</span>
+        <span>Sapphire Alpha · conviction under revision</span>
         {build ? (
           <span>
             Build {shortBuildValue(build.source_sha)} ·{' '}
@@ -332,9 +310,121 @@ export default function App() {
             Build not verified · <a href="/api/build">inspect manifest</a>
           </span>
         )}
-        <span>Anonymous · read only · no execution authority</span>
+        <span>Anonymous · read-only view · controls isolated</span>
       </footer>
     </div>
+  )
+}
+
+function ThesisPulse({
+  snapshot,
+  execution,
+}: {
+  snapshot: LiveSnapshot | null
+  execution: string | null
+}) {
+  const epistemics = snapshot?.desk?.epistemics
+  const thesis = epistemics?.thesis
+  const regime = epistemics?.regime
+  const learning = epistemics?.learning
+  const falsifier = epistemics?.falsifiers?.[0]
+  const autonomy = snapshot?.desk?.autonomy
+  const floor = snapshot?.desk?.safety_floor
+  const floorChecks = floor
+    ? [floor.gate_valid, floor.pause_clear, floor.ledger === 'reconciled', floor.bounded_policy]
+    : []
+  const floorReady = floorChecks.length === 4 && floorChecks.every(Boolean)
+
+  const stages = [
+    {
+      id: 'claim',
+      eyebrow: 'Claim',
+      title: 'Thesis now',
+      value: thesis?.claim ?? 'No thesis observed.',
+      meta: thesis
+        ? `${percent(thesis.probability)} probability · ${words(thesis.confidence)} confidence`
+        : 'Waiting for a versioned claim.',
+      tone: thesis ? (epistemics?.fresh ? 'current' : 'degraded') : 'unknown',
+    },
+    {
+      id: 'regime',
+      eyebrow: 'Context',
+      title: 'Narrative & regime',
+      value: regime?.label ? words(regime.label) : NOT_OBSERVED,
+      meta: regime?.drivers?.length
+        ? regime.drivers.slice(0, 2).join(' · ')
+        : `Fit ${percent(regime?.fit)} · quality ${percent(regime?.data_quality)}`,
+      tone: regime?.label && regime.label !== 'unknown' ? 'current' : 'unknown',
+    },
+    {
+      id: 'falsifier',
+      eyebrow: 'Revision trigger',
+      title: 'What would change the view',
+      value: falsifier?.condition ?? thesis?.falsifier ?? NOT_OBSERVED,
+      meta: falsifier ? `Status: ${words(falsifier.status)}` : 'No falsifier observed.',
+      tone: falsifier?.status === 'triggered'
+        ? 'degraded'
+        : falsifier?.status === 'watch'
+          ? 'held'
+          : falsifier
+            ? 'current'
+            : 'unknown',
+    },
+    {
+      id: 'learning',
+      eyebrow: 'Outcomes',
+      title: 'Learning loop',
+      value: learning
+        ? `${formatCount(learning.open)} open · ${formatCount(learning.resolved)} resolved`
+        : NOT_OBSERVED,
+      meta: learning
+        ? `Brier ${learning.mean_brier == null ? NOT_OBSERVED : learning.mean_brier.toFixed(3)} · ${formatCount(learning.lessons)} lessons`
+        : 'No outcome calibration observed.',
+      tone: learning?.status === 'learning'
+        ? 'current'
+        : learning?.status === 'bootstrapping'
+          ? 'held'
+          : 'unknown',
+    },
+    {
+      id: 'execution',
+      eyebrow: 'Availability',
+      title: 'Execution floor',
+      value: floor ? (floorReady ? 'Ready' : 'Waiting') : NOT_OBSERVED,
+      meta: floor
+        ? `${floor.ledger} ledger · ${autonomy?.new_entries ?? 'waiting'} entries · execution ${words(execution)}`
+        : 'Gate, pause, ledger, and bounded policy are not observed.',
+      tone: floorReady && autonomy?.active ? 'current' : floor ? 'held' : 'unknown',
+    },
+  ] as const
+
+  return (
+    <section id="thesis" className="thesis-pulse" aria-labelledby="thesis-pulse-title">
+      <div className="thesis-pulse-heading">
+        <div>
+          <p>01 · Thesis pulse</p>
+          <h2 id="thesis-pulse-title">One view. Five revision points.</h2>
+        </div>
+        <p>
+          {autonomy
+            ? `Autonomy desired ${autonomy.desired}; effective ${autonomy.active ? 'on' : 'off'} — ${autonomy.reason}.`
+            : 'Autonomy state has not been observed.'}
+        </p>
+      </div>
+      <ol className="thesis-pulse-track">
+        {stages.map((stage, index) => (
+          <li key={stage.id} data-tone={stage.tone}>
+            <span className="thesis-pulse-index">{String(index + 1).padStart(2, '0')}</span>
+            <div>
+              <p>{stage.eyebrow}</p>
+              <h3>{stage.title}</h3>
+              <strong>{stage.value}</strong>
+              <small>{stage.meta}</small>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 
@@ -650,7 +740,7 @@ export function buildEvidenceSegments({
       source: '/api/v1/live · desk',
       observedAt: observedTime(snapshot?.desk?.updated_at ?? snapshot?.observed_at),
       freshness,
-      authority: 'human gate',
+      authority: 'execution control',
       uncertainty: errors.live
         ? snapshot?.desk
           ? 'poll failed; value is from the last report'
@@ -688,7 +778,7 @@ export function buildEvidenceSegments({
       source: '/api/v1/widgets · research',
       observedAt: observedTime(widgets?.rendered_at),
       freshness: widgets?.rendered_at ? 'timestamp supplied; age not computed' : NOT_OBSERVED,
-      authority: 'cannot authorize execution',
+      authority: 'decision input',
       uncertainty: errors.widgets
         ? 'poll failed; value is from the last report'
         : widgets
@@ -793,8 +883,8 @@ function buildAttention({
 
   if (gateCount != null && gateCount > 0) {
     items.push({
-      label: `${gateCount} human ${gateCount === 1 ? 'gate is' : 'gates are'} open`,
-      detail: 'These remain decisions for a person; age and subject live in the fleet record.',
+      label: `${gateCount} ${gateCount === 1 ? 'gate is' : 'gates are'} open`,
+      detail: 'Age and subject live in the fleet record; this page cannot clear them.',
       tone: 'held',
     })
   }

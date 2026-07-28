@@ -432,6 +432,57 @@
     "feeds": {
       "fresh": 7,
       "total": 7
+    },
+    "epistemics": {
+      "updated_ts": 1785018376.581294,
+      "fresh": true,
+      "thesis": {
+        "id": "cycle-map",
+        "claim": "Liquidity conditions still favor selective risk over broad exposure.",
+        "probability": 0.63,
+        "stance": "lean_yes",
+        "confidence": "tentative",
+        "data_quality": 0.96,
+        "horizon_days": 365,
+        "falsifier": "Liquidity breadth and market participation expand together."
+      },
+      "regime": {
+        "label": "late_cycle",
+        "fit": 0.53,
+        "data_quality": 0.96,
+        "drivers": [
+          "Liquidity breadth remains uneven.",
+          "Leadership remains concentrated."
+        ]
+      },
+      "falsifiers": [
+        {
+          "claim_id": "cycle-map",
+          "condition": "Liquidity breadth and market participation expand together.",
+          "status": "watch"
+        }
+      ],
+      "learning": {
+        "status": "bootstrapping",
+        "open": 12,
+        "resolved": 0,
+        "mean_brier": null,
+        "accuracy": null,
+        "lessons": 0,
+        "updated_ts": 1785018376.581294
+      }
+    },
+    "autonomy": {
+      "desired": "on",
+      "active": false,
+      "new_entries": "waiting",
+      "reason": "execution halted"
+    },
+    "safety_floor": {
+      "gate_valid": true,
+      "pause_clear": false,
+      "ledger": "reconciled",
+      "bounded_policy": true
     }
   },
   "events": [

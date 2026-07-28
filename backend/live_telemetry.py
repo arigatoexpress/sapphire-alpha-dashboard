@@ -206,6 +206,202 @@ def _timestamp(value: Any, *, where: str, future_slack_s: int = 60) -> str:
     return parsed.isoformat()
 
 
+def _epistemics(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {
+            "updated_ts": None,
+            "fresh": False,
+            "thesis": None,
+            "regime": {"label": "unknown", "fit": None, "data_quality": None, "drivers": []},
+            "falsifiers": [],
+            "learning": {
+                "status": "unavailable", "open": None, "resolved": None,
+                "mean_brier": None, "accuracy": None, "lessons": 0,
+                "updated_ts": None,
+            },
+        }
+    raw = _keys(
+        value,
+        allowed={"updated_ts", "fresh", "thesis", "regime", "falsifiers", "learning"},
+        required={"updated_ts", "fresh", "thesis", "regime", "falsifiers", "learning"},
+        where="desk.epistemics",
+    )
+    if not isinstance(raw["fresh"], bool):
+        raise TelemetryValidationError("desk.epistemics.fresh must be boolean")
+    thesis_raw = raw["thesis"]
+    thesis = None
+    if thesis_raw is not None:
+        thesis_raw = _keys(
+            thesis_raw,
+            allowed={
+                "id", "claim", "probability", "stance", "confidence",
+                "data_quality", "horizon_days", "falsifier",
+            },
+            required={
+                "id", "claim", "probability", "stance", "confidence",
+                "data_quality", "horizon_days", "falsifier",
+            },
+            where="desk.epistemics.thesis",
+        )
+        thesis = {
+            "id": _identifier(thesis_raw["id"], where="desk.epistemics.thesis.id"),
+            "claim": _text(
+                thesis_raw["claim"], where="desk.epistemics.thesis.claim", limit=280),
+            "probability": _number(
+                thesis_raw["probability"], where="desk.epistemics.thesis.probability",
+                high=1),
+            "stance": _text(
+                thesis_raw["stance"], where="desk.epistemics.thesis.stance", limit=32),
+            "confidence": _text(
+                thesis_raw["confidence"], where="desk.epistemics.thesis.confidence",
+                limit=32),
+            "data_quality": _number(
+                thesis_raw["data_quality"], where="desk.epistemics.thesis.data_quality",
+                high=1),
+            "horizon_days": _integer(
+                thesis_raw["horizon_days"], where="desk.epistemics.thesis.horizon_days",
+                low=1, high=3650),
+            "falsifier": _text(
+                thesis_raw["falsifier"], where="desk.epistemics.thesis.falsifier",
+                limit=320),
+        }
+    regime_raw = _keys(
+        raw["regime"],
+        allowed={"label", "fit", "data_quality", "drivers"},
+        required={"label", "fit", "data_quality", "drivers"},
+        where="desk.epistemics.regime",
+    )
+    drivers_raw = regime_raw["drivers"]
+    if not isinstance(drivers_raw, list) or len(drivers_raw) > 3:
+        raise TelemetryValidationError("desk.epistemics.regime.drivers must be bounded")
+    falsifiers_raw = raw["falsifiers"]
+    if not isinstance(falsifiers_raw, list) or len(falsifiers_raw) > 5:
+        raise TelemetryValidationError("desk.epistemics.falsifiers must be bounded")
+    falsifiers = []
+    for index, item in enumerate(falsifiers_raw):
+        item = _keys(
+            item,
+            allowed={"claim_id", "condition", "status"},
+            required={"claim_id", "condition", "status"},
+            where=f"desk.epistemics.falsifiers[{index}]",
+        )
+        falsifiers.append({
+            "claim_id": _identifier(
+                item["claim_id"], where=f"desk.epistemics.falsifiers[{index}].claim_id"),
+            "condition": _text(
+                item["condition"], where=f"desk.epistemics.falsifiers[{index}].condition",
+                limit=240),
+            "status": _enum(
+                item["status"], {"clear", "watch", "triggered", "unknown"},
+                where=f"desk.epistemics.falsifiers[{index}].status"),
+        })
+    learning_raw = _keys(
+        raw["learning"],
+        allowed={
+            "status", "open", "resolved", "mean_brier", "accuracy",
+            "lessons", "updated_ts",
+        },
+        required={
+            "status", "open", "resolved", "mean_brier", "accuracy",
+            "lessons", "updated_ts",
+        },
+        where="desk.epistemics.learning",
+    )
+    return {
+        "updated_ts": _nullable_number(
+            raw["updated_ts"], where="desk.epistemics.updated_ts", high=4_102_444_800),
+        "fresh": raw["fresh"],
+        "thesis": thesis,
+        "regime": {
+            "label": _text(
+                regime_raw["label"], where="desk.epistemics.regime.label", limit=40),
+            "fit": _nullable_number(
+                regime_raw["fit"], where="desk.epistemics.regime.fit", high=1),
+            "data_quality": _nullable_number(
+                regime_raw["data_quality"],
+                where="desk.epistemics.regime.data_quality", high=1),
+            "drivers": [
+                _text(item, where=f"desk.epistemics.regime.drivers[{index}]", limit=160)
+                for index, item in enumerate(drivers_raw)
+            ],
+        },
+        "falsifiers": falsifiers,
+        "learning": {
+            "status": _enum(
+                learning_raw["status"],
+                {"bootstrapping", "learning", "unavailable"},
+                where="desk.epistemics.learning.status",
+            ),
+            "open": _nullable_integer(
+                learning_raw["open"], where="desk.epistemics.learning.open", high=10_000),
+            "resolved": _nullable_integer(
+                learning_raw["resolved"], where="desk.epistemics.learning.resolved",
+                high=10_000),
+            "mean_brier": _nullable_number(
+                learning_raw["mean_brier"],
+                where="desk.epistemics.learning.mean_brier", high=1),
+            "accuracy": _nullable_number(
+                learning_raw["accuracy"],
+                where="desk.epistemics.learning.accuracy", high=1),
+            "lessons": _integer(
+                learning_raw["lessons"], where="desk.epistemics.learning.lessons",
+                high=10_000),
+            "updated_ts": _nullable_number(
+                learning_raw["updated_ts"],
+                where="desk.epistemics.learning.updated_ts", high=4_102_444_800),
+        },
+    }
+
+
+def _autonomy(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {
+            "desired": "off", "active": False,
+            "new_entries": "waiting", "reason": "not observed",
+        }
+    raw = _keys(
+        value,
+        allowed={"desired", "active", "new_entries", "reason"},
+        required={"desired", "active", "new_entries", "reason"},
+        where="desk.autonomy",
+    )
+    if not isinstance(raw["active"], bool):
+        raise TelemetryValidationError("desk.autonomy.active must be boolean")
+    return {
+        "desired": _enum(raw["desired"], {"on", "off"}, where="desk.autonomy.desired"),
+        "active": raw["active"],
+        "new_entries": _enum(
+            raw["new_entries"], {"available", "waiting"},
+            where="desk.autonomy.new_entries",
+        ),
+        "reason": _text(raw["reason"], where="desk.autonomy.reason", limit=160),
+    }
+
+
+def _safety_floor(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {
+            "gate_valid": False, "pause_clear": False,
+            "ledger": "unknown", "bounded_policy": False,
+        }
+    raw = _keys(
+        value,
+        allowed={"gate_valid", "pause_clear", "ledger", "bounded_policy"},
+        required={"gate_valid", "pause_clear", "ledger", "bounded_policy"},
+        where="desk.safety_floor",
+    )
+    for key in ("gate_valid", "pause_clear", "bounded_policy"):
+        if not isinstance(raw[key], bool):
+            raise TelemetryValidationError(f"desk.safety_floor.{key} must be boolean")
+    return {
+        "gate_valid": raw["gate_valid"],
+        "pause_clear": raw["pause_clear"],
+        "ledger": _enum(
+            raw["ledger"], _LEDGER_STATES, where="desk.safety_floor.ledger"),
+        "bounded_policy": raw["bounded_policy"],
+    }
+
+
 def validate_snapshot(raw: Any) -> dict[str, Any]:
     """Return a normalized copy of the only telemetry shape we will store."""
     _scan_forbidden(raw)
@@ -250,6 +446,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             allowed={
                 "version", "updated_at", "posture", "leader", "validation",
                 "decisions", "execution", "feeds", "tracks", "risk", "experiment",
+                "epistemics", "autonomy", "safety_floor",
             },
             required={
                 "version", "updated_at", "posture", "leader", "validation",
@@ -598,6 +795,9 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
                     where="desk.experiment.collector",
                 ),
             },
+            "epistemics": _epistemics(desk_obj.get("epistemics")),
+            "autonomy": _autonomy(desk_obj.get("autonomy")),
+            "safety_floor": _safety_floor(desk_obj.get("safety_floor")),
         }
         if desk["validation"]["oos_pass"] > desk["validation"]["oos_total"]:
             raise TelemetryValidationError("desk OOS passing count exceeds total")
@@ -901,6 +1101,9 @@ def _empty_desk() -> dict[str, Any]:
             "last_committed_date": None,
             "collector": "unknown",
         },
+        "epistemics": _epistemics(None),
+        "autonomy": _autonomy(None),
+        "safety_floor": _safety_floor(None),
     }
 
 
@@ -916,7 +1119,11 @@ def _normalize_stored(snapshot: dict[str, Any]) -> dict[str, Any]:
         if isinstance(node, dict) and "load_band" in node:
             node.setdefault("load", node.pop("load_band"))
             node.pop("load_band", None)
-    snapshot.setdefault("desk", _empty_desk())
+    empty_desk = _empty_desk()
+    desk = snapshot.setdefault("desk", empty_desk)
+    if isinstance(desk, dict):
+        for key in ("epistemics", "autonomy", "safety_floor"):
+            desk.setdefault(key, empty_desk[key])
     return snapshot
 
 
