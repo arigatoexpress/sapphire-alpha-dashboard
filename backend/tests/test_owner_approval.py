@@ -910,3 +910,13 @@ def test_module_has_no_consumer_connector_network_process_or_secret_logging() ->
     assert "canonical_sha256: bundle.canonical_sha256" in frontend
     assert "expected_rev: bundle.rev" in frontend
     assert "csrf_challenge: challenge.csrf_challenge" in frontend
+
+
+def test_combined_image_copies_the_isolated_approval_entrypoint() -> None:
+    dockerfile = (
+        Path(__file__).resolve().parents[2] / "Dockerfile"
+    ).read_text(encoding="utf-8")
+    assert any(
+        line.startswith("COPY frontend/") and "frontend/approval.html" in line
+        for line in dockerfile.splitlines()
+    )

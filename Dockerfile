@@ -23,7 +23,7 @@ COPY shared ./shared
 WORKDIR /repo/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY frontend/index.html frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts ./
+COPY frontend/index.html frontend/approval.html frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts ./
 COPY frontend/src ./src
 COPY frontend/public ./public
 RUN npm run build
