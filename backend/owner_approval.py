@@ -138,16 +138,16 @@ DEPENDENCY_PINS: Mapping[str, str | int] = MappingProxyType(
         "task061_merged_tree": "44d44b83c23c18758b81caee143c8adae067e92a",
         "task061_result_sha256": "40daab4625cd93ba71385aba0863077af5bf3bcc7b6a31f08604bf63518ce7a5",
         "task061_review_sha256": "8f56f716cc4d4cb98193c32cb1996375e630228164c15d0eceebfef11764d0b0",
-        "fleet_lease_version": "0.7.1",
+        "fleet_lease_version": "0.7.2",
         "approval_schema_version": "3.1.0",
-        "approval_source_size": 185320,
-        "approval_source_sha256": "3ad1de8d2e8eb0c930f32487d5ce8e65363ad9c96f83f4bf165f62f7153a7784",
+        "approval_source_size": 186915,
+        "approval_source_sha256": "c0d0c10010a4b1d585fd68d4b51db9419ad01244ee030d611a5196fa5b226ebf",
         "fleet_core_source_size": 10381,
         "fleet_core_source_sha256": "5ba04bd3092ac0093d15da8313302ffa9861a2f8249666a889839beb916d001d",
-        "fleet_lease_runtime_commit": "af4a32ee761772ab41983bcef9658e2a5f2cd5ad",
-        "fleet_lease_runtime_tree": "7f2b0cede4ac279bed18c3ec51a1dafbc6c08450",
-        "approval_harness_merged_commit": "af4a32ee761772ab41983bcef9658e2a5f2cd5ad",
-        "approval_harness_merged_tree": "7f2b0cede4ac279bed18c3ec51a1dafbc6c08450",
+        "fleet_lease_runtime_commit": "2899514171b732beb39d16364eb9d28a1231d173",
+        "fleet_lease_runtime_tree": "e6e72ff25a0a4e95d34ac78c96011592695a8773",
+        "approval_harness_merged_commit": "2899514171b732beb39d16364eb9d28a1231d173",
+        "approval_harness_merged_tree": "e6e72ff25a0a4e95d34ac78c96011592695a8773",
         "task059_merged_commit": "94d4df4d0b3bdbd11b10679c74d316936f8dec08",
         "task059_merged_tree": "0723948e4b730710ad0553bafa01e4f98eb0f94e",
         "task059_result_sha256": "5866a7dea2c0e677ea7109cd8f024028c76d59f8c589f4d6d4f8482766dec745",
@@ -556,13 +556,8 @@ class ChallengeMacAuthority:
 class FleetLeaseCompilerPort:
     """Execute the same held, verified public lifecycle implementation."""
 
-    def __init__(
-        self,
-        *,
-        challenge_verifier: Callable[[dict, str], bool],
-    ) -> None:
+    def __init__(self) -> None:
         self._database: Any | None = None
-        self._challenge_verifier = challenge_verifier
 
     @staticmethod
     def _held_source(path: Path, expected_size: int, expected_sha256: str) -> bytes:
@@ -631,7 +626,6 @@ class FleetLeaseCompilerPort:
         approvals_size: int,
         approvals_sha256: str,
         schema_version: str,
-        challenge_verifier: Callable[[dict, str], bool],
     ) -> Any:
         core_source = cls._held_source(core_path, core_size, core_sha256)
         approvals_source = cls._held_source(
@@ -666,10 +660,7 @@ class FleetLeaseCompilerPort:
             )
             if approvals.BUNDLE_SCHEMA_VERSION != schema_version:
                 raise RailRefused("DEPENDENCY_MISMATCH", 503)
-            return approvals.ApprovalBundleDB(
-                registry_path,
-                _attended_challenge_verifier=challenge_verifier,
-            )
+            return approvals.ApprovalBundleDB(registry_path)
         except RailRefused:
             raise
         except Exception:
@@ -728,7 +719,6 @@ class FleetLeaseCompilerPort:
                 approvals_size=int(DEPENDENCY_PINS["approval_source_size"]),
                 approvals_sha256=str(DEPENDENCY_PINS["approval_source_sha256"]),
                 schema_version=str(DEPENDENCY_PINS["approval_schema_version"]),
-                challenge_verifier=self._challenge_verifier,
             )
         return self._database
 
@@ -1709,9 +1699,7 @@ def create_owner_approval_router(
 def production_rail() -> OwnerApprovalRail:
     """Build the fixed-path local profile. It creates no file or schema."""
     challenge_authority = ChallengeMacAuthority(ACTIVATION_KEY_PATH)
-    compiler = FleetLeaseCompilerPort(
-        challenge_verifier=challenge_authority.verify,
-    )
+    compiler = FleetLeaseCompilerPort()
     verifier = ActivationVerifier(
         registry_path=CANONICAL_REGISTRY_PATH,
         attestation_path=ACTIVATION_PATH,

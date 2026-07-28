@@ -1181,10 +1181,9 @@ def test_exact_held_fleet_source_executes_without_ambient_import(
         b"from .core import HELD_CORE\n"
         b'BUNDLE_SCHEMA_VERSION = "held-test/v1"\n'
         b"class ApprovalBundleDB:\n"
-        b"    def __init__(self, path, *, _attended_challenge_verifier):\n"
+        b"    def __init__(self, path):\n"
         b"        self.path = path\n"
         b"        self.core_identity = HELD_CORE\n"
-        b"        self.challenge_verifier = _attended_challenge_verifier\n"
     )
     approvals_path.write_bytes(approvals_source)
     database = FleetLeaseCompilerPort._load_held_database(
@@ -1196,12 +1195,15 @@ def test_exact_held_fleet_source_executes_without_ambient_import(
         approvals_size=len(approvals_source),
         approvals_sha256=hashlib.sha256(approvals_source).hexdigest(),
         schema_version="held-test/v1",
-        challenge_verifier=lambda _content, _mac: True,
     )
     assert database.__class__.__module__.startswith("_sapphire_held_fleet_")
     assert database.path == registry
     assert database.core_identity == "exact-core-bytes"
-    assert database.challenge_verifier({}, "a" * 64)
+    adapter_source = (
+        Path(__file__).resolve().parents[1] / "owner_approval.py"
+    ).read_text(encoding="utf-8")
+    assert "_attended_challenge_verifier" not in adapter_source
+    assert "challenge_verifier" not in adapter_source
 
 
 def test_public_app_excludes_owner_approval_and_local_runtime_is_exact(

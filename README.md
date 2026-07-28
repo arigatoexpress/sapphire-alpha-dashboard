@@ -101,9 +101,10 @@ owner-supplied local TLS paths in `OWNER_APPROVAL_TLS_CERT` and
 `OWNER_APPROVAL_TLS_KEY`. The launcher hard-codes `127.0.0.1:8099`, refuses
 Cloud/container markers and dependency drift, and has no host override.
 Each one-use owner-session challenge is domain-separated and authenticated by
-the separately activated owner key before the exact fleet-lease lifecycle can
-provision an attended receipt. A raw or invented challenge digest cannot call
-that public boundary directly.
+the separately activated owner key. The exact held fleet-lease source verifies
+that MAC itself against the single fixed key path; neither the database
+constructor nor Sapphire can inject a verifier or alternate key path. A raw or
+invented challenge digest cannot call that public boundary directly.
 
 Reproduce that runtime from the repository root with Python 3.11 and the
 hash-locked dependency set:
