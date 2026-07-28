@@ -517,6 +517,58 @@ class FleetLeaseCompilerPort:
             raise RailRefused("DEPENDENCY_MISMATCH", 503)
         return content
 
+    @classmethod
+    def _load_held_database(
+        cls,
+        *,
+        registry_path: Path,
+        core_path: Path,
+        approvals_path: Path,
+        core_size: int,
+        core_sha256: str,
+        approvals_size: int,
+        approvals_sha256: str,
+        schema_version: str,
+    ) -> Any:
+        core_source = cls._held_source(core_path, core_size, core_sha256)
+        approvals_source = cls._held_source(
+            approvals_path,
+            approvals_size,
+            approvals_sha256,
+        )
+        package_name = (
+            "_sapphire_held_fleet_"
+            + hashlib.sha256(core_source + approvals_source).hexdigest()[:20]
+            + f"_{id(core_source):x}"
+        )
+        if package_name in sys.modules:
+            raise RailRefused("DEPENDENCY_MISMATCH", 503)
+        package = types.ModuleType(package_name)
+        package.__path__ = []
+        package.__package__ = package_name
+        core = types.ModuleType(package_name + ".core")
+        core.__package__ = package_name
+        core.__file__ = str(core_path)
+        approvals = types.ModuleType(package_name + ".approvals")
+        approvals.__package__ = package_name
+        approvals.__file__ = str(approvals_path)
+        sys.modules[package_name] = package
+        sys.modules[core.__name__] = core
+        sys.modules[approvals.__name__] = approvals
+        try:
+            exec(compile(core_source, str(core_path), "exec"), core.__dict__)
+            exec(
+                compile(approvals_source, str(approvals_path), "exec"),
+                approvals.__dict__,
+            )
+            if approvals.BUNDLE_SCHEMA_VERSION != schema_version:
+                raise RailRefused("DEPENDENCY_MISMATCH", 503)
+            return approvals.ApprovalBundleDB(registry_path)
+        except RailRefused:
+            raise
+        except Exception:
+            raise RailRefused("DEPENDENCY_MISMATCH", 503) from None
+
     @staticmethod
     def _verify_evidence() -> None:
         if not _owner_private_file(CANONICAL_REGISTRY_PATH):
@@ -559,53 +611,18 @@ class FleetLeaseCompilerPort:
     def _db(self) -> Any:
         if self._database is None:
             self._verify_evidence()
-            try:
-                core_path = FLEET_LEASE_SOURCE_ROOT / "core.py"
-                approvals_path = FLEET_LEASE_SOURCE_ROOT / "approvals.py"
-                core_source = self._held_source(
-                    core_path,
-                    int(DEPENDENCY_PINS["fleet_core_source_size"]),
-                    str(DEPENDENCY_PINS["fleet_core_source_sha256"]),
-                )
-                approvals_source = self._held_source(
-                    approvals_path,
-                    int(DEPENDENCY_PINS["approval_source_size"]),
-                    str(DEPENDENCY_PINS["approval_source_sha256"]),
-                )
-                package_name = (
-                    "_sapphire_held_fleet_"
-                    + hashlib.sha256(core_source + approvals_source).hexdigest()[:20]
-                    + f"_{id(self):x}"
-                )
-                if package_name in sys.modules:
-                    raise RailRefused("DEPENDENCY_MISMATCH", 503)
-                package = types.ModuleType(package_name)
-                package.__path__ = []
-                package.__package__ = package_name
-                core = types.ModuleType(package_name + ".core")
-                core.__package__ = package_name
-                core.__file__ = str(core_path)
-                approvals = types.ModuleType(package_name + ".approvals")
-                approvals.__package__ = package_name
-                approvals.__file__ = str(approvals_path)
-                sys.modules[package_name] = package
-                sys.modules[core.__name__] = core
-                sys.modules[approvals.__name__] = approvals
-                exec(compile(core_source, str(core_path), "exec"), core.__dict__)
-                exec(
-                    compile(approvals_source, str(approvals_path), "exec"),
-                    approvals.__dict__,
-                )
-                if (
-                    approvals.BUNDLE_SCHEMA_VERSION
-                    != DEPENDENCY_PINS["approval_schema_version"]
-                ):
-                    raise RailRefused("DEPENDENCY_MISMATCH", 503)
-                self._database = approvals.ApprovalBundleDB(CANONICAL_REGISTRY_PATH)
-            except RailRefused:
-                raise
-            except Exception:
-                raise RailRefused("DEPENDENCY_MISMATCH", 503) from None
+            core_path = FLEET_LEASE_SOURCE_ROOT / "core.py"
+            approvals_path = FLEET_LEASE_SOURCE_ROOT / "approvals.py"
+            self._database = self._load_held_database(
+                registry_path=CANONICAL_REGISTRY_PATH,
+                core_path=core_path,
+                approvals_path=approvals_path,
+                core_size=int(DEPENDENCY_PINS["fleet_core_source_size"]),
+                core_sha256=str(DEPENDENCY_PINS["fleet_core_source_sha256"]),
+                approvals_size=int(DEPENDENCY_PINS["approval_source_size"]),
+                approvals_sha256=str(DEPENDENCY_PINS["approval_source_sha256"]),
+                schema_version=str(DEPENDENCY_PINS["approval_schema_version"]),
+            )
         return self._database
 
     def get_bundle(self, bundle_id: str) -> dict[str, Any]:

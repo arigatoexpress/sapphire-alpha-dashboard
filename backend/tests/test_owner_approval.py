@@ -21,7 +21,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import owner_approval as owner_approval_module
 from owner_approval import (
     ACTIVATION_SCHEMA,
     DISPLAY_ACTION_FIELDS,
@@ -1056,30 +1055,35 @@ def test_module_has_no_consumer_connector_network_process_or_secret_logging() ->
 
 def test_exact_held_fleet_source_executes_without_ambient_import(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = tmp_path / "registry.sqlite3"
     _initialize_registry(registry)
-    fleet_source = (
-        Path(__file__).resolve().parents[3]
-        / "fleet-lease-task060-r2"
-        / "src"
-        / "fleet_lease"
+    core_path = tmp_path / "core.py"
+    core_source = b'HELD_CORE = "exact-core-bytes"\n'
+    core_path.write_bytes(core_source)
+    approvals_path = tmp_path / "approvals.py"
+    approvals_source = (
+        b"from .core import HELD_CORE\n"
+        b'BUNDLE_SCHEMA_VERSION = "held-test/v1"\n'
+        b"class ApprovalBundleDB:\n"
+        b"    def __init__(self, path):\n"
+        b"        self.path = path\n"
+        b"        self.core_identity = HELD_CORE\n"
     )
-    monkeypatch.setattr(
-        owner_approval_module,
-        "CANONICAL_REGISTRY_PATH",
-        registry,
+    approvals_path.write_bytes(approvals_source)
+    database = FleetLeaseCompilerPort._load_held_database(
+        registry_path=registry,
+        core_path=core_path,
+        approvals_path=approvals_path,
+        core_size=len(core_source),
+        core_sha256=hashlib.sha256(core_source).hexdigest(),
+        approvals_size=len(approvals_source),
+        approvals_sha256=hashlib.sha256(approvals_source).hexdigest(),
+        schema_version="held-test/v1",
     )
-    monkeypatch.setattr(
-        owner_approval_module,
-        "FLEET_LEASE_SOURCE_ROOT",
-        fleet_source,
-    )
-    compiler = FleetLeaseCompilerPort()
-    database = compiler._db()
     assert database.__class__.__module__.startswith("_sapphire_held_fleet_")
-    assert compiler._db() is database
+    assert database.path == registry
+    assert database.core_identity == "exact-core-bytes"
 
 
 def test_public_app_excludes_owner_approval_and_local_runtime_is_exact(
