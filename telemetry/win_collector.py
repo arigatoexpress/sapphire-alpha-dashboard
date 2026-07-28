@@ -129,6 +129,28 @@ def _unknown_desk() -> dict[str, Any]:
             "last_committed_date": None,
             "collector": "unknown",
         },
+        "epistemics": {
+            "updated_ts": None,
+            "fresh": False,
+            "thesis": None,
+            "regime": {
+                "label": "unknown", "fit": None, "data_quality": None, "drivers": [],
+            },
+            "falsifiers": [],
+            "learning": {
+                "status": "unavailable", "open": None, "resolved": None,
+                "mean_brier": None, "accuracy": None, "lessons": 0,
+                "updated_ts": None,
+            },
+        },
+        "autonomy": {
+            "desired": "off", "active": False,
+            "new_entries": "waiting", "reason": "not observed",
+        },
+        "safety_floor": {
+            "gate_valid": False, "pause_clear": False,
+            "ledger": "unknown", "bounded_policy": False,
+        },
     }
 
 
@@ -142,11 +164,15 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         }
         if not required <= set(value) or not set(value) <= required | {
             "risk", "experiment", "tracks",
+            "epistemics", "autonomy", "safety_floor",
         }:
             return _unknown_desk()
         validation = value["validation"]
         decisions = value["decisions"]
         feeds = value["feeds"]
+        epistemics = value.get("epistemics")
+        autonomy = value.get("autonomy")
+        safety_floor = value.get("safety_floor")
         if (
             value["version"] != 1
             or value["posture"] not in {
@@ -169,6 +195,44 @@ def _desk_projection(path: Path) -> dict[str, Any]:
                 "pending_policy_blocked",
             })
             or set(feeds) != {"fresh", "total"}
+            or (
+                epistemics is not None
+                and (
+                    not isinstance(epistemics, dict)
+                    or not set(epistemics) <= {
+                        "updated_ts", "fresh", "thesis", "regime",
+                        "falsifiers", "learning",
+                    }
+                    or len(json.dumps(epistemics)) > 20_000
+                )
+            )
+            or (
+                autonomy is not None
+                and (
+                    not isinstance(autonomy, dict)
+                    or set(autonomy) != {
+                        "desired", "active", "new_entries", "reason",
+                    }
+                    or autonomy.get("desired") not in {"on", "off"}
+                    or not isinstance(autonomy.get("active"), bool)
+                    or autonomy.get("new_entries") not in {"available", "waiting"}
+                    or not isinstance(autonomy.get("reason"), str)
+                    or len(autonomy["reason"]) > 160
+                )
+            )
+            or (
+                safety_floor is not None
+                and (
+                    not isinstance(safety_floor, dict)
+                    or set(safety_floor) != {
+                        "gate_valid", "pause_clear", "ledger", "bounded_policy",
+                    }
+                    or not isinstance(safety_floor.get("gate_valid"), bool)
+                    or not isinstance(safety_floor.get("pause_clear"), bool)
+                    or safety_floor.get("ledger") not in {"reconciled", "unknown"}
+                    or not isinstance(safety_floor.get("bounded_policy"), bool)
+                )
+            )
         ):
             return _unknown_desk()
         counts = [
@@ -446,7 +510,7 @@ def _desk_projection(path: Path) -> dict[str, Any]:
             ),
             "replay_data_through": replay_data_through,
         })
-    return {
+    result = {
         "version": 1,
         "updated_at": value["updated_at"],
         "posture": value["posture"],
@@ -459,6 +523,13 @@ def _desk_projection(path: Path) -> dict[str, Any]:
         "risk": dict(risk),
         "experiment": dict(experiment),
     }
+    if isinstance(epistemics, dict):
+        result["epistemics"] = json.loads(json.dumps(epistemics))
+    if isinstance(autonomy, dict):
+        result["autonomy"] = dict(autonomy)
+    if isinstance(safety_floor, dict):
+        result["safety_floor"] = dict(safety_floor)
+    return result
 
 
 def _parse_bot_log_tail(path: Path) -> dict[str, Any]:

@@ -1,5 +1,5 @@
 ---
-title: Portfolio research — Ari's book multi-lens
+title: Portfolio research — multi-lens book review
 description: Predictions and analysis for held names and priority interests — fundamental, quant/TA, narrative/vibes, related bluechips, OSINT situations.
 date: 2026-07-27
 tags: [portfolio, holdings, quant, fundamental, narrative, osint, predictions]
@@ -12,7 +12,7 @@ This report is **book-centric**. Generic market tourism is secondary. Held equit
 
 > Not investment advice. Exact account sizes and wallet addresses are withheld. Held vs interest is explicit. System opinions for designated rails only.
 
-## Active thesis (Ari map)
+## Active thesis map
 
 - **Summary:** Crypto and most risk assets bottom Aug-Nov 2026 on 4y cycle; edge is positioning into volatility, not dating the low.
 - **Method:** Expectations investing (Mauboussin-style); falsifiers; cluster caps; process over outcome
@@ -371,7 +371,7 @@ This report is **book-centric**. Generic market tourism is secondary. Held equit
 
 #### Fundamental / structure
 
-- Lane thesis from Ari map.
+- Lane thesis from the active map.
 
 #### Narrative / vibes / social
 
@@ -597,19 +597,19 @@ This report is **book-centric**. Generic market tourism is secondary. Held equit
 
 ## OSINT / global situations (book-linked)
 
-- **[critical]** HYPE: unlock_window_primary_trackers — ~9.9-14.2M re-verify _(why: Directly on Ari priority / concentration calendar)_
-- **[critical]** HYPE: unlock_window_alternate_day — unlock_window_alternate_day _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** VVV: emissions vs burns — emissions vs burns _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** HYPE: contributor unlocks — contributor unlocks _(why: Directly on Ari priority / concentration calendar)_
-- **[critical]** LIT: INSIDER_CLIFF — INSIDER_CLIFF _(why: Directly on Ari priority / concentration calendar)_
-- **[critical]** HYPE: unlock_liquidity_window_primary_trackers — evening synthesis: Messari/Tokenomics.com/news desks favor ~Jul 28 processing window; unstaking queue large _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** VVV: staking_emissions — ~250k VVV/mo; net +~4.8%/yr after burns _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** VVV: team_vesting_tail — ~312k VVV/mo _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** HYPE: core_contributor_unlocks — ~9.92M HYPE/mo projected; claims discretionary _(why: Directly on Ari priority / concentration calendar)_
-- **[high]** HYPE: core_contributor_unlock_tranche — monthly cadence; Tokenomist next unlock; ~1.2M HYPE/mo class _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** VVV: DIEM supply step — 38k→40k DIEM by 2026-09-14 _(why: Directly on Ari priority / concentration calendar)_
-- **[critical]** LIT: INSIDER_CLIFF — 50% supply begins 3y vesting ~3.2M LIT/wk _(why: Directly on Ari priority / concentration calendar)_
-- **[normal]** VVV: series_a_lock_expiry — 1.5M grant + warrants on 5M _(why: Directly on Ari priority / concentration calendar)_
+- **[critical]** HYPE: unlock_window_primary_trackers — ~9.9-14.2M re-verify _(why: Directly on the priority / concentration calendar)_
+- **[critical]** HYPE: unlock_window_alternate_day — unlock_window_alternate_day _(why: Directly on the priority / concentration calendar)_
+- **[normal]** VVV: emissions vs burns — emissions vs burns _(why: Directly on the priority / concentration calendar)_
+- **[normal]** HYPE: contributor unlocks — contributor unlocks _(why: Directly on the priority / concentration calendar)_
+- **[critical]** LIT: INSIDER_CLIFF — INSIDER_CLIFF _(why: Directly on the priority / concentration calendar)_
+- **[critical]** HYPE: unlock_liquidity_window_primary_trackers — evening synthesis: Messari/Tokenomics.com/news desks favor ~Jul 28 processing window; unstaking queue large _(why: Directly on the priority / concentration calendar)_
+- **[normal]** VVV: staking_emissions — ~250k VVV/mo; net +~4.8%/yr after burns _(why: Directly on the priority / concentration calendar)_
+- **[normal]** VVV: team_vesting_tail — ~312k VVV/mo _(why: Directly on the priority / concentration calendar)_
+- **[normal]** HYPE: core_contributor_unlocks — ~9.92M HYPE/mo projected; claims discretionary _(why: Directly on the priority / concentration calendar)_
+- **[high]** HYPE: core_contributor_unlock_tranche — monthly cadence; Tokenomist next unlock; ~1.2M HYPE/mo class _(why: Directly on the priority / concentration calendar)_
+- **[normal]** VVV: DIEM supply step — 38k→40k DIEM by 2026-09-14 _(why: Directly on the priority / concentration calendar)_
+- **[critical]** LIT: INSIDER_CLIFF — 50% supply begins 3y vesting ~3.2M LIT/wk _(why: Directly on the priority / concentration calendar)_
+- **[normal]** VVV: series_a_lock_expiry — 1.5M grant + warrants on 5M _(why: Directly on the priority / concentration calendar)_
 - **[high]** US rates / liquidity vs risk assets — Fed path, QT, USD — first-order for BTC/IBIT/BMNR/GLD cluster _(why: sound_money + eth_levered + crypto risk)_
 - **[high]** Defense / autonomy budgets & conflicts — KTOS/RCAT/ONDS sleeve; awards and export news _(why: held defense_drones + autonomy)_
 - **[high]** AI capex and agent productization — NVDA/AMD/GOOGL/PLTR/TSLA + VVV token capture debate _(why: IRA AI sleeve + ai narrative cluster)_
@@ -620,7 +620,7 @@ This report is **book-centric**. Generic market tourism is secondary. Held equit
 
 ## Method
 
-1. Load canonical holdings + ticker map (`ARI-ACTUAL-HOLDINGS`, `ARI-INVESTMENT-TICKERS-AND-INTERESTS`).  
+1. Load the canonical holdings and ticker map.
 2. Order: held → priority interest → related bluechips.  
 3. Lenses: quant/TA (Yahoo/CG), fundamental checklist, narrative/vibes, calendar.  
 4. OSINT agenda from unlocks + themes + CG trending.  
