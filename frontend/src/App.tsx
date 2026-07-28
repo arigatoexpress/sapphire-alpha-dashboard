@@ -488,34 +488,35 @@ function EvidenceHorizon({
         ))}
       </div>
 
-      <dl
+      <div
         id="evidence-horizon-detail"
-        className="evidence-horizon-detail"
         role="tabpanel"
         aria-labelledby={`evidence-tab-${active.id}`}
         aria-live="polite"
       >
-        <div>
-          <dt>Source</dt>
-          <dd>{active.source}</dd>
-        </div>
-        <div>
-          <dt>Observed</dt>
-          <dd>{active.observedAt}</dd>
-        </div>
-        <div>
-          <dt>Freshness</dt>
-          <dd>{active.freshness}</dd>
-        </div>
-        <div>
-          <dt>Authority</dt>
-          <dd>{active.authority}</dd>
-        </div>
-        <div>
-          <dt>Uncertainty</dt>
-          <dd>{active.uncertainty}</dd>
-        </div>
-      </dl>
+        <dl className="evidence-horizon-detail">
+          <div>
+            <dt>Source</dt>
+            <dd>{active.source}</dd>
+          </div>
+          <div>
+            <dt>Observed</dt>
+            <dd>{active.observedAt}</dd>
+          </div>
+          <div>
+            <dt>Freshness</dt>
+            <dd>{active.freshness}</dd>
+          </div>
+          <div>
+            <dt>Authority</dt>
+            <dd>{active.authority}</dd>
+          </div>
+          <div>
+            <dt>Uncertainty</dt>
+            <dd>{active.uncertainty}</dd>
+          </div>
+        </dl>
+      </div>
     </section>
   )
 }

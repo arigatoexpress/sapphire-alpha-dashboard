@@ -57,6 +57,13 @@ describe('evidence contract', () => {
     }
   })
 
+  it('preserves description-list semantics inside the active tab panel', () => {
+    expect(markup).toMatch(
+      /<div id="evidence-horizon-detail" role="tabpanel"[^>]*><dl class="evidence-horizon-detail">/,
+    )
+    expect(markup).not.toMatch(/<dl[^>]*role="tabpanel"/)
+  })
+
   it('demotes retained live values when a later poll fails', () => {
     const snapshot = liveSnapshot()
     const segments = buildEvidenceSegments({
