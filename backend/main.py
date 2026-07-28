@@ -337,8 +337,8 @@ _RUNTIME_READINESS: dict[str, Any] = {
             "49367a90974b4c4605aa2d2c5e004c7cec9eb0841e73062d16f8bf14f2277cfc"
         ),
         "outcome": "TWO_ATTENDANCES_REQUIRED",
-        "one_attendance": "UNAVAILABLE",
-        "production_execution": "UNAVAILABLE",
+        "one_attendance": "ONE_ATTENDANCE_UNAVAILABLE",
+        "production_execution": "PRODUCTION_EXECUTION_UNAVAILABLE",
     },
     "credential_enrollment": "UNAVAILABLE",
     "broker_reconciliation": "UNAVAILABLE",
