@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SERVICE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ID="${PROJECT_ID:-sapphire-479610}"
+PROJECT_ID="sapphire-479610"
 REGION="us-central1"
 SERVICE_NAME="sapphire-alpha-dashboard"
 BUILD_SHA="$(git -C "${SERVICE_DIR}" rev-parse HEAD)"

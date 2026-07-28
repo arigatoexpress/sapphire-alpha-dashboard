@@ -36,7 +36,6 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
-      - '--allow-unauthenticated'
       - '--service-account'
       - 'sapphire-dashboard-sa@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars'
