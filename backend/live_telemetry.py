@@ -438,7 +438,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     sequence = _integer(obj["sequence"], where="sequence", high=2**63 - 1)
 
     desk_raw = obj.get("desk")
-    if desk_raw is None:
+    if desk_raw is None or desk_raw == _empty_desk():
         desk = _empty_desk()
     else:
         desk_obj = _keys(

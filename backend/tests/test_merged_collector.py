@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import copy
-import json
 
+from live_telemetry import validate_snapshot
 from telemetry.merged_collector import _merge_snapshots
 
 
@@ -144,3 +144,26 @@ def test_merge_does_not_count_windows_services_as_active_agents():
     win["agents"][0]["state"] = "working"
     merged = _merge_snapshots(mac, win)
     assert merged["summary"]["active_agents"] == 0
+
+
+def test_merge_omits_unobserved_windows_desk_instead_of_publishing_null_counts():
+    mac = _sample_snapshot("mac-agent", "mac-node", 100)
+    mac.pop("desk")
+    win = _sample_snapshot("win-agent", "win-node", 200)
+    win["desk"] = {
+        "version": 1,
+        "updated_at": None,
+        "posture": "unknown",
+        "leader": "unknown",
+        "validation": {"oos_pass": None, "oos_total": None, "conflicts": None},
+        "decisions": {"pending": None},
+        "execution": "unknown",
+        "feeds": {"fresh": None, "total": None},
+        "tracks": [],
+    }
+
+    merged = _merge_snapshots(mac, win)
+
+    assert "desk" not in merged
+    validated = validate_snapshot(merged)
+    assert validated["desk"]["posture"] == "unknown"
