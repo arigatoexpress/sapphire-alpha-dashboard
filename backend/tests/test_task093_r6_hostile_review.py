@@ -58,9 +58,7 @@ def test_unverifiable_durable_moss_fails_canonical_offline(
     snapshot: Any,
     received_at: float,
 ) -> None:
-    store = MossTelemetryStore(
-        _FixedPersistence(snapshot, received_at=received_at)
-    )
+    store = MossTelemetryStore(_FixedPersistence(snapshot, received_at=received_at))
 
     for public in (True, False):
         projected = store.get(public=public, now=NOW.timestamp() + 10)
@@ -74,9 +72,7 @@ def test_unverifiable_durable_moss_fails_canonical_offline(
 
 def test_future_durable_moss_never_projects_live() -> None:
     future = (NOW + timedelta(seconds=30)).isoformat()
-    store = MossTelemetryStore(
-        _FixedPersistence(_moss_snapshot(observed_at=future))
-    )
+    store = MossTelemetryStore(_FixedPersistence(_moss_snapshot(observed_at=future)))
 
     for public in (True, False):
         projected = store.get(public=public, now=NOW.timestamp())
