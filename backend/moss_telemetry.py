@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import hmac
+import math
 import os
 import re
 import time
@@ -40,10 +41,27 @@ _MASKED_ID_RE = re.compile(r"^0x[a-fA-F0-9]{4}…[a-fA-F0-9]{4}$")
 _DECIMAL_RE = re.compile(r"^\d+(?:\.\d+)?$")
 _BLOCK_RE = re.compile(r"^\d+$")
 _FULL_ADDRESS_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+_MAX_PERSISTED_DEPTH = 32
+_MAX_PERSISTED_NODES = 256
 
 
 class MossTelemetryValidationError(ValueError):
     pass
+
+
+def _require_bounded_structure(value: Any) -> None:
+    """Bound a durable value before copying or recursively validating it."""
+    pending: list[tuple[Any, int]] = [(value, 0)]
+    visited = 0
+    while pending:
+        current, depth = pending.pop()
+        visited += 1
+        if depth > _MAX_PERSISTED_DEPTH or visited > _MAX_PERSISTED_NODES:
+            raise MossTelemetryValidationError("MOSS telemetry structure is too large")
+        if isinstance(current, dict):
+            pending.extend((item, depth + 1) for item in current.values())
+        elif isinstance(current, list):
+            pending.extend((item, depth + 1) for item in current)
 
 
 def _exact_keys(value: Any, allowed: set[str]) -> dict[str, Any]:
@@ -226,12 +244,45 @@ class MossTelemetryStore:
         if selected is None:
             return _empty(public=public, now=now)
         received_at, snapshot = selected
-        observed = datetime.fromisoformat(snapshot["observed_at"]).timestamp()
-        freshness_s = round(max(0.0, now - observed), 1)
-        output = public_projection(snapshot, now=now) if public else copy.deepcopy(snapshot)
+        try:
+            _require_bounded_structure(snapshot)
+            candidate = validate_moss_snapshot(copy.deepcopy(snapshot))
+            if not isinstance(received_at, (int, float)) or isinstance(
+                received_at, bool
+            ):
+                raise MossTelemetryValidationError("received_at must be finite")
+            received_at = float(received_at)
+            if not math.isfinite(received_at):
+                raise MossTelemetryValidationError("received_at must be finite")
+            observed = datetime.fromisoformat(candidate["observed_at"]).timestamp()
+        except Exception:
+            return _empty(public=public, now=now)
+        if observed > now:
+            return _empty(public=public, now=now)
+
+        freshness_s = round(now - observed, 1)
+        if freshness_s > STALE_AFTER_SECONDS:
+            output = _empty(public=public, now=now)
+            output.update(
+                {
+                    "status": "stale",
+                    "observed_at": candidate["observed_at"],
+                    "freshness_s": freshness_s,
+                    "received_at": datetime.fromtimestamp(received_at, UTC).isoformat(),
+                }
+            )
+            if not public:
+                output["public_view"] = False
+            return output
+
+        output = (
+            public_projection(candidate, now=now)
+            if public
+            else copy.deepcopy(candidate)
+        )
         output.update(
             {
-                "status": "live" if freshness_s <= STALE_AFTER_SECONDS else "stale",
+                "status": "live",
                 "freshness_s": freshness_s,
                 "served_at": datetime.fromtimestamp(now, UTC).isoformat(),
                 "received_at": datetime.fromtimestamp(received_at, UTC).isoformat(),

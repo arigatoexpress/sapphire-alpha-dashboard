@@ -80,6 +80,7 @@ export interface PublicResearchClip {
   id: string
   title: string
   observed_at: string
+  age_s: number
 }
 
 export interface PublicSignal {

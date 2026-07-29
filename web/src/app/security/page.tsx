@@ -20,8 +20,9 @@ const CONTROLS = [
   {
     term: 'Signed ingest',
     body:
-      'Telemetry is HMAC-signed by the collector and verified at the edge. Unsigned or ' +
-      'mis-signed bodies are rejected before parsing, and replayed sequences are refused.',
+      'Telemetry is HMAC-signed by the collector and verified at the edge. Bodies first pass ' +
+      'a bounded duplicate-key-rejecting JSON decoder; the exact raw bytes are then ' +
+      'HMAC-verified before acceptance, and replayed sequences are refused.',
   },
   {
     term: 'Address masking',

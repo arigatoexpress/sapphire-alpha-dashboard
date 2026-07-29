@@ -730,6 +730,21 @@ def _admitted_skin_book(
     if not current:
         return _empty_skin_book(observed=observed), None
 
+    allowed_fields = {
+        "observed_at",
+        "mode",
+        "banner",
+        "deployed_usd",
+        "n_open",
+        "positions",
+        "fills",
+        "skin_in_game",
+        "limits",
+        "wallet_address",
+    }
+    if not set(data).issubset(allowed_fields):
+        return _empty_skin_book(), None
+
     positions = data.get("positions")
     fills = data.get("fills")
     mode = data.get("mode")
@@ -737,37 +752,72 @@ def _admitted_skin_book(
     n_open = data.get("n_open")
     limits = data.get("limits")
     wallet_address = data.get("wallet_address")
+
+    def valid_number(value: Any, *, maximum: float) -> bool:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return False
+        try:
+            normalized = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return False
+        return math.isfinite(normalized) and 0 <= normalized <= maximum
+
+    if mode is not None and (
+        not isinstance(mode, str) or not mode.strip() or len(mode) > 64
+    ):
+        return _empty_skin_book(), None
+    banner = data.get("banner")
+    if banner is not None and (
+        not isinstance(banner, str) or not banner.strip() or len(banner) > 120
+    ):
+        return _empty_skin_book(), None
+    if deployed is not None and not valid_number(deployed, maximum=1_000_000_000):
+        return _empty_skin_book(), None
+    if n_open is not None and (
+        not isinstance(n_open, int)
+        or isinstance(n_open, bool)
+        or not 0 <= n_open <= 1_000_000
+    ):
+        return _empty_skin_book(), None
+    for records in (positions, fills):
+        if records is not None and (
+            not isinstance(records, list)
+            or len(records) > 10_000
+            or any(not isinstance(record, dict) for record in records)
+        ):
+            return _empty_skin_book(), None
+    skin_in_game = data.get("skin_in_game")
+    if skin_in_game is not None and not isinstance(skin_in_game, bool):
+        return _empty_skin_book(), None
+    allowed_limits = {
+        "per_order_cap_pct": 100.0,
+        "max_daily_usd": 1_000_000_000.0,
+    }
+    if limits is not None:
+        if not isinstance(limits, dict) or not set(limits).issubset(allowed_limits):
+            return _empty_skin_book(), None
+        if any(
+            not valid_number(value, maximum=allowed_limits[key])
+            for key, value in limits.items()
+        ):
+            return _empty_skin_book(), None
+    if wallet_address is not None and (
+        not isinstance(wallet_address, str)
+        or re.fullmatch(r"0x[a-fA-F0-9]{40}", wallet_address) is None
+    ):
+        return _empty_skin_book(), None
+
     return (
         {
             "updated_at": observed.isoformat() if observed is not None else None,
-            "mode": mode if isinstance(mode, str) and mode else "unavailable",
-            "banner": (
-                data["banner"]
-                if isinstance(data.get("banner"), str) and data["banner"]
-                else "Skin book"
-            ),
-            "deployed_usd": (
-                float(deployed)
-                if (
-                    isinstance(deployed, (int, float))
-                    and not isinstance(deployed, bool)
-                    and math.isfinite(float(deployed))
-                )
-                else None
-            ),
-            "n_open": (
-                n_open
-                if isinstance(n_open, int) and not isinstance(n_open, bool) and n_open >= 0
-                else None
-            ),
+            "mode": mode if isinstance(mode, str) else "unavailable",
+            "banner": (banner if isinstance(banner, str) else "Skin book"),
+            "deployed_usd": (float(deployed) if deployed is not None else None),
+            "n_open": n_open if isinstance(n_open, int) else None,
             "positions_count": len(positions) if isinstance(positions, list) else None,
             "fills_count": len(fills) if isinstance(fills, list) else None,
-            "skin_in_game": (
-                data.get("skin_in_game")
-                if isinstance(data.get("skin_in_game"), bool)
-                else None
-            ),
-            "limits": limits if isinstance(limits, dict) else {},
+            "skin_in_game": skin_in_game if isinstance(skin_in_game, bool) else None,
+            "limits": limits if limits is not None else {},
         },
         wallet_address if isinstance(wallet_address, str) else None,
     )
@@ -845,6 +895,8 @@ def _require_bounded_json_depth(
             pending.extend((child, depth + 1) for child in current.values())
         elif isinstance(current, list):
             pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, float) and not math.isfinite(current):
+            raise _UnverifiablePersistedDocument
 
 
 class _UnverifiablePersistedDocument(ValueError):
@@ -1293,6 +1345,8 @@ _RESEARCH_POLICY: dict[str, Any] = {
 
 _MAX_RESEARCH_CLIPS = 10
 _MAX_CLIPS_PER_SOURCE = 2
+_MAX_RESEARCH_DOCUMENT_BYTES = 64 * 1024
+_RESEARCH_TTL_SECONDS = 24 * 60 * 60
 
 
 def _clean_research_text(value: Any, *, fallback: str) -> str:
@@ -1301,46 +1355,95 @@ def _clean_research_text(value: Any, *, fallback: str) -> str:
     return text[:240] or fallback
 
 
-def _research_feed() -> dict[str, Any]:
+def _research_feed(*, now: datetime | None = None) -> dict[str, Any]:
     """Return an explicit, balanced research feed with no fabricated fallback.
 
     Producers provide reviewed clips through ``DASHBOARD_RESEARCH_CLIPS_JSON``.
     Unknown sources are rejected and no source may occupy more than two slots.
+    Every admitted clip carries exactly one zoned ``observed_at`` no older than
+    the declared 24-hour research TTL; the projection publishes its computed age.
     The clips remain advisory: the policy shipped beside them makes clear that
     Ari's checked-in thesis owns conviction and a separate gate owns execution.
     """
 
+    now = now or datetime.now(UTC)
     raw = _env("DASHBOARD_RESEARCH_CLIPS_JSON", "").strip()
     parsed: Any = []
     if raw:
         try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            log.warning("DASHBOARD_RESEARCH_CLIPS_JSON is not valid JSON")
+            parsed = _decode_bounded_json(
+                raw.encode("utf-8"),
+                max_bytes=_MAX_RESEARCH_DOCUMENT_BYTES,
+            )
+        except (
+            _UnverifiablePersistedDocument,
+            RecursionError,
+            UnicodeDecodeError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            log.warning("DASHBOARD_RESEARCH_CLIPS_JSON is not admissible JSON")
 
     clips: list[dict[str, Any]] = []
     source_counts: dict[str, int] = {}
+    clip_ids: set[str] = set()
     if isinstance(parsed, list):
-        for index, item in enumerate(parsed):
+        for item in parsed:
             if not isinstance(item, dict):
+                continue
+            if not {
+                "id",
+                "title",
+                "source",
+                "observed_at",
+            }.issubset(item) or not set(item).issubset(
+                {"id", "title", "source", "path", "observed_at"}
+            ):
                 continue
             source = str(item.get("source") or "").strip()
             if source not in _RESEARCH_POLICY["lenses"]:
                 continue
             if source_counts.get(source, 0) >= _MAX_CLIPS_PER_SOURCE:
                 continue
-            title = _clean_research_text(item.get("title"), fallback="Untitled research note")
-            raw_id = str(item.get("id") or title).lower()
+            observed, current = _current_source_time(
+                item,
+                field="observed_at",
+                now=now,
+                ttl_seconds=_RESEARCH_TTL_SECONDS,
+            )
+            if not current or observed is None:
+                continue
+            raw_title = item.get("title")
+            raw_id_value = item.get("id")
+            path = item.get("path", "")
+            if (
+                not isinstance(raw_title, str)
+                or not raw_title.strip()
+                or len(raw_title) > 1_000
+                or not isinstance(raw_id_value, str)
+                or not raw_id_value.strip()
+                or len(raw_id_value) > 240
+                or not isinstance(path, str)
+                or len(path) > 4_096
+            ):
+                continue
+            title = _clean_research_text(raw_title, fallback="Untitled research note")
+            raw_id = raw_id_value.lower()
             clip_id = re.sub(r"[^a-z0-9]+", "-", raw_id).strip("-")[:80]
+            if not clip_id or clip_id in clip_ids:
+                continue
+            age_s = round((now - observed).total_seconds(), 1)
             clips.append(
                 {
-                    "id": clip_id or f"research-{index + 1:03d}",
+                    "id": clip_id,
                     "title": title,
                     "source": source,
-                    "path": str(item.get("path") or ""),
-                    "observed_at": str(item.get("observed_at") or ""),
+                    "path": path,
+                    "observed_at": observed.isoformat(),
+                    "age_s": age_s,
                 }
             )
+            clip_ids.add(clip_id)
             source_counts[source] = source_counts.get(source, 0) + 1
             if len(clips) >= _MAX_RESEARCH_CLIPS:
                 break
@@ -1565,6 +1668,7 @@ def _public_research(feed: dict[str, Any]) -> dict[str, Any]:
                 "id": c.get("id", ""),
                 "title": c.get("title", ""),
                 "observed_at": c.get("observed_at", ""),
+                "age_s": c.get("age_s"),
             }
             for c in feed.get("clips", [])
         ],

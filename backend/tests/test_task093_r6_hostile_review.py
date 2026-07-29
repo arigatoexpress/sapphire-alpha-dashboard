@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 
 import main
 from moss_telemetry import MossTelemetryStore
@@ -120,6 +119,7 @@ def test_bounded_json_decoder_rejects_overflow_anywhere() -> None:
         {"per_order_cap_pct": -1},
         {"max_daily_usd": 1_000_000_001},
         {"per_order_cap_pct": float("nan")},
+        {"max_daily_usd": 10**1_000},
     ],
 )
 def test_invalid_nested_skin_limits_withdraw_entire_observation(

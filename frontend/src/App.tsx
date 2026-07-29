@@ -726,6 +726,10 @@ export function buildEvidenceSegments({
     .map((clip) => clip.observed_at)
     .filter((value) => !Number.isNaN(Date.parse(value)))
     .sort((left, right) => Date.parse(right) - Date.parse(left))[0]
+  const researchAge = widgets?.research.clips
+    .map((clip) => clip.age_s)
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right)[0]
 
   return [
     {
@@ -806,12 +810,12 @@ export function buildEvidenceSegments({
         : NOT_OBSERVED,
       source: '/api/v1/widgets · research',
       observedAt: observedTime(researchObservedAt),
-      freshness: researchObservedAt ? 'persisted timestamp; age not computed' : NOT_OBSERVED,
+      freshness: researchObservedAt ? formatAge(researchAge) : NOT_OBSERVED,
       authority: 'decision input',
       uncertainty: errors.widgets
         ? 'poll failed; value is from the last report'
         : researchObservedAt
-          ? 'bounded reviewed clips; no freshness age'
+          ? 'bounded reviewed clips admitted within the declared 24h TTL'
           : 'no persisted research observation',
       tone: errors.widgets ? 'degraded' : 'unknown',
     },

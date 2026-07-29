@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -126,18 +127,22 @@ def test_recent_signals_missing_is_honestly_empty(tmp_path, monkeypatch):
 
 
 def test_research_feed_is_multi_source_and_caps_any_one_analyst(monkeypatch):
+    observed_at = datetime.now(UTC).isoformat()
     monkeypatch.setenv(
         "DASHBOARD_RESEARCH_CLIPS_JSON",
         json.dumps(
             [
-                {"id": "n1", "title": "Fees", "source": "michael_nadeau", "path": "/private/1"},
-                {"id": "n2", "title": "Supply", "source": "michael_nadeau", "path": "/private/2"},
-                {"id": "n3", "title": "Third Nadeau item", "source": "michael_nadeau"},
-                {"id": "c1", "title": "Cycle", "source": "benjamin_cowen"},
-                {"id": "h1", "title": "Liquidity", "source": "arthur_hayes"},
-                {"id": "b1", "title": "Structure", "source": "bankless"},
-                {"id": "l1", "title": "Compute", "source": "limitless"},
-                {"id": "x1", "title": "Unknown oracle", "source": "unknown_person"},
+                {**clip, "observed_at": observed_at}
+                for clip in [
+                    {"id": "n1", "title": "Fees", "source": "michael_nadeau", "path": "/private/1"},
+                    {"id": "n2", "title": "Supply", "source": "michael_nadeau", "path": "/private/2"},
+                    {"id": "n3", "title": "Third Nadeau item", "source": "michael_nadeau"},
+                    {"id": "c1", "title": "Cycle", "source": "benjamin_cowen"},
+                    {"id": "h1", "title": "Liquidity", "source": "arthur_hayes"},
+                    {"id": "b1", "title": "Structure", "source": "bankless"},
+                    {"id": "l1", "title": "Compute", "source": "limitless"},
+                    {"id": "x1", "title": "Unknown oracle", "source": "unknown_person"},
+                ]
             ]
         ),
     )
@@ -165,12 +170,16 @@ def test_research_feed_is_multi_source_and_caps_any_one_analyst(monkeypatch):
 
 
 def test_research_feed_rejects_an_analyst_only_packet(monkeypatch):
+    observed_at = datetime.now(UTC).isoformat()
     monkeypatch.setenv(
         "DASHBOARD_RESEARCH_CLIPS_JSON",
         json.dumps(
             [
-                {"id": "n1", "title": "Fees", "source": "michael_nadeau"},
-                {"id": "n2", "title": "Supply", "source": "michael_nadeau"},
+                {**clip, "observed_at": observed_at}
+                for clip in [
+                    {"id": "n1", "title": "Fees", "source": "michael_nadeau"},
+                    {"id": "n2", "title": "Supply", "source": "michael_nadeau"},
+                ]
             ]
         ),
     )

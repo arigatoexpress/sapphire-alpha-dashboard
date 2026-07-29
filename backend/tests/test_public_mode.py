@@ -91,24 +91,28 @@ def public_mode(monkeypatch, tmp_path):
                     "title": "Cycle evidence",
                     "source": "benjamin_cowen",
                     "path": "/Users/aribs/Knowledge/cycle.md",
+                    "observed_at": observed_at,
                 },
                 {
                     "id": "liquidity-1",
                     "title": "Liquidity countercase",
                     "source": "arthur_hayes",
                     "path": "/Users/aribs/Knowledge/liquidity.md",
+                    "observed_at": observed_at,
                 },
                 {
                     "id": "structure-1",
                     "title": "Crypto structure",
                     "source": "bankless",
                     "path": "/Users/aribs/Knowledge/structure.md",
+                    "observed_at": observed_at,
                 },
                 {
                     "id": "compute-1",
                     "title": "AI frontier",
                     "source": "limitless",
                     "path": "/Users/aribs/Knowledge/compute.md",
+                    "observed_at": observed_at,
                 },
             ]
         ),
@@ -153,7 +157,7 @@ def test_anonymous_widgets_sanitized(public_mode):
     # Research clips: titles may be public, but source identities and the
     # operator's named thesis/analyst policy are private.
     for clip in data["research"]["clips"]:
-        assert set(clip) == {"id", "title", "observed_at"}
+        assert set(clip) == {"id", "title", "observed_at", "age_s"}
     assert data["research"]["clips"][0]["title"] == "Cycle evidence"
     assert "sources_observed" not in data["research"]
     assert data["research"]["policy"] == {
