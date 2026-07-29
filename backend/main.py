@@ -319,6 +319,7 @@ _PAUSE_SENTINELS: dict[str, Path] = {
 _RUNTIME_TTL_SECONDS = 180.0
 _MAX_PAUSE_DOCUMENT_BYTES = 64 * 1024
 _MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES = 256 * 1024
+_MAX_PERSISTED_JSON_DEPTH = 64
 _MAX_FLEET_FUTURE_SKEW_SECONDS = 5.0
 
 _RUNTIME_READINESS: dict[str, Any] = {
@@ -715,6 +716,23 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _require_bounded_json_depth(
+    value: Any,
+    *,
+    max_depth: int = _MAX_PERSISTED_JSON_DEPTH,
+) -> None:
+    """Reject structures that cannot be scanned safely by recursive validators."""
+    pending: list[tuple[Any, int]] = [(value, 0)]
+    while pending:
+        current, depth = pending.pop()
+        if depth > max_depth:
+            raise _UnverifiablePersistedDocument
+        if isinstance(current, dict):
+            pending.extend((child, depth + 1) for child in current.values())
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+
+
 class _UnverifiablePersistedDocument(ValueError):
     """A local document could not be bound to one stable admitted descriptor."""
 
@@ -813,12 +831,19 @@ def _read_admitted_json_object(
             payload.decode("utf-8"),
             object_pairs_hook=_unique_json_object,
         )
+        _require_bounded_json_depth(raw)
         if not isinstance(raw, dict):
             raise _UnverifiablePersistedDocument
         return raw, (after.st_dev, after.st_ino)
     except _UnverifiablePersistedDocument:
         raise
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        RecursionError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         raise _UnverifiablePersistedDocument from exc
     finally:
         if fresh_parent_fd is not None:

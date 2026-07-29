@@ -87,7 +87,7 @@ def _build_live_snapshot(
     try:
         projected = validate_snapshot(raw)
         observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
-    except (TypeError, ValueError):
+    except (RecursionError, TypeError, ValueError):
         return _offline_live_snapshot(now=now)
     if observed > now:
         return _offline_live_snapshot(now=now)

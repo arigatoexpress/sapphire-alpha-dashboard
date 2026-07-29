@@ -1150,7 +1150,8 @@ def _age_seconds(now: float, value: Any) -> float | None:
         return None
     if parsed.tzinfo is None:
         return None
-    return max(0.0, now - parsed.timestamp())
+    age = now - parsed.timestamp()
+    return age if age >= 0 else None
 
 
 def _epoch_age_seconds(now: float, value: Any) -> float | None:
@@ -1249,9 +1250,12 @@ def _age_runtime_projection(
             link["status"] = "unknown"
             link["event_rate"] = None
 
-    expired_agent = False
-    for agent in snapshot.get("agents", []):
+    agents = snapshot.get("agents")
+    expired_agent = not isinstance(agents, list)
+    projected_agents: list[dict[str, Any]] = []
+    for agent in agents if isinstance(agents, list) else []:
         if not isinstance(agent, dict):
+            expired_agent = True
             continue
         age = _age_seconds(now, agent.get("updated_at"))
         if not parent_current or age is None or age > stale_after_seconds:
@@ -1259,6 +1263,17 @@ def _age_runtime_projection(
             agent["state"] = "offline"
             agent["verification"] = "pending"
             agent["activity"] = "Capability observation unavailable"
+        projected_agents.append(agent)
+    snapshot["agents"] = projected_agents
+
+    events = snapshot.get("events")
+    projected_events: list[dict[str, Any]] = []
+    for event in events if isinstance(events, list) else []:
+        if not isinstance(event, dict):
+            continue
+        if parent_current and _age_seconds(now, event.get("observed_at")) is not None:
+            projected_events.append(event)
+    snapshot["events"] = projected_events
 
     markets = snapshot.get("markets")
     if isinstance(markets, dict):
@@ -1331,6 +1346,21 @@ def _age_runtime_projection(
         elif expired_agent:
             summary["state"] = "degraded"
             summary["active_agents"] = None
+        else:
+            reported_active = summary.get("active_agents")
+            derived_active = sum(
+                agent.get("state") in {"working", "verifying"}
+                for agent in projected_agents
+            )
+            if (
+                reported_active is not None
+                and (
+                    type(reported_active) is not int
+                    or reported_active != derived_active
+                )
+            ):
+                summary["state"] = "degraded"
+                summary["active_agents"] = None
 
 
 def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
@@ -1586,6 +1616,8 @@ class LiveTelemetryStore:
 
         received_at, snapshot = selected
         observed = datetime.fromisoformat(snapshot["observed_at"]).timestamp()
+        if observed > now:
+            return _empty_snapshot(status="offline")
         freshness_s = round(max(0.0, now - observed), 1)
         status = "live" if freshness_s <= stale_after_seconds else "stale"
         projected = _normalize_stored(copy.deepcopy(snapshot))
