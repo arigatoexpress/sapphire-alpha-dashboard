@@ -78,6 +78,30 @@ def test_cloudbuild_pins_steps_and_never_deploys_from_a_working_build():
     assert config["options"]["sourceProvenanceHash"] == ["SHA256"]
 
 
+def test_cloudbuild_allows_exact_integrity_substitutions_kept_for_provenance():
+    config = _cloudbuild()
+    serialized_template = json.dumps(
+        {
+            key: value
+            for key, value in config.items()
+            if key != "substitutions"
+        }
+    )
+    used_custom = set(re.findall(r"\$\{(_[A-Z0-9_]+)\}", serialized_template))
+    retained_for_provenance = set(config["substitutions"]) - used_custom
+
+    assert retained_for_provenance == {
+        "_SOURCE_ARCHIVE_MD5",
+        "_SOURCE_ARCHIVE_SHA256",
+        "_SOURCE_FILE_COUNT",
+        "_SOURCE_GENERATION",
+        "_SOURCE_MANIFEST_SHA256",
+        "_SOURCE_OBJECT",
+        "_SOURCE_TREE_SHA",
+    }
+    assert config["options"]["substitutionOption"] == "ALLOW_LOOSE"
+
+
 def test_future_action_is_one_externally_pinned_trusted_launcher():
     wrapper = (ROOT / "deploy.sh").read_text(encoding="utf-8")
     launcher = (ROOT / "scripts/trusted_release.py").read_text(encoding="utf-8")

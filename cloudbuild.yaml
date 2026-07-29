@@ -53,6 +53,7 @@
   "timeout": "1800s",
   "options": {
     "logging": "LEGACY",
+    "substitutionOption": "ALLOW_LOOSE",
     "sourceProvenanceHash": [
       "SHA256"
     ]
