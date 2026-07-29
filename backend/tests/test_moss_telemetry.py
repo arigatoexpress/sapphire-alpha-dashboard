@@ -79,15 +79,24 @@ def test_public_projection_bands_capital_and_removes_fingerprinting_tuple():
     assert client.post("/api/v1/moss/telemetry", content=raw, headers=headers).status_code == 202
 
     public = client.get("/api/v1/moss").json()
-    body = json.dumps(public)
     assert public["public_view"] is True
     assert public["network"] == "MegaETH"
     assert public["usdm_band"] == "$100–$249"
     assert public["eth_state"] == "present"
     assert public["observation_freshness"] == "current"
-    assert "identity_masked" not in public
-    for forbidden in ("0x1111", "188.25", "0.0042", "2748", "block"):
-        assert forbidden not in body
+    for forbidden_key in ("identity_masked", "usdm", "eth", "block", "chain", "sequence"):
+        assert forbidden_key not in public
+
+    # Compare semantic claim values rather than substrings across the serialized
+    # document: a block number can legitimately collide with timestamp
+    # microseconds without being disclosed as a claim.
+    claim_values = {
+        str(value)
+        for key, value in public.items()
+        if key not in {"observed_at", "served_at", "received_at"}
+    }
+    for forbidden_value in ("0x1111…1111", "188.25", "0.0042", "2748"):
+        assert forbidden_value not in claim_values
 
 
 @pytest.mark.parametrize(

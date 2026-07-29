@@ -2,26 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import type { LiveSnapshot } from '@shared/telemetry'
 import SystemAtlas from '@/components/SystemAtlas'
-
-type Live = {
-  status?: string
-  observed_at?: string | null
-  freshness_s?: number | null
-  desk?: {
-    execution?: string | null
-    posture?: string | null
-    decisions?: {
-      pending_review?: number | null
-      blocked?: number | null
-    }
-  }
-  markets?: {
-    status?: string | null
-    decision_gate?: string | null
-    execution?: string | null
-  }
-}
 
 type EvidenceState = 'observed' | 'stale' | 'paused' | 'unavailable' | 'source-only'
 
@@ -67,7 +49,7 @@ const EVIDENCE_LEGEND: EvidenceState[] = [
 ]
 
 export default function MissionControl() {
-  const [live, setLive] = useState<Live | null>(null)
+  const [live, setLive] = useState<LiveSnapshot | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -76,7 +58,7 @@ export default function MissionControl() {
       try {
         const response = await fetch('/api/v1/live', { cache: 'no-store' })
         if (!response.ok) throw new Error(`status ${response.status}`)
-        const data = (await response.json()) as Live
+        const data = (await response.json()) as LiveSnapshot
         if (!cancelled) {
           setLive(data)
           setError('')
@@ -238,7 +220,7 @@ export default function MissionControl() {
         </div>
       </section>
 
-      <SystemAtlas />
+      <SystemAtlas snapshot={live} sourceError={error} />
 
       <section className="public-thesis" aria-labelledby="does-title">
         <div>

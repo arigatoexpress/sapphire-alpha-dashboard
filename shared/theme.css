@@ -23,8 +23,8 @@
   --color-atlas-blue: #174A67;
   --color-glacier: #F3F8F7;
   --color-skywash: #D8EBEE;
-  --color-signal-coral: #E86F51;
-  --color-caution-gold: #E3AF35;
+  --color-signal-coral: #B54632;
+  --color-caution-gold: #8A6100;
 
   /* --- Surface hierarchy (light observatory) ------------------------------ */
   --color-void: #F3F8F7;
@@ -33,20 +33,20 @@
 
   --color-ink: #102A36;
   --color-ink-dim: #3A5560;
-  --color-ink-faint: #6B848E;
+  --color-ink-faint: #536D77;
 
   /* Structure / navigation accent = atlas-blue */
   --color-sapphire: #174A67;
   --color-sapphire-deep: #102A36;
   --color-sapphire-wash: #D8EBEE;
   /* Restrained action = signal-coral (legacy violet slot) */
-  --color-violet: #E86F51;
+  --color-violet: #B54632;
   --color-ice: #174A67;
 
   /* State — meaning only */
   --color-verified: #1F7A4C;
-  --color-degraded: #E3AF35;
-  --color-failed: #C44B3C;
+  --color-degraded: #8A6100;
+  --color-failed: #BF493B;
 
   --color-line: #C5D6DA;
   --color-line-lit: #174A67;

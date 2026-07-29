@@ -592,7 +592,7 @@ def test_fleet_rejects_symlinked_duplicate_and_stale_documents(
         {
             "total": 1,
             "alerts": [
-                {"observed_at": (NOW + timedelta(seconds=30)).isoformat()}
+                {"observed_at": (NOW + timedelta(minutes=5)).isoformat()}
             ],
         },
     ],

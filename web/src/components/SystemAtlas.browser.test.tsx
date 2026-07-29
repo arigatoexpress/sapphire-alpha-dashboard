@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { LiveSnapshot } from '@shared/telemetry'
+import liveFixture from '../../../shared/__tests__/fixtures/live-snapshot.json'
 import SystemAtlas from './SystemAtlas'
 
 type LayoutResult = {
@@ -35,7 +37,9 @@ function chromePath() {
 
 function renderAt(width: number): LayoutResult {
   const css = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf8')
-  const markup = renderToStaticMarkup(<SystemAtlas />)
+  const markup = renderToStaticMarkup(
+    <SystemAtlas snapshot={liveFixture as LiveSnapshot} />,
+  )
   const fixture = join(temp, `atlas-${width}.html`)
   writeFileSync(
     fixture,
@@ -64,13 +68,14 @@ function renderAt(width: number): LayoutResult {
       ol, ul { padding: 0; }
       body { margin: 0; font-family: var(--font-body); }
       ${css}
+      *, *::before, *::after { animation: none !important; transition: none !important; }
     </style>
   </head>
   <body>
     ${markup}
     <script>
       const map = document.querySelector('.system-atlas__map').getBoundingClientRect();
-      const cards = [...document.querySelectorAll('.system-atlas__stage')].map((node) => ({
+      const cards = [...document.querySelectorAll('.system-atlas__node')].map((node) => ({
         name: node.querySelector('h3').textContent,
         rect: node.getBoundingClientRect(),
       }));
@@ -120,6 +125,8 @@ function renderAt(width: number): LayoutResult {
       '--no-first-run',
       '--hide-scrollbars',
       '--no-sandbox',
+      '--run-all-compositor-stages-before-draw',
+      '--virtual-time-budget=1000',
       `--window-size=${width},1100`,
       '--dump-dom',
       `file://${fixture}`,
@@ -131,9 +138,9 @@ function renderAt(width: number): LayoutResult {
   return JSON.parse(decodeURIComponent(encoded)) as LayoutResult
 }
 
-describe('system atlas rendered tablet geometry', () => {
-  it.each([761, 768, 820, 840, 841, 1025])(
-    'contains five non-overlapping cards at %ipx',
+describe('system atlas rendered responsive geometry', () => {
+  it.each([500, 768, 1024, 1025, 1280, 1440])(
+    'contains every admitted node without overlap at %ipx',
     (width) => {
       const layout = renderAt(width)
       expect(layout.clientWidth).toBe(width)
