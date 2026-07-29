@@ -468,6 +468,55 @@ def _container(
     return template_spec, containers[0]
 
 
+def _normalize_provider_traffic(
+    value: Any,
+    *,
+    ready_revision: Any,
+) -> list[dict[str, Any]]:
+    """Close Cloud Run's equivalent traffic records to one exact target.
+
+    Cloud Run may annotate a resolved latest target with
+    ``latestRevision: true`` even though ``revisionName`` already identifies
+    the concrete ready revision. Explicit traffic may instead pin an older
+    serving revision. The release contract stores only the concrete identity.
+    Tags, unresolved latest targets, split allocations, duplicate targets, and
+    provider extensions remain inadmissible.
+    """
+    if (
+        not isinstance(ready_revision, str)
+        or not ready_revision
+        or ready_revision.strip() != ready_revision
+        or len(ready_revision) > 128
+        or not isinstance(value, list)
+        or len(value) != 1
+        or not isinstance(value[0], Mapping)
+    ):
+        raise ContractViolation("traffic projection mismatch")
+    record = value[0]
+    keys = set(record)
+    revision_name = record.get("revisionName")
+    if keys == {"percent", "revisionName"}:
+        pass
+    elif keys == {"latestRevision", "percent", "revisionName"}:
+        if (
+            record.get("latestRevision") is not True
+            or revision_name != ready_revision
+        ):
+            raise ContractViolation("traffic projection mismatch")
+    else:
+        raise ContractViolation("traffic projection mismatch")
+    if (
+        type(record.get("percent")) is not int
+        or record["percent"] != 100
+        or not isinstance(revision_name, str)
+        or not revision_name
+        or revision_name.strip() != revision_name
+        or len(revision_name) > 128
+    ):
+        raise ContractViolation("traffic projection mismatch")
+    return [{"percent": 100, "revisionName": revision_name}]
+
+
 def live_snapshot(run: Run = _run, fetch: Fetch = fetch_http) -> dict[str, Any]:
     service = _json_command(
         run, _gcloud("run", "services", "describe", SERVICE, "--format=json")
@@ -479,8 +528,17 @@ def live_snapshot(run: Run = _run, fetch: Fetch = fetch_http) -> dict[str, Any]:
     template_spec, container = _container(service)
     ready = status.get("latestReadyRevisionName")
     created = status.get("latestCreatedRevisionName")
-    if not isinstance(ready, str) or not isinstance(created, str):
+    if (
+        not isinstance(ready, str)
+        or not ready
+        or not isinstance(created, str)
+        or not created
+    ):
         raise ContractViolation("revision projection mismatch")
+    traffic = _normalize_provider_traffic(
+        status.get("traffic"),
+        ready_revision=ready,
+    )
     ready_record = _json_command(
         run,
         _gcloud("run", "revisions", "describe", ready, "--format=json"),
@@ -515,7 +573,7 @@ def live_snapshot(run: Run = _run, fetch: Fetch = fetch_http) -> dict[str, Any]:
         "ready_image_digest": _nested(ready_record, "status", "imageDigest"),
         "created_revision": created,
         "created_image_digest": _nested(created_record, "status", "imageDigest"),
-        "traffic": status.get("traffic"),
+        "traffic": traffic,
         "iam_sha256": _iam_sha256(policy),
         "service_account": template_spec.get("serviceAccountName"),
         "environment": environment_commitments(container.get("env")),
@@ -686,17 +744,20 @@ def _require_descriptor_shape(descriptor: Mapping[str, Any]) -> None:
         or not isinstance(precondition["build_endpoint_status"], int)
         or not _is_image_digest(precondition["ready_image_digest"])
         or not _is_image_digest(precondition["created_image_digest"])
-        or not isinstance(precondition["traffic"], list)
-        or len(precondition["traffic"]) != 1
-        or not isinstance(precondition["traffic"][0], Mapping)
-        or set(precondition["traffic"][0]) != {"percent", "revisionName"}
-        or precondition["traffic"][0]["percent"] != 100
-        or not isinstance(precondition["traffic"][0]["revisionName"], str)
         or HEX64.fullmatch(str(precondition["iam_sha256"])) is None
         or precondition["service_account"] != SERVICE_ACCOUNT
         or not isinstance(precondition["service_url"], str)
         or not precondition["service_url"].startswith("https://")
     ):
+        raise ContractViolation("descriptor mismatch")
+    try:
+        normalized_traffic = _normalize_provider_traffic(
+            precondition["traffic"],
+            ready_revision=precondition["ready_revision"],
+        )
+    except ContractViolation:
+        raise ContractViolation("descriptor mismatch") from None
+    if precondition["traffic"] != normalized_traffic:
         raise ContractViolation("descriptor mismatch")
     _require_environment_commitment(precondition["environment"])
     _require_keys(
@@ -936,7 +997,11 @@ def verify_predeploy_cas(
     run: Run = _run,
     fetch: Fetch = fetch_http,
 ) -> dict[str, Any]:
-    if live_snapshot(run, fetch) != descriptor.get("precondition"):
+    try:
+        current = live_snapshot(run, fetch)
+    except ContractViolation:
+        raise ContractViolation("remote state mismatch") from None
+    if current != descriptor.get("precondition"):
         raise ContractViolation("remote state mismatch")
     return {
         "schema": "sapphire/predeploy-cas/v1",
@@ -957,13 +1022,27 @@ def prepare_service_replacement(
         raise ContractViolation("immutable image mismatch")
     metadata = service.get("metadata")
     spec = service.get("spec")
-    if not isinstance(metadata, Mapping) or not isinstance(spec, Mapping):
+    status = service.get("status")
+    if (
+        not isinstance(metadata, Mapping)
+        or not isinstance(spec, Mapping)
+        or not isinstance(status, Mapping)
+    ):
         raise ContractViolation("service projection mismatch")
     if (
         metadata.get("resourceVersion")
         != descriptor["precondition"]["resource_version"]
         or metadata.get("generation") != descriptor["precondition"]["generation"]
     ):
+        raise ContractViolation("remote state mismatch")
+    try:
+        current_traffic = _normalize_provider_traffic(
+            status.get("traffic"),
+            ready_revision=status.get("latestReadyRevisionName"),
+        )
+    except ContractViolation:
+        raise ContractViolation("remote state mismatch") from None
+    if current_traffic != descriptor["precondition"]["traffic"]:
         raise ContractViolation("remote state mismatch")
     annotations = metadata.get("annotations", {})
     if not isinstance(annotations, Mapping):
@@ -1310,7 +1389,10 @@ def verify_postdeploy(
         run,
         _gcloud("builds", "describe", build_id, "--format=json"),
     )
-    current = live_snapshot(run, fetch)
+    try:
+        current = live_snapshot(run, fetch)
+    except ContractViolation:
+        raise ContractViolation("postdeploy state mismatch") from None
     previous = descriptor["precondition"]
     expected = descriptor["postcondition"]
     ready = current["ready_revision"]
