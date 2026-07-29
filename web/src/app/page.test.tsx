@@ -38,4 +38,18 @@ describe('public evidence observatory', () => {
     expect(markup).not.toContain('Autonomous capital')
     expect(markup).not.toContain('Plant status')
   })
+
+  it('anchors the method in visible hardware and a named strategy set', () => {
+    // The mesh section reframes the abstract method as concrete machines +
+    // strategies. It must show the invitation to inspect and it must not
+    // fabricate optimism the site elsewhere refuses.
+    expect(markup).toContain('Five verbs, on hardware you can point at.')
+    expect(markup).toContain('Inspect the machine')
+    // Real strategy class names, straight out of lib/analytics/strategies.py.
+    expect(markup).toContain('RegimeAwareRSI')
+    expect(markup).toContain('SapphireComposite')
+    // The gate is the point of the whole diagram — the only place capital moves.
+    expect(markup).toContain('Gate')
+    expect(markup).toContain('Telegram')
+  })
 })

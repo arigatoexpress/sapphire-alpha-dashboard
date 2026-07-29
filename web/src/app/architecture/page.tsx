@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import ArchitectureMesh from '@/components/ArchitectureMesh'
 import MetricCard from '@/components/Metric'
 import { Eyebrow, PageHeader, Panel, Row, Rule, Terminal, Verified } from '@/components/Primitives'
 import { DETAIL_METRICS, NODES } from '@/data/metrics'
@@ -55,8 +56,27 @@ export default function Architecture() {
         lede="Separation is the design. The node that decides is not the node that executes, and the node the public can reach holds nothing it was not explicitly handed."
       />
 
-      <section className="mx-auto max-w-6xl px-6 pt-14">
-        <div className="grid gap-px border border-line bg-line md:grid-cols-2">
+      <section className="mx-auto pt-10 pb-4">
+        <ArchitectureMesh variant="full" />
+      </section>
+
+      <Rule />
+
+      <section className="mx-auto max-w-6xl px-6 pt-14" aria-labelledby="deploy-heading">
+        <Eyebrow>Deployment view</Eyebrow>
+        <h2
+          id="deploy-heading"
+          className="mt-4 max-w-3xl font-display text-3xl leading-tight font-semibold tracking-[-0.02em] text-balance md:text-4xl"
+        >
+          The same four machines, drawn by what serves what.
+        </h2>
+        <p className="mt-5 max-w-3xl text-base leading-relaxed text-ink-dim">
+          The diagram above shows the compute mesh — who does the thinking. The
+          grid below shows the deployment topology — who serves what to whom.
+          Both views describe the same stack; conflating them is the mistake
+          this page exists to prevent.
+        </p>
+        <div className="mt-10 grid gap-px border border-line bg-line md:grid-cols-2">
           {NODES.map((node, i) => (
             <div
               key={node.id}

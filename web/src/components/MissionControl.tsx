@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import ArchitectureMesh from './ArchitectureMesh'
 
 type Live = {
   status?: string
@@ -177,6 +178,24 @@ export default function MissionControl() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="public-mesh" aria-labelledby="mesh-title">
+        <div className="public-mesh-preface">
+          <p className="public-kicker">The system, in one view</p>
+          <h2 id="mesh-title">
+            Five verbs, on hardware you can point at.
+          </h2>
+          <p>
+            The method above is not an idea. It runs on four small computers on
+            a private network, holds five paper-trading strategies, and passes
+            every proposal through a gate that a human still owns.
+          </p>
+          <Link href="/architecture/" className="public-mesh-link">
+            Inspect the machine →
+          </Link>
+        </div>
+        <ArchitectureMesh variant="compact" />
       </section>
 
       <section className="public-state" aria-labelledby="state-title">

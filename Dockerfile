@@ -44,7 +44,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-ARG SAPPHIRE_BUILD_SHA=unknown
+ARG SAPPHIRE_BUILD_SHA=local-development
 ARG SAPPHIRE_BUILD_ID=unknown
 
 COPY backend/requirements.txt .
