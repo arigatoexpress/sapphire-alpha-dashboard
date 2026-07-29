@@ -111,6 +111,54 @@ def _fetch(url: str) -> tuple[int, str]:
     raise AssertionError(url)
 
 
+@pytest.mark.parametrize(
+    "provider_traffic",
+    [
+        [{"percent": 100, "revisionName": READY}],
+        [{"latestRevision": True, "percent": 100, "revisionName": READY}],
+    ],
+)
+def test_live_snapshot_normalizes_supported_provider_traffic(provider_traffic):
+    service = _service()
+    service["status"]["traffic"] = provider_traffic
+
+    snapshot = guard.live_snapshot(_runner(service=service), _fetch)
+
+    assert snapshot["traffic"] == [{"percent": 100, "revisionName": READY}]
+
+
+@pytest.mark.parametrize(
+    "provider_traffic",
+    [
+        [],
+        [
+            {"percent": 50, "revisionName": READY},
+            {"percent": 50, "revisionName": CREATED},
+        ],
+        [
+            {"percent": 50, "revisionName": READY},
+            {"percent": 50, "revisionName": READY},
+        ],
+        [{"percent": 99, "revisionName": READY}],
+        [{"percent": True, "revisionName": READY}],
+        [{"percent": 100}],
+        [{"latestRevision": True, "percent": 100}],
+        [{"latestRevision": False, "percent": 100, "revisionName": READY}],
+        [{"latestRevision": True, "percent": 100, "revisionName": CREATED}],
+        [{"percent": 100, "revisionName": CREATED}],
+        [{"percent": 100, "revisionName": READY, "tag": "prod"}],
+        [{"percent": 100, "revisionName": READY, "url": "https://tag.invalid"}],
+        ["not-a-traffic-record"],
+    ],
+)
+def test_live_snapshot_rejects_ambiguous_or_open_traffic(provider_traffic):
+    service = _service()
+    service["status"]["traffic"] = provider_traffic
+
+    with pytest.raises(guard.ContractViolation, match="traffic projection mismatch"):
+        guard.live_snapshot(_runner(service=service), _fetch)
+
+
 def _descriptor() -> dict:
     precondition = guard.live_snapshot(_runner(), _fetch)
     return {
@@ -362,6 +410,30 @@ def test_descriptor_schema_is_recursively_closed_and_substitution_is_bounded():
         guard.encode_descriptor(os.urandom(5000))
 
 
+def test_descriptor_requires_normalized_explicit_revision_traffic():
+    descriptor = _descriptor()
+    descriptor["precondition"]["traffic"][0]["latestRevision"] = True
+
+    with pytest.raises(guard.ContractViolation, match="descriptor mismatch"):
+        guard._require_descriptor_shape(descriptor)
+
+
+def test_predeploy_cas_accepts_equivalent_latest_revision_provider_record():
+    descriptor = _descriptor()
+    service = _service()
+    service["status"]["traffic"] = [
+        {"latestRevision": True, "percent": 100, "revisionName": READY}
+    ]
+
+    result = guard.verify_predeploy_cas(
+        descriptor,
+        run=_runner(service=service),
+        fetch=_fetch,
+    )
+
+    assert result["ok"] is True
+
+
 @pytest.mark.parametrize("status", ["WORKING", "QUEUED", "FAILURE", "CANCELLED"])
 def test_release_build_must_be_terminal_success(status):
     descriptor = _descriptor()
@@ -462,6 +534,33 @@ def test_postdeploy_requires_generation_plus_one_and_built_digest(monkeypatch):
         )
 
 
+def test_postdeploy_masks_invalid_provider_traffic_as_postdeploy_mismatch(monkeypatch):
+    descriptor = _descriptor()
+    descriptor_sha = "1" * 64
+    build = _build_record(descriptor, descriptor_sha)
+    monkeypatch.setattr(
+        guard,
+        "verify_build_record",
+        lambda *_args, **_kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        guard,
+        "live_snapshot",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            guard.ContractViolation("traffic projection mismatch")
+        ),
+    )
+
+    with pytest.raises(guard.ContractViolation, match="^postdeploy state mismatch$"):
+        guard.verify_postdeploy(
+            descriptor,
+            descriptor_sha,
+            "build-123",
+            run=_runner(build=build),
+            fetch=_fetch,
+        )
+
+
 def test_artifact_binding_detects_wrapper_or_guard_mutation(tmp_path):
     for relative in guard.REQUIRED_ARTIFACTS:
         path = tmp_path / relative
@@ -541,6 +640,28 @@ def test_provider_replacement_carries_resource_version_and_digest_only():
             descriptor,
             f"{guard.IMAGE_REPOSITORY}:mutable",
         )
+
+
+@pytest.mark.parametrize(
+    "provider_traffic",
+    [
+        [
+            {"percent": 50, "revisionName": READY},
+            {"percent": 50, "revisionName": CREATED},
+        ],
+        [{"latestRevision": True, "percent": 100}],
+        [{"percent": 100, "revisionName": READY, "tag": "prod"}],
+        [{"percent": 100, "revisionName": CREATED}],
+    ],
+)
+def test_provider_replacement_rejects_noncanonical_current_traffic(provider_traffic):
+    descriptor = _descriptor()
+    service = _service()
+    service["status"]["traffic"] = provider_traffic
+    image = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
+
+    with pytest.raises(guard.ContractViolation, match="remote state mismatch"):
+        guard.prepare_service_replacement(service, descriptor, image)
 
 
 def test_provider_cas_requires_an_exact_new_resource_version(monkeypatch):
