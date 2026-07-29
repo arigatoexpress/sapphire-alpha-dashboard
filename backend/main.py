@@ -1276,7 +1276,7 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
 
 
 _GATE_REQUIRED_FIELDS = frozenset({"observed_at", "armed", "mode"})
-_GATE_OPTIONAL_FIELDS = frozenset({"wallet_address", "cap_usd"})
+_GATE_OPTIONAL_FIELDS = frozenset({"wallet_address", "cap_usd", "pause_sources"})
 _MAX_GATE_CAP_USD = 1_000_000_000
 
 
@@ -1308,6 +1308,23 @@ def _admitted_gate_document(raw: Any) -> dict[str, Any]:
         or len(wallet_address) > 240
     ):
         return {}
+
+    pause_sources = raw.get("pause_sources")
+    if pause_sources is not None:
+        if not isinstance(pause_sources, list) or len(pause_sources) > 2:
+            return {}
+        seen_sources: set[str] = set()
+        for item in pause_sources:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"source", "state", "observed_at"}
+                or item.get("source") not in {"mac", "rh_chain"}
+                or item.get("source") in seen_sources
+                or item.get("state") not in {"active", "clear"}
+                or not isinstance(item.get("observed_at"), str)
+            ):
+                return {}
+            seen_sources.add(item["source"])
     return raw
 
 
