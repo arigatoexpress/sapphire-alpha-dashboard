@@ -68,6 +68,22 @@ def test_future_nested_agent_is_withdrawn_from_current_parent() -> None:
     assert projected["summary"]["active_agents"] is None
 
 
+def test_future_dated_desk_and_event_claims_are_withdrawn() -> None:
+    raw = _sample(observed_at=NOW.isoformat(), sequence=9407)
+    future = (datetime.now(UTC) + timedelta(seconds=30)).isoformat()
+    raw["desk"]["updated_at"] = future
+    raw["events"][0]["observed_at"] = future
+
+    projected = _store(raw).get(
+        now=(NOW + timedelta(seconds=1)).timestamp(),
+        stale_after_seconds=180,
+    )
+
+    assert projected["desk"]["posture"] == "unknown"
+    assert projected["desk"]["epistemics"] == live_telemetry._epistemics(None)
+    assert projected["events"] == []
+
+
 def test_impossible_current_agent_summary_is_withdrawn() -> None:
     raw = _sample(observed_at=NOW.isoformat(), sequence=9403)
     raw["summary"]["active_agents"] = 99
