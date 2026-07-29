@@ -475,11 +475,12 @@ def _normalize_provider_traffic(
 ) -> list[dict[str, Any]]:
     """Close Cloud Run's equivalent traffic records to one exact target.
 
-    Cloud Run may annotate a resolved status target with
+    Cloud Run may annotate a resolved latest target with
     ``latestRevision: true`` even though ``revisionName`` already identifies
-    the concrete ready revision. The release contract stores only that
-    concrete identity. Tags, unresolved latest targets, split allocations,
-    duplicate targets, and provider extensions remain inadmissible.
+    the concrete ready revision. Explicit traffic may instead pin an older
+    serving revision. The release contract stores only the concrete identity.
+    Tags, unresolved latest targets, split allocations, duplicate targets, and
+    provider extensions remain inadmissible.
     """
     if (
         not isinstance(ready_revision, str)
@@ -493,21 +494,27 @@ def _normalize_provider_traffic(
         raise ContractViolation("traffic projection mismatch")
     record = value[0]
     keys = set(record)
+    revision_name = record.get("revisionName")
     if keys == {"percent", "revisionName"}:
         pass
     elif keys == {"latestRevision", "percent", "revisionName"}:
-        if record.get("latestRevision") is not True:
+        if (
+            record.get("latestRevision") is not True
+            or revision_name != ready_revision
+        ):
             raise ContractViolation("traffic projection mismatch")
     else:
         raise ContractViolation("traffic projection mismatch")
     if (
         type(record.get("percent")) is not int
         or record["percent"] != 100
-        or not isinstance(record.get("revisionName"), str)
-        or record["revisionName"] != ready_revision
+        or not isinstance(revision_name, str)
+        or not revision_name
+        or revision_name.strip() != revision_name
+        or len(revision_name) > 128
     ):
         raise ContractViolation("traffic projection mismatch")
-    return [{"percent": 100, "revisionName": ready_revision}]
+    return [{"percent": 100, "revisionName": revision_name}]
 
 
 def live_snapshot(run: Run = _run, fetch: Fetch = fetch_http) -> dict[str, Any]:

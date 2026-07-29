@@ -21,6 +21,7 @@ from scripts import deploy_contract as guard
 SENTINEL = "never-emit-runtime-canary"
 READY = "sapphire-alpha-dashboard-00073-kv2"
 CREATED = "sapphire-alpha-dashboard-00074-p42"
+OLDER = "sapphire-alpha-dashboard-00072-old"
 READY_DIGEST = guard.IMAGE_REPOSITORY + "@sha256:" + "a" * 64
 CREATED_DIGEST = guard.IMAGE_REPOSITORY + "@sha256:" + "b" * 64
 SOURCE_SHA = "c" * 40
@@ -115,6 +116,7 @@ def _fetch(url: str) -> tuple[int, str]:
     "provider_traffic",
     [
         [{"percent": 100, "revisionName": READY}],
+        [{"percent": 100, "revisionName": OLDER}],
         [{"latestRevision": True, "percent": 100, "revisionName": READY}],
     ],
 )
@@ -124,7 +126,12 @@ def test_live_snapshot_normalizes_supported_provider_traffic(provider_traffic):
 
     snapshot = guard.live_snapshot(_runner(service=service), _fetch)
 
-    assert snapshot["traffic"] == [{"percent": 100, "revisionName": READY}]
+    assert snapshot["traffic"] == [
+        {
+            "percent": 100,
+            "revisionName": provider_traffic[0]["revisionName"],
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -145,7 +152,8 @@ def test_live_snapshot_normalizes_supported_provider_traffic(provider_traffic):
         [{"latestRevision": True, "percent": 100}],
         [{"latestRevision": False, "percent": 100, "revisionName": READY}],
         [{"latestRevision": True, "percent": 100, "revisionName": CREATED}],
-        [{"percent": 100, "revisionName": CREATED}],
+        [{"percent": 100, "revisionName": ""}],
+        [{"percent": 100, "revisionName": None}],
         [{"percent": 100, "revisionName": READY, "tag": "prod"}],
         [{"percent": 100, "revisionName": READY, "url": "https://tag.invalid"}],
         ["not-a-traffic-record"],
