@@ -49,7 +49,7 @@ def test_skin_book_persisted(tmp_path, monkeypatch):
     import main
 
     payload = {
-        "updated": 1783914740,
+        "observed_at": main.datetime.now(main.UTC).isoformat(),
         "mode": "tg_approve_then_manual_fill",
         "deployed_usd": 12.5,
         "n_open": 1,
@@ -75,7 +75,7 @@ def test_wallet_status_persisted(tmp_path, monkeypatch):
     (tmp_path / "skin-book.json").write_text(
         json.dumps(
             {
-                "updated": 1783914740,
+                "observed_at": main.datetime.now(main.UTC).isoformat(),
                 "wallet_address": "0x1234567890abcdef1234567890abcdef12345678",
                 "deployed_usd": 5.0,
                 "n_open": 0,
@@ -93,9 +93,22 @@ def test_wallet_status_persisted(tmp_path, monkeypatch):
 def test_recent_signals_persisted(tmp_path, monkeypatch):
     import main
 
+    observed_at = main.datetime.now(main.UTC).isoformat()
     signals = [
-        {"instrument": "BTC", "side": "BUY", "venue": "on_chain", "confidence": "high"},
-        {"instrument": "ETH", "side": "SELL", "venue": "cex", "confidence": "low"},
+        {
+            "instrument": "BTC",
+            "side": "BUY",
+            "venue": "on_chain",
+            "confidence": "high",
+            "timestamp": observed_at,
+        },
+        {
+            "instrument": "ETH",
+            "side": "SELL",
+            "venue": "cex",
+            "confidence": "low",
+            "timestamp": observed_at,
+        },
     ]
     monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
     (tmp_path / "signals.json").write_text(json.dumps(signals), encoding="utf-8")

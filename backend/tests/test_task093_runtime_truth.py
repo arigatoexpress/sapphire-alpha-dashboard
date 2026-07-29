@@ -296,7 +296,7 @@ def test_active_persisted_pause_wins_without_request_time_freshening(
             {
                 "armed": True,
                 "mode": "bounded_auto",
-                "updated": NOW.timestamp(),
+                "observed_at": NOW.isoformat(),
                 "pause_sources": [
                     {
                         "source": "rh_chain",

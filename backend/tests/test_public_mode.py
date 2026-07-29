@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,6 +32,7 @@ FORBIDDEN_SUBSTRINGS = [
 
 @pytest.fixture
 def public_mode(monkeypatch, tmp_path):
+    observed_at = datetime.now(UTC).isoformat()
     # Reset the TV probe cache so the fixture's URL never leaks into other tests.
     monkeypatch.setattr(main, "_tv_probe_cache", {"ts": 0.0, "result": None})
     rh = tmp_path / "rh-chain"
@@ -55,7 +57,7 @@ def public_mode(monkeypatch, tmp_path):
     (rh / "skin-book.json").write_text(
         json.dumps(
             {
-                "updated": 1783914740,
+                "observed_at": observed_at,
                 "deployed_usd": 123.45,
                 "n_open": 2,
                 "skin_in_game": True,
@@ -74,7 +76,7 @@ def public_mode(monkeypatch, tmp_path):
                     "side": "BUY",
                     "venue": "on_chain",
                     "confidence": "high",
-                    "timestamp": "2026-07-28T00:00:00Z",
+                    "timestamp": observed_at,
                 }
             ]
         ),
