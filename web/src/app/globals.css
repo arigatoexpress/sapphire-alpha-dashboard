@@ -757,6 +757,14 @@ body {
     display: none;
   }
 
+  .system-atlas__empty {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    transform: none;
+  }
+
   .system-atlas__nodes {
     position: static;
     display: grid;

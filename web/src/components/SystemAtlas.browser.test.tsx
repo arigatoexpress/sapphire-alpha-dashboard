@@ -12,6 +12,7 @@ type LayoutResult = {
   clientWidth: number
   scrollWidth: number
   contained: boolean
+  emptyBeforeTechnical: boolean
   intersections: string[]
   rectangles: Array<{ name: string; left: number; right: number; top: number; bottom: number }>
   map: { left: number; right: number; top: number; bottom: number }
@@ -55,7 +56,7 @@ function chromePath() {
 
 function renderAt(
   width: number,
-  snapshot: LiveSnapshot = live,
+  snapshot: LiveSnapshot | null = live,
   openTechnical = false,
 ): LayoutResult {
   const css = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf8')
@@ -123,10 +124,13 @@ function renderAt(
         rect.top >= map.top - 0.5 &&
         rect.bottom <= map.bottom + 0.5
       );
+      const empty = document.querySelector('.system-atlas__empty')?.getBoundingClientRect();
+      const technical = document.querySelector('.system-atlas__technical')?.getBoundingClientRect();
       const result = {
         clientWidth: document.body.clientWidth,
         scrollWidth: document.body.scrollWidth,
         contained,
+        emptyBeforeTechnical: !empty || !technical || empty.bottom <= technical.top + 0.5,
         intersections,
         map: { left: map.left, right: map.right, top: map.top, bottom: map.bottom },
         rectangles: cards.map(({ name, rect }) => ({
@@ -190,6 +194,18 @@ describe('system atlas rendered responsive geometry', () => {
       expect(layout.scrollWidth).toBe(width)
       expect(layout.contained).toBe(true)
       expect(layout.intersections).toEqual([])
+    },
+    65_000,
+  )
+
+  it.each([320, 375])(
+    'keeps the no-runtime contract above the technical ledger at %ipx',
+    (width) => {
+      const layout = renderAt(width, null)
+      expect(layout.clientWidth).toBe(width)
+      expect(layout.scrollWidth).toBe(width)
+      expect(layout.contained).toBe(true)
+      expect(layout.emptyBeforeTechnical).toBe(true)
     },
     65_000,
   )

@@ -100,6 +100,26 @@ describe('public system atlas', () => {
     expect(liveMarkup).toContain('599 evt/min')
   })
 
+  it('preserves a valid sub-unit rate instead of displaying animated flow as zero', () => {
+    const lowRate = structuredClone(live)
+    const observed = lowRate.links.find(
+      (link) => link.source === 'intelligence' && link.target === 'markets',
+    )!
+    observed.event_rate = 0.2
+    const lowRateMarkup = renderToStaticMarkup(
+      <SystemAtlas snapshot={lowRate} />,
+    )
+
+    expect(lowRateMarkup).toMatch(
+      /data-atlas-link="intelligence-&gt;markets"[^>]*data-flow="observed"/,
+    )
+    const observedLink = lowRateMarkup.match(
+      /<line[^>]*data-atlas-link="intelligence-&gt;markets"[\s\S]*?<\/line>/,
+    )?.[0]
+    expect(observedLink).toContain('0.2 evt/min')
+    expect(observedLink).not.toContain('; 0 evt/min')
+  })
+
   it('withdraws current styling and motion when the retained snapshot is stale or a poll failed', () => {
     const stale = structuredClone(live)
     stale.status = 'stale'
@@ -132,5 +152,8 @@ describe('system atlas motion and responsive contracts', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)/)
     expect(css).toMatch(/\.system-atlas__map/)
     expect(css).toMatch(/\.system-atlas__nodes/)
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*1180px\)[\s\S]*?\.system-atlas__empty\s*\{[\s\S]*?position:\s*relative/,
+    )
   })
 })

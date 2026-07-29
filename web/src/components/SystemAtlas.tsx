@@ -36,7 +36,11 @@ function age(seconds: number | null | undefined) {
 
 function rate(value: number | null, unit: string, current: boolean) {
   if (!current || value == null || !Number.isFinite(value)) return 'not observed'
-  return `${Math.round(value)} ${unit}`
+  const displayed =
+    Math.abs(value) > 0 && Math.abs(value) < 1
+      ? Number(value.toPrecision(3)).toString()
+      : Math.round(value).toString()
+  return `${displayed} ${unit}`
 }
 
 function flowState(link: LiveLink, current: boolean) {
