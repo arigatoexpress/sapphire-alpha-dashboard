@@ -439,7 +439,9 @@ def test_stale_parent_withdraws_track_and_epistemic_claims() -> None:
     }
 
 
-def test_local_fallback_uses_canonical_parent_aging(monkeypatch) -> None:
+def test_local_fallback_uses_canonical_parent_aging(
+    tmp_path: Path,
+) -> None:
     old = NOW - timedelta(minutes=10)
     sample = _sample(observed_at=old.isoformat(), sequence=9302)
     sample["markets"]["decision_gate"] = "manual"
@@ -451,14 +453,17 @@ def test_local_fallback_uses_canonical_parent_aging(monkeypatch) -> None:
         "new_entries": "available",
         "reason": "stale runtime claim",
     }
-    monkeypatch.setattr(
-        local_dashboard_server,
-        "build_snapshot",
-        lambda *_args, **_kwargs: sample,
+    candidate = tmp_path / "live-snapshot.json"
+    candidate.write_text(
+        json.dumps(sample),
+        encoding="utf-8",
     )
-    monkeypatch.setattr(local_dashboard_server.time, "time", lambda: NOW.timestamp())
+    candidate.chmod(0o600)
 
-    projected = local_dashboard_server._build_live_snapshot()
+    projected = local_dashboard_server._build_live_snapshot(
+        snapshot_path=candidate,
+        now=NOW.timestamp(),
+    )
 
     assert projected["status"] == "stale"
     assert projected["markets"]["decision_gate"] == "unknown"
