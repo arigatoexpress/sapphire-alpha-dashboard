@@ -2,10 +2,10 @@
 """Local offline fallback for the Sapphire Alpha dashboard.
 
 Serves the built frontend assets from `frontend/dist` and mirrors the public
-`/api/v1/live` endpoint by running the local telemetry collector directly.
+`/api/v1/live` endpoint from one separately persisted, admitted snapshot.
 
-No cloud credentials, secrets, or network push are required. The demo works
-entirely on the Mac using the same collector that normally feeds Cloud Run.
+No cloud credentials, secrets, network push, or request-time collection are
+required. Missing or unverifiable persisted evidence stays offline.
 
 Usage:
     python local_dashboard_server.py --port 8080
@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -29,43 +30,81 @@ REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from live_telemetry import (  # type: ignore[import]  # noqa: E402
+    DEFAULT_STALE_AFTER_SECONDS,
     _age_runtime_projection,
+    _empty_snapshot,
     validate_snapshot,
 )
 from main import (  # type: ignore[import]  # noqa: E402
+    _MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES,
+    _UnverifiablePersistedDocument,
     _build_identity as _runtime_build_identity,
+    _read_admitted_json_object,
     _readiness_snapshot as _runtime_readiness,
 )
-from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]  # noqa: E402
 
 
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 DEFAULT_PORT = 8080
+DEFAULT_LOCAL_TELEMETRY_SNAPSHOT = (
+    Path.home() / "ops-state" / "sapphire-observations" / "live-snapshot.json"
+)
 
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _build_live_snapshot() -> dict[str, Any]:
-    """Run the local collector and return a public-safe projection."""
-    raw = build_snapshot(Sources.defaults(), link_latencies=configured_latencies())
-    # The general live contract has one already-public view. The old
-    # ``public_projection`` redaction tier was deliberately deleted; keeping
-    # that stale import made the documented offline fallback crash at startup.
-    projected = validate_snapshot(raw)
-    now = time.time()
-    observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
+def _local_snapshot_path() -> Path:
+    configured = os.getenv("SAPPHIRE_LOCAL_TELEMETRY_SNAPSHOT", "").strip()
+    return Path(configured) if configured else DEFAULT_LOCAL_TELEMETRY_SNAPSHOT
+
+
+def _offline_live_snapshot(*, now: float) -> dict[str, Any]:
+    projected = _empty_snapshot(status="offline")
+    projected["served_at"] = datetime.fromtimestamp(now, UTC).isoformat()
+    return projected
+
+
+def _build_live_snapshot(
+    *,
+    snapshot_path: Path | None = None,
+    now: float | None = None,
+) -> dict[str, Any]:
+    """Load, age, and project one admitted persisted local snapshot."""
+    now = time.time() if now is None else now
+    source = snapshot_path or _local_snapshot_path()
+    try:
+        admitted = _read_admitted_json_object(
+            source,
+            max_bytes=_MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES,
+        )
+    except _UnverifiablePersistedDocument:
+        return _offline_live_snapshot(now=now)
+    if admitted is None:
+        return _offline_live_snapshot(now=now)
+    raw, _source_identity = admitted
+    try:
+        projected = validate_snapshot(raw)
+        observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
+    except (TypeError, ValueError):
+        return _offline_live_snapshot(now=now)
+    if observed > now:
+        return _offline_live_snapshot(now=now)
     freshness_s = round(max(0.0, now - observed), 1)
     _age_runtime_projection(
         projected,
         now=now,
         snapshot_observed_at=observed,
-        stale_after_seconds=180,
+        stale_after_seconds=DEFAULT_STALE_AFTER_SECONDS,
     )
     projected.update(
         {
-            "status": "live" if freshness_s <= 180 else "stale",
+            "status": (
+                "live"
+                if freshness_s <= DEFAULT_STALE_AFTER_SECONDS
+                else "stale"
+            ),
             "freshness_s": freshness_s,
             "served_at": datetime.fromtimestamp(now, UTC).isoformat(),
             "received_at": projected["observed_at"],

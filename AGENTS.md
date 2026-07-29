@@ -57,7 +57,10 @@ python local_dashboard_server.py --port 8080
 open http://127.0.0.1:8080
 ```
 It serves the existing `frontend/dist` bundle and mirrors `/api/v1/live` by
-running the local telemetry collector directly. `/api/v1/moss`,
+loading the admitted schema-v1 snapshot at
+`~/ops-state/sapphire-observations/live-snapshot.json` (override with
+`SAPPHIRE_LOCAL_TELEMETRY_SNAPSHOT`). Collection and persistence must run as a
+separate job; a GET only loads, ages, and fails closed. `/api/v1/moss`,
 `/api/v1/widgets`, and `/api/fleet` return complete fail-closed offline stubs
 so the UI renders cleanly without operator auth or invented observations.
 

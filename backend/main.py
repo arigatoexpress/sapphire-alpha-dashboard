@@ -318,6 +318,7 @@ _PAUSE_SENTINELS: dict[str, Path] = {
 }
 _RUNTIME_TTL_SECONDS = 180.0
 _MAX_PAUSE_DOCUMENT_BYTES = 64 * 1024
+_MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES = 256 * 1024
 _MAX_FLEET_FUTURE_SKEW_SECONDS = 5.0
 
 _RUNTIME_READINESS: dict[str, Any] = {
@@ -714,15 +715,16 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
-    """Read one pause sentinel through a single verified descriptor.
+class _UnverifiablePersistedDocument(ValueError):
+    """A local document could not be bound to one stable admitted descriptor."""
 
-    Path checks followed by ``read_text`` are vulnerable to symlink and
-    replacement races.  The descriptor is opened without following symlinks,
-    checked before and after the bounded read, and matched back to the current
-    path.  Group/world-readable pause state is harmless, but another identity
-    must never be able to write it.
-    """
+
+def _read_admitted_json_object(
+    path: Path,
+    *,
+    max_bytes: int,
+) -> tuple[dict[str, Any], tuple[int, int]] | None:
+    """Read one bounded local JSON object through a stable no-follow descriptor."""
     parent_fd: int | None = None
     file_fd: int | None = None
     fresh_parent_fd: int | None = None
@@ -730,8 +732,8 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
         parent_fd = _open_pause_parent(path.parent)
     except FileNotFoundError:
         return None
-    except OSError:
-        return _invalid_pause_observation(source)
+    except OSError as exc:
+        raise _UnverifiablePersistedDocument from exc
 
     try:
         parent_before = os.fstat(parent_fd)
@@ -740,7 +742,7 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
             or parent_before.st_uid != os.geteuid()
             or parent_before.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
         ):
-            return _invalid_pause_observation(source)
+            raise _UnverifiablePersistedDocument
 
         flags = os.O_RDONLY
         flags |= getattr(os, "O_CLOEXEC", 0)
@@ -750,8 +752,8 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
             file_fd = os.open(path.name, flags, dir_fd=parent_fd)
         except FileNotFoundError:
             return None
-        except OSError:
-            return _invalid_pause_observation(source)
+        except OSError as exc:
+            raise _UnverifiablePersistedDocument from exc
 
         before = os.fstat(file_fd)
         if (
@@ -759,12 +761,12 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
             or before.st_uid != os.geteuid()
             or before.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
             or before.st_nlink != 1
-            or before.st_size > _MAX_PAUSE_DOCUMENT_BYTES
+            or before.st_size > max_bytes
         ):
-            return _invalid_pause_observation(source)
+            raise _UnverifiablePersistedDocument
 
         chunks: list[bytes] = []
-        remaining = _MAX_PAUSE_DOCUMENT_BYTES + 1
+        remaining = max_bytes + 1
         while remaining > 0:
             chunk = os.read(file_fd, min(8192, remaining))
             if not chunk:
@@ -783,8 +785,8 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
                 dir_fd=fresh_parent_fd,
                 follow_symlinks=False,
             )
-        except OSError:
-            return _invalid_pause_observation(source)
+        except OSError as exc:
+            raise _UnverifiablePersistedDocument from exc
         stable_descriptor = _stable_stat_identity(before) == _stable_stat_identity(after)
         stable_parent = (
             _stable_stat_identity(parent_before)
@@ -803,30 +805,21 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
             or not stable_parent
             or not same_path_object
             or len(payload) != after.st_size
-            or len(payload) > _MAX_PAUSE_DOCUMENT_BYTES
+            or len(payload) > max_bytes
         ):
-            return _invalid_pause_observation(source)
+            raise _UnverifiablePersistedDocument
 
         raw = json.loads(
             payload.decode("utf-8"),
             object_pairs_hook=_unique_json_object,
         )
         if not isinstance(raw, dict):
-            raise ValueError
-        state = raw.get("state", "active")
-        observed = _observation_time(raw)
-        if state == "active" and observed is None:
-            observed = _persisted_time(raw.get("created_at"))
-        if state not in {"active", "clear"} or observed is None:
-            return _invalid_pause_observation(source)
-        return {
-            "source": source,
-            "state": state,
-            "observed_at": observed.isoformat(),
-            "_source_identity": (after.st_dev, after.st_ino),
-        }
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
-        return _invalid_pause_observation(source)
+            raise _UnverifiablePersistedDocument
+        return raw, (after.st_dev, after.st_ino)
+    except _UnverifiablePersistedDocument:
+        raise
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise _UnverifiablePersistedDocument from exc
     finally:
         if fresh_parent_fd is not None:
             os.close(fresh_parent_fd)
@@ -834,6 +827,59 @@ def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
             os.close(file_fd)
         if parent_fd is not None:
             os.close(parent_fd)
+
+
+_PAUSE_TIMESTAMP_FIELDS = frozenset(
+    {
+        "observed_at",
+        "updated_at",
+        "updated",
+        "last_seen",
+        "timestamp",
+        "epoch",
+        "created_at",
+    }
+)
+
+
+def _strict_pause_semantics(raw: dict[str, Any]) -> tuple[str, datetime] | None:
+    """Accept one explicit timestamp schema plus the legacy active sentinel."""
+    present_timestamps = _PAUSE_TIMESTAMP_FIELDS.intersection(raw)
+    if "state" not in raw:
+        if present_timestamps != {"created_at"}:
+            return None
+        state = "active"
+        observed = _persisted_time(raw.get("created_at"))
+    else:
+        state = raw.get("state")
+        if state not in {"active", "clear"} or present_timestamps != {"observed_at"}:
+            return None
+        observed = _persisted_time(raw.get("observed_at"))
+    return (state, observed) if observed is not None else None
+
+
+def _pause_file_observation(source: str, path: Path) -> dict[str, Any] | None:
+    """Read one pause sentinel through the shared admitted-document contract."""
+    try:
+        admitted = _read_admitted_json_object(
+            path,
+            max_bytes=_MAX_PAUSE_DOCUMENT_BYTES,
+        )
+    except _UnverifiablePersistedDocument:
+        return _invalid_pause_observation(source)
+    if admitted is None:
+        return None
+    raw, source_identity = admitted
+    semantics = _strict_pause_semantics(raw)
+    if semantics is None:
+        return _invalid_pause_observation(source)
+    state, observed = semantics
+    return {
+        "source": source,
+        "state": state,
+        "observed_at": observed.isoformat(),
+        "_source_identity": source_identity,
+    }
 
 
 def _evaluate_pause_truth(

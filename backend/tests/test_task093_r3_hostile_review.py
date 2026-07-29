@@ -136,7 +136,10 @@ def test_local_fallback_repeated_gets_only_age_one_persisted_snapshot(
     assert first["observed_at"] == second["observed_at"] == NOW.isoformat()
     assert first["received_at"] == second["received_at"] == NOW.isoformat()
     assert second["freshness_s"] - first["freshness_s"] == 30
-    assert second["markets"]["feed_age_s"] - first["markets"]["feed_age_s"] == 30
+    assert (
+        second["markets"]["feed_age_s"] - first["markets"]["feed_age_s"]
+        == pytest.approx(30)
+    )
     assert first["served_at"] != second["served_at"]
     stat_after = candidate.stat()
     assert candidate.read_bytes() == source_before
@@ -220,4 +223,33 @@ def test_stale_only_agent_withdraws_current_active_agent_summary() -> None:
 
     assert projected["status"] == "live"
     assert projected["agents"][0]["state"] == "offline"
+    assert projected["summary"]["active_agents"] is None
+
+
+def test_one_expired_agent_withdraws_the_mixed_aggregate_instead_of_undercounting() -> None:
+    sample = _sample(observed_at=NOW.isoformat(), sequence=9308)
+    sample["summary"]["active_agents"] = 2
+    sample["agents"][0]["updated_at"] = (NOW - timedelta(hours=1)).isoformat()
+    sample["agents"].append(
+        {
+            **sample["agents"][0],
+            "id": "current-agent",
+            "role": "Current observer",
+            "state": "working",
+            "updated_at": NOW.isoformat(),
+        }
+    )
+
+    projected = _store(sample).get(
+        now=(NOW + timedelta(seconds=10)).timestamp(),
+        stale_after_seconds=180,
+    )
+
+    assert [agent["state"] for agent in projected["agents"]] == [
+        "offline",
+        "working",
+    ]
+    # The schema can summarize agents that are not in the bounded child list.
+    # Deriving "1" from the returned children would therefore be an undercount;
+    # withdrawing the aggregate is the only supported exact projection.
     assert projected["summary"]["active_agents"] is None

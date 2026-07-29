@@ -1153,6 +1153,17 @@ def _age_seconds(now: float, value: Any) -> float | None:
     return max(0.0, now - parsed.timestamp())
 
 
+def _epoch_age_seconds(now: float, value: Any) -> float | None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        return None
+    age = now - float(value)
+    return age if age >= 0 else None
+
+
 def _expire_desk_runtime(desk: dict[str, Any]) -> None:
     """Withdraw control-plane claims while retaining their persisted timestamp."""
     desk["posture"] = "unknown"
@@ -1238,11 +1249,13 @@ def _age_runtime_projection(
             link["status"] = "unknown"
             link["event_rate"] = None
 
+    expired_agent = False
     for agent in snapshot.get("agents", []):
         if not isinstance(agent, dict):
             continue
         age = _age_seconds(now, agent.get("updated_at"))
         if not parent_current or age is None or age > stale_after_seconds:
+            expired_agent = True
             agent["state"] = "offline"
             agent["verification"] = "pending"
             agent["activity"] = "Capability observation unavailable"
@@ -1276,27 +1289,37 @@ def _age_runtime_projection(
         desk_age = _age_seconds(now, desk.get("updated_at"))
         if not parent_current or desk_age is None or desk_age > stale_after_seconds:
             _expire_desk_runtime(desk)
+        current_tracks: list[dict[str, Any]] = []
         for track in desk.get("tracks", []):
             if not isinstance(track, dict):
                 continue
             age = track.get("freshness_s")
             if isinstance(age, (int, float)) and not isinstance(age, bool):
                 track["freshness_s"] = round(max(0.0, float(age)) + elapsed, 3)
-                if not parent_current or track["freshness_s"] > stale_after_seconds:
-                    track["status"] = "stale"
+                if parent_current and track["freshness_s"] <= stale_after_seconds:
+                    current_tracks.append(track)
+        desk["tracks"] = current_tracks
         epistemics = desk.get("epistemics")
         if isinstance(epistemics, dict):
-            updated_ts = epistemics.get("updated_ts")
+            epistemic_age = _epoch_age_seconds(now, epistemics.get("updated_ts"))
+            learning = epistemics.get("learning")
+            learning_age = (
+                _epoch_age_seconds(now, learning.get("updated_ts"))
+                if isinstance(learning, dict)
+                else None
+            )
             if (
-                not isinstance(updated_ts, (int, float))
-                or isinstance(updated_ts, bool)
-                or now - float(updated_ts) > stale_after_seconds
+                epistemics.get("fresh") is not True
+                or epistemic_age is None
+                or epistemic_age > stale_after_seconds
+                or learning_age is None
+                or learning_age > stale_after_seconds
             ):
-                epistemics["fresh"] = False
+                desk["epistemics"] = _epistemics(None)
 
-    if not parent_current:
-        summary = snapshot.get("summary")
-        if isinstance(summary, dict):
+    summary = snapshot.get("summary")
+    if isinstance(summary, dict):
+        if not parent_current:
             summary.update(
                 {
                     "state": "degraded",
@@ -1305,6 +1328,9 @@ def _age_runtime_projection(
                     "attention": None,
                 }
             )
+        elif expired_agent:
+            summary["state"] = "degraded"
+            summary["active_agents"] = None
 
 
 def _empty_snapshot(*, status: str = "offline") -> dict[str, Any]:
