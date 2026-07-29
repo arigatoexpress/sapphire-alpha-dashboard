@@ -6,9 +6,9 @@ import {
   Row,
   Rule,
   StatusChip,
-  Terminal,
   Verified,
 } from '@/components/Primitives'
+import { ExecutionPipeline } from '@/components/ExecutionPipeline'
 
 export const metadata: Metadata = {
   title: 'Trading',
@@ -164,20 +164,7 @@ export default function Trading() {
             </div>
           </div>
 
-          <Terminal
-            title="design trace — runtime unavailable"
-            scanline
-            lines={[
-              { prompt: true, text: 'desk propose --symbol HOOD --side buy --lane thesis' },
-              { text: '' },
-              { text: 'observe pause_sources    UNAVAILABLE', tone: 'dim' },
-              { text: 'observe broker           UNAVAILABLE', tone: 'dim' },
-              { text: 'observe credentials      UNAVAILABLE', tone: 'dim' },
-              { text: 'observe runtime          UNAVAILABLE', tone: 'dim' },
-              { text: '' },
-              { text: '→ no action admitted', tone: 'dim' },
-            ]}
-          />
+          <ExecutionPipeline />
         </div>
       </section>
 

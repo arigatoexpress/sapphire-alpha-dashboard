@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 
 type Live = {
@@ -23,6 +23,12 @@ type Live = {
 }
 
 type EvidenceState = 'observed' | 'stale' | 'paused' | 'unavailable' | 'source-only'
+
+const POLL_INTERVAL_MS = 15_000
+/** If a poll response is older than this many seconds, mark the row stale even
+ *  before the server declares it. Keeps the display honest across long idle
+ *  tabs where background setInterval was throttled by the browser. */
+const CLIENT_STALE_S = 60
 
 function fmtAge(seconds: number | null | undefined) {
   if (seconds == null || Number.isNaN(seconds)) return 'not observed'
@@ -68,9 +74,13 @@ const EVIDENCE_LEGEND: EvidenceState[] = [
 export default function MissionControl() {
   const [live, setLive] = useState<Live | null>(null)
   const [error, setError] = useState('')
+  const [lastPollMs, setLastPollMs] = useState<number | null>(null)
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  const pullRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     let cancelled = false
+
     const pull = async () => {
       try {
         const response = await fetch('/api/v1/live', { cache: 'no-store' })
@@ -79,18 +89,50 @@ export default function MissionControl() {
         if (!cancelled) {
           setLive(data)
           setError('')
+          setLastPollMs(Date.now())
         }
       } catch (reason) {
         if (!cancelled) {
           setError(reason instanceof Error ? reason.message : 'unavailable')
+          setLastPollMs(Date.now())
         }
       }
     }
+    pullRef.current = pull
+
+    // Kick off an initial pull and set the regular cadence.
     pull()
-    const timer = window.setInterval(pull, 15_000)
+    const pollTimer = window.setInterval(pull, POLL_INTERVAL_MS)
+
+    // Render tick — advances observation age between polls so a viewer sees
+    // freshness change every second, not only every 15s.
+    const tickTimer = window.setInterval(() => {
+      if (!cancelled) setNowMs(Date.now())
+    }, 1_000)
+
+    // Browsers throttle background setInterval; without these listeners a tab
+    // returning from a long idle can show minute-old data before the next
+    // scheduled poll fires. Force a fresh pull the moment the tab is usable.
+    const wakeAndPull = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      pull()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') pull()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', wakeAndPull)
+    window.addEventListener('online', wakeAndPull)
+    window.addEventListener('pageshow', wakeAndPull)
+
     return () => {
       cancelled = true
-      window.clearInterval(timer)
+      window.clearInterval(pollTimer)
+      window.clearInterval(tickTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', wakeAndPull)
+      window.removeEventListener('online', wakeAndPull)
+      window.removeEventListener('pageshow', wakeAndPull)
     }
   }, [])
 
@@ -105,6 +147,19 @@ export default function MissionControl() {
     const paused =
       ['halted', 'off', 'gated', 'paused'].includes(String(execution).toLowerCase())
 
+    // Client-side age advances every 1s via the render tick. Prefer the
+    // server-reported freshness_s but fall back to computed age from
+    // observed_at + browser clock for the between-poll seconds.
+    const observedTimeMs = live?.observed_at
+      ? new Date(live.observed_at).getTime()
+      : null
+    const clientAgeS =
+      observedTimeMs != null && !Number.isNaN(observedTimeMs)
+        ? Math.max(0, Math.floor((nowMs - observedTimeMs) / 1000))
+        : null
+    const ageS = clientAgeS ?? live?.freshness_s ?? null
+    const clientDeclaredStale = ageS != null && ageS > CLIENT_STALE_S
+
     return {
       status: statusLabel,
       statusState: error
@@ -112,21 +167,21 @@ export default function MissionControl() {
         : evidenceState(live?.status),
       observedAt: fmtObservedAt(live?.observed_at),
       observedState: live?.observed_at
-        ? error
+        ? error || clientDeclaredStale
           ? ('stale' as EvidenceState)
           : ('observed' as EvidenceState)
         : ('unavailable' as EvidenceState),
       freshness: error
         ? retained
-          ? `poll failed · last report ${fmtAge(live?.freshness_s)}`
+          ? `poll failed · last report ${fmtAge(ageS)}`
           : 'poll failed'
-        : fmtAge(live?.freshness_s),
+        : fmtAge(ageS),
       freshnessState: error
         ? retained
           ? ('stale' as EvidenceState)
           : ('unavailable' as EvidenceState)
-        : live?.freshness_s != null
-          ? live.status === 'stale'
+        : ageS != null
+          ? clientDeclaredStale || live?.status === 'stale'
             ? ('stale' as EvidenceState)
             : ('observed' as EvidenceState)
           : ('unavailable' as EvidenceState),
@@ -150,36 +205,43 @@ export default function MissionControl() {
       gateState: runtimeCurrent
         ? evidenceState(live?.markets?.decision_gate)
         : ('unavailable' as EvidenceState),
+      posture: runtimeCurrent ? words(live?.desk?.posture) : 'unknown',
+      postureState: runtimeCurrent
+        ? evidenceState(live?.desk?.posture)
+        : ('unavailable' as EvidenceState),
+      pendingReview: live?.desk?.decisions?.pending_review,
+      blocked: live?.desk?.decisions?.blocked,
     }
-  }, [live, error])
+  }, [live, error, nowMs])
 
   const horizon = [
-    { label: 'Snapshot', value: state.status, state: state.statusState, source: '/api/v1/live' },
+    { label: 'Snapshot', value: state.status, state: state.statusState },
+    { label: 'Source time', value: state.observedAt, state: state.observedState },
+    { label: 'Observation age', value: state.freshness, state: state.freshnessState },
+    { label: 'Market feed', value: state.market, state: state.marketState },
+    { label: 'Execution', value: state.execution, state: state.executionState },
+    { label: 'Desk posture', value: state.posture, state: state.postureState },
+    { label: 'Decision gate', value: state.gate, state: state.gateState },
+  ]
+
+  const decisionRows = [
     {
-      label: 'Source time',
-      value: state.observedAt,
-      state: state.observedState,
-      source: 'observed_at',
+      label: 'Pending review',
+      value: state.pendingReview,
+      hint: 'proposals awaiting a human',
     },
     {
-      label: 'Age',
-      value: state.freshness,
-      state: state.freshnessState,
-      source: 'freshness_s',
-    },
-    {
-      label: 'Market feed',
-      value: state.market,
-      state: state.marketState,
-      source: 'markets.status',
-    },
-    {
-      label: 'Execution',
-      value: state.execution,
-      state: state.executionState,
-      source: 'desk.execution',
+      label: 'Blocked by policy',
+      value: state.blocked,
+      hint: 'gate refused, evidence held',
     },
   ]
+
+  // Seconds since the browser last received a fresh response — the loop
+  // heartbeat. Zero-ish means the poller is healthy.
+  const heartbeatS =
+    lastPollMs != null ? Math.max(0, Math.floor((nowMs - lastPollMs) / 1000)) : null
+  const heartbeatOk = heartbeatS != null && heartbeatS <= POLL_INTERVAL_MS / 1000 + 5
 
   return (
     <div className="public-observatory">
@@ -212,6 +274,26 @@ export default function MissionControl() {
             <span>Evidence horizon</span>
             <b>Admitted truth only</b>
           </div>
+
+          <div
+            className="public-horizon-heartbeat"
+            aria-label={`Live poller ${heartbeatOk ? 'healthy' : 'degraded'}`}
+          >
+            <span
+              className="public-horizon-heartbeat__pulse"
+              data-state={heartbeatOk ? 'ok' : 'lag'}
+              aria-hidden="true"
+            />
+            <span className="public-horizon-heartbeat__text">
+              {heartbeatS == null
+                ? 'awaiting first response'
+                : heartbeatOk
+                  ? `poller live · every ${POLL_INTERVAL_MS / 1000}s`
+                  : `poller lag · ${heartbeatS}s since response`}
+            </span>
+            <code>/api/v1/live</code>
+          </div>
+
           <p className="public-horizon-legend" aria-label="Evidence states">
             {EVIDENCE_LEGEND.map((s) => (
               <span key={s} data-evidence-state={s}>
@@ -219,6 +301,7 @@ export default function MissionControl() {
               </span>
             ))}
           </p>
+
           {horizon.map((item) => (
             <div
               className="public-horizon-row"
@@ -230,6 +313,21 @@ export default function MissionControl() {
               <strong>{item.value}</strong>
             </div>
           ))}
+
+          {decisionRows.some((row) => row.value != null) && (
+            <div className="public-horizon-decisions">
+              {decisionRows.map((row) =>
+                row.value != null ? (
+                  <div key={row.label} className="public-horizon-decision">
+                    <span>{row.label}</span>
+                    <strong>{row.value}</strong>
+                    <em>{row.hint}</em>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
+
           <p>
             Source: <code>/api/v1/live</code> · authority: none · unknown stays unknown ·
             response generation is not the observation time.

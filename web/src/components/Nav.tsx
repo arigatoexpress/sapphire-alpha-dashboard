@@ -11,10 +11,17 @@ export const ROUTES = [
   { href: '/about/', label: 'About' },
 ] as const
 
-/** Primary paths for the signal-cartography header. */
+/**
+ * Primary paths surfaced in the sticky signal-cartography header. Every entry
+ * carries `whitespace-nowrap` so labels like "ON-CHAIN" never break across two
+ * lines at awkward tablet widths.
+ */
 export const PRIMARY_ROUTES = [
   { href: '/research/', label: 'Research' },
   { href: '/architecture/', label: 'Systems' },
+  { href: '/trading/', label: 'Strategy' },
+  { href: '/onchain/', label: 'On-Chain' },
+  { href: '/security/', label: 'Security' },
 ] as const
 
 export default function Nav() {
@@ -22,11 +29,11 @@ export default function Nav() {
     <header className="sticky top-0 z-50 border-b border-line bg-glacier/90 backdrop-blur-sm">
       <nav
         aria-label="Primary"
-        className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-6"
+        className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-6"
       >
         <Link
           href="/"
-          className="group flex items-center gap-2.5 font-mono text-[13px] tracking-[0.18em] text-observatory-ink uppercase"
+          className="group flex shrink-0 items-center gap-2.5 font-mono text-[13px] tracking-[0.16em] text-observatory-ink uppercase"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
             <path d="M8 0.5 15.5 6 8 15.5 0.5 6Z" className="fill-none stroke-atlas-blue" strokeWidth="1.2" />
@@ -40,14 +47,14 @@ export default function Nav() {
             <Link
               key={route.href}
               href={route.href}
-              className="underline-grow font-mono text-[12px] tracking-[0.1em] text-ink-dim uppercase transition-colors hover:text-observatory-ink"
+              className="underline-grow font-mono text-[11px] tracking-[0.08em] whitespace-nowrap text-ink-dim uppercase transition-colors hover:text-observatory-ink"
             >
               {route.label}
             </Link>
           ))}
           <Link
             href="/dashboard"
-            className="border border-atlas-blue/50 px-3 py-1.5 font-mono text-[12px] tracking-[0.1em] text-atlas-blue uppercase transition-colors hover:bg-atlas-blue hover:text-glacier"
+            className="border border-atlas-blue/50 px-3 py-1.5 font-mono text-[11px] tracking-[0.08em] whitespace-nowrap text-atlas-blue uppercase transition-colors hover:bg-atlas-blue hover:text-glacier"
           >
             Live truth
           </Link>

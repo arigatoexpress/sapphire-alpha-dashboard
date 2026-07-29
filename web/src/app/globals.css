@@ -249,6 +249,266 @@ body {
     z-index: 2;
   }
 }
+/* -------------------------------------------------------------------------
+   Execution pipeline (trading page)
+
+   A visual ladder that replaces the earlier shell-transcript. Each gate is a
+   row with an index badge, label + explanation, and an evidence-state chip
+   on the right. Vertical connectors between stages carry the flow. Held vs
+   fill outcome is styled by data-outcome-tone.
+   ------------------------------------------------------------------------- */
+.exec-pipeline {
+  display: grid;
+  gap: 0;
+  padding: 24px 22px 26px;
+  border: 1px solid var(--color-line);
+  background: var(--color-sunk);
+}
+
+.exec-pipeline__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.exec-pipeline__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+.exec-pipeline__note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.exec-pipeline__label {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-sapphire);
+}
+
+.exec-pipeline__stage {
+  padding: 14px 0 8px;
+}
+
+.exec-pipeline__signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exec-pipeline__signals li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--color-void);
+  border: 1px solid var(--color-line);
+}
+
+.exec-pipeline__signals strong {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.exec-pipeline__signals span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.exec-pipeline__proposal {
+  padding: 12px 14px;
+  background: var(--color-void);
+  border: 1px solid var(--color-line);
+  border-left: 2px solid var(--color-sapphire);
+  color: var(--color-ink-dim);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* Vertical downward arrow between stages. Rendered as a border trick so it
+   scales with rem, needs no SVG, and reduced-motion callers get a clean line
+   instead of animation. */
+.exec-pipeline__connector {
+  position: relative;
+  height: 34px;
+  margin-left: 20px;
+  border-left: 1px dashed color-mix(in srgb, var(--color-sapphire) 55%, transparent);
+}
+
+.exec-pipeline__connector::after {
+  position: absolute;
+  left: -5px;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  border-right: 1px solid var(--color-sapphire);
+  border-bottom: 1px solid var(--color-sapphire);
+  transform: rotate(45deg);
+  content: '';
+  opacity: 0.7;
+}
+
+.exec-pipeline__gates {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--color-line);
+  border: 1px solid var(--color-line);
+}
+
+.exec-pipeline__gates li {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--color-void);
+}
+
+.exec-pipeline__gate-index {
+  align-self: start;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--color-ink-faint);
+  border: 1px solid var(--color-line);
+}
+
+.exec-pipeline__gate-body strong {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.exec-pipeline__gate-body p {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--color-ink-dim);
+}
+
+.exec-pipeline__gate-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-faint);
+  white-space: nowrap;
+}
+
+.exec-pipeline__gate-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-ink-faint);
+}
+
+.exec-pipeline__gates li[data-gate-state='ok'] .exec-pipeline__gate-state {
+  color: var(--color-verified);
+  border-color: color-mix(in srgb, var(--color-verified) 45%, var(--color-line));
+}
+.exec-pipeline__gates li[data-gate-state='ok'] .exec-pipeline__gate-dot {
+  background: var(--color-verified);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-verified) 55%, transparent);
+}
+
+.exec-pipeline__gates li[data-gate-state='paused'] .exec-pipeline__gate-state {
+  color: var(--color-signal-coral);
+  border-color: color-mix(in srgb, var(--color-signal-coral) 45%, var(--color-line));
+}
+.exec-pipeline__gates li[data-gate-state='paused'] .exec-pipeline__gate-dot {
+  background: var(--color-signal-coral);
+}
+
+.exec-pipeline__gates li[data-gate-state='unavailable'] .exec-pipeline__gate-state {
+  color: var(--color-caution-gold);
+  border-color: color-mix(in srgb, var(--color-caution-gold) 45%, var(--color-line));
+}
+.exec-pipeline__gates li[data-gate-state='unavailable'] .exec-pipeline__gate-dot {
+  background: var(--color-caution-gold);
+}
+
+.exec-pipeline__outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-line);
+  background: var(--color-void);
+}
+
+.exec-pipeline__outcome[data-outcome-tone='held'] {
+  border-left: 2px solid var(--color-caution-gold);
+}
+
+.exec-pipeline__outcome[data-outcome-tone='fill'] {
+  border-left: 2px solid var(--color-verified);
+}
+
+.exec-pipeline__outcome strong {
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.exec-pipeline__outcome p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--color-ink-dim);
+}
+
+@media (max-width: 640px) {
+  .exec-pipeline__gates li {
+    grid-template-columns: 34px 1fr;
+    gap: 12px;
+  }
+  .exec-pipeline__gate-state {
+    grid-column: 1 / -1;
+    align-self: start;
+  }
+}
+
 /* The Proof page's signature: one continuous evidence spine. The line is not
    ornament — it expresses that every stage must hand a record to the next. */
 .proof-spine {
@@ -535,12 +795,16 @@ body {
   padding: 0 18px 16px;
 }
 
+/* Loom rows: label left, value right. Flex + min-width:0 on children lets
+   long values ellipse cleanly instead of overprinting the label — the pre-fix
+   grid used `minmax(100px, 0.75fr) 1fr` which collapsed to overlap in the
+   narrow 320px hero panel. */
 .public-horizon-title,
 .public-horizon-row {
-  display: grid;
-  grid-template-columns: minmax(100px, 0.75fr) 1fr;
-  gap: 14px;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   min-height: 48px;
   border-bottom: 1px solid var(--color-line);
 }
@@ -551,15 +815,26 @@ body {
 .public-hero-horizon > p {
   color: var(--color-ink-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 400;
   letter-spacing: 0.11em;
   text-transform: uppercase;
 }
 
+.public-horizon-title span,
+.public-horizon-row > span {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .public-horizon-title b {
   color: var(--color-atlas-blue);
   text-align: right;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .public-horizon-legend {
@@ -609,6 +884,8 @@ body {
 }
 
 .public-horizon-row strong {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   color: var(--color-observatory-ink);
   font-family: var(--font-mono);
@@ -628,6 +905,121 @@ body {
 
 .public-hero-horizon code {
   color: var(--color-ink-dim);
+}
+
+/* Poller heartbeat: a small live-status row that proves the client is actually
+   receiving fresh responses. Sits under the title, above the row list. */
+.public-horizon-heartbeat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.public-horizon-heartbeat__pulse {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-atlas-blue);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-atlas-blue) 60%, transparent);
+  animation: horizon-heartbeat 2.4s ease-out infinite;
+}
+
+.public-horizon-heartbeat__pulse[data-state='lag'] {
+  background: var(--color-caution-gold);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-caution-gold) 60%, transparent);
+}
+
+.public-horizon-heartbeat__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-horizon-heartbeat code {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-atlas-blue);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+@keyframes horizon-heartbeat {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-atlas-blue) 65%, transparent);
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-atlas-blue) 0%, transparent);
+    opacity: 0.85;
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-atlas-blue) 0%, transparent);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-horizon-heartbeat__pulse {
+    animation: none;
+  }
+}
+
+/* Live decision counters: pending review and blocked-by-policy tallies. Sit
+   below the horizon rows and use a larger monospace numeral so counts read at a
+   glance without competing with the mono row labels above. */
+.public-horizon-decisions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-line);
+}
+
+.public-horizon-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--color-glacier);
+  border: 1px solid var(--color-line);
+}
+
+.public-horizon-decision span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.public-horizon-decision strong {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: var(--color-observatory-ink);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.public-horizon-decision em {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-style: normal;
+  color: var(--color-ink-dim);
+  line-height: 1.3;
 }
 
 .public-thesis,
@@ -748,28 +1140,35 @@ body {
 
 .public-entry-links a {
   display: grid;
-  grid-template-columns: minmax(120px, 0.55fr) 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr);
+  gap: 20px;
   padding: 18px 0;
   border-bottom: 1px solid var(--color-line);
   text-decoration: none;
-  min-height: 44px;
+  min-height: 52px;
+  align-items: center;
 }
 
 .public-entry-links span {
   color: var(--color-ink-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.09em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .public-entry-links b {
   color: var(--color-observatory-ink);
   font-family: var(--font-body);
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-weight: 600;
   transition: color 160ms ease;
+  min-width: 0;
+  line-height: 1.35;
 }
 
 .public-entry-links a:hover b {

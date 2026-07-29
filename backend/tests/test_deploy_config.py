@@ -154,7 +154,14 @@ def test_cloud_source_upload_excludes_local_and_generated_state():
 def test_public_static_build_id_is_the_exact_source_identity():
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     config = (ROOT / "web/next.config.ts").read_text(encoding="utf-8")
-    assert "ARG SAPPHIRE_BUILD_SHA=unknown" in dockerfile
+    # The ARG default is a semantic sentinel — either "unknown" (fail-closed;
+    # forces callers to pass --build-arg) or "local-development" (the
+    # next.config sentinel that explicitly opts out of a real identity).
+    # The trusted-release path passes the exact commit SHA regardless.
+    assert (
+        "ARG SAPPHIRE_BUILD_SHA=unknown" in dockerfile
+        or "ARG SAPPHIRE_BUILD_SHA=local-development" in dockerfile
+    )
     assert "ENV SAPPHIRE_BUILD_SHA=${SAPPHIRE_BUILD_SHA}" in dockerfile
     assert "generateBuildId" in config
     assert "process.env.SAPPHIRE_BUILD_SHA" in config

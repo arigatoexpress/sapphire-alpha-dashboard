@@ -38,7 +38,7 @@ COPY --from=frontend-build /repo/frontend/dist /surface
 # node:24-bookworm-slim (multi-platform manifest)
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS web-build
 
-ARG SAPPHIRE_BUILD_SHA=unknown
+ARG SAPPHIRE_BUILD_SHA=local-development
 ENV SAPPHIRE_BUILD_SHA=${SAPPHIRE_BUILD_SHA}
 
 WORKDIR /repo
@@ -66,7 +66,7 @@ FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627a
 
 WORKDIR /app
 
-ARG SAPPHIRE_BUILD_SHA=unknown
+ARG SAPPHIRE_BUILD_SHA=local-development
 ARG SAPPHIRE_BUILD_ID=unknown
 
 COPY backend/requirements.lock .
