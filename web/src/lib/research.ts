@@ -53,6 +53,8 @@ export type Report = {
   /** ISO date string, or null when the report omitted one. */
   date: string | null
   tags: string[]
+  /** Bounded authoritative references declared in frontmatter. */
+  sources: ReportSource[]
   /** Rendered HTML body. */
   html: string
   /** Rough read time in minutes, floored at 1. */
@@ -60,6 +62,34 @@ export type Report = {
 }
 
 export type ReportSummary = Omit<Report, 'html'>
+
+export type ReportSource = {
+  label: string
+  url: string
+}
+
+const RESEARCH_SOURCE_HOSTS = new Set(['www.cisa.gov', 'nvd.nist.gov'])
+
+function reportSources(value: unknown): ReportSource[] {
+  if (!Array.isArray(value)) return []
+
+  const admitted: ReportSource[] = []
+  for (const candidate of value.slice(0, 8)) {
+    if (!candidate || typeof candidate !== 'object') continue
+    const source = candidate as { label?: unknown; url?: unknown }
+    const label = String(source.label ?? '').trim().slice(0, 100)
+    const rawUrl = String(source.url ?? '').trim()
+    if (!label || !rawUrl) continue
+    try {
+      const url = new URL(rawUrl)
+      if (url.protocol !== 'https:' || !RESEARCH_SOURCE_HOSTS.has(url.hostname)) continue
+      admitted.push({ label, url: url.toString() })
+    } catch {
+      continue
+    }
+  }
+  return admitted
+}
 
 function slugify(filename: string): string {
   return filename
@@ -91,6 +121,7 @@ function readAll(): Report[] {
         description: String(data.description ?? ''),
         date: data.date ? new Date(data.date).toISOString().slice(0, 10) : null,
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
+        sources: reportSources(data.sources),
         html: sanitizeHtml(marked.parse(content, { async: false }) as string, SANITIZE_OPTIONS),
         minutes: Math.max(1, Math.round(words / 220)),
       }

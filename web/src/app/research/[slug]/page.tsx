@@ -26,6 +26,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       description: report.description || undefined,
       publishedTime: report.date ?? undefined,
     },
+    other:
+      report.sources.length > 0
+        ? { citation: report.sources.map((source) => source.url) }
+        : undefined,
   }
 }
 
@@ -57,6 +61,26 @@ export default async function ReportPage({ params }: Params) {
           {report.minutes} min read
           {report.tags.length > 0 && <> · {report.tags.join(' · ')}</>}
         </p>
+        {report.sources.length > 0 && (
+          <nav aria-label="Authoritative sources" className="mt-6">
+            <p className="font-mono text-[10px] tracking-[0.14em] text-ink-faint uppercase">
+              Authoritative sources
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+              {report.sources.map((source) => (
+                <li key={source.url}>
+                  <a
+                    href={source.url}
+                    className="underline-grow text-sm text-sapphire"
+                    rel="noreferrer"
+                  >
+                    {source.label} ↗
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
       </header>
 
       <div className="rule my-12" aria-hidden="true" />
