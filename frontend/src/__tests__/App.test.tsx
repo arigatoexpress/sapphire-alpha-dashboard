@@ -208,3 +208,56 @@ describe('honest empty state', () => {
     expect(markup).toContain('Waiting for the first observed event.')
   })
 })
+
+describe('research provenance truth', () => {
+  it('labels timestamped analyst text as unverified rather than reviewed', () => {
+    const widgets = {
+      gate: {
+        state: 'unavailable',
+        label: 'Pause state unavailable',
+        armed: null,
+        killswitch: null,
+        pause_state: 'unknown',
+        mode: 'unavailable',
+        executor_alive: null,
+        updated_at: null,
+      },
+      wallet: { disclosure: 'withheld' },
+      recent_signals: [],
+      research: {
+        clips: [
+          {
+            id: 'clip-1',
+            title: 'Timestamped analyst text',
+            observed_at: '2026-07-28T18:00:00Z',
+            age_s: 5,
+          },
+        ],
+        live: false,
+        policy: {
+          research_role: 'unverified_advisory_input',
+          single_input_cap: 0.25,
+          minimum_distinct_inputs: 4,
+          review_status: 'unverified',
+          can_set_conviction: false,
+          can_authorize_execution: false,
+        },
+      },
+      tradingview: { status: 'not_observed', last_ping: null, pending_alerts: null },
+      business_health: { services: [], ok_count: 0, total: 0, timestamp: '' },
+      system_health: {
+        dashboard: 'ok',
+        gate: 'unavailable',
+        tradingview: 'not_observed',
+        timestamp: '',
+      },
+      rendered_at: '2026-07-28T18:00:05Z',
+    } as unknown as import('../types').PublicWidgets
+
+    const researchMarkup = renderToStaticMarkup(<App initialWidgets={widgets} />)
+
+    expect(researchMarkup).toContain('1 unverified')
+    expect(researchMarkup).toContain('Unverified advisory input')
+    expect(researchMarkup).not.toMatch(/\breviewed\b/i)
+  })
+})
