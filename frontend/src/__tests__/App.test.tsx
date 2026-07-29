@@ -11,8 +11,10 @@ import { liveSnapshot } from './fixture'
 const markup = renderToStaticMarkup(<App />)
 
 describe('anonymous decision observatory', () => {
-  it('opens on the current thesis rather than a decorative dashboard', () => {
-    expect(markup).toContain('Decision observatory · read-only view')
+  it('opens on CURRENT DECISION then thesis instruments', () => {
+    expect(markup).toContain('CURRENT DECISION')
+    expect(markup).toMatch(/HOLD|REFUSE|ATTENDED ACTION/)
+    expect(markup).toContain('Operator desk · read-only view')
     expect(markup).toContain('Thesis now')
     expect(markup).toContain('No thesis observed.')
     expect(markup).toContain('Narrative &amp; regime')

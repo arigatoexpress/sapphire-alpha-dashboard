@@ -22,6 +22,8 @@ type Live = {
   }
 }
 
+type EvidenceState = 'observed' | 'stale' | 'paused' | 'unavailable' | 'source-only'
+
 function fmtAge(seconds: number | null | undefined) {
   if (seconds == null || Number.isNaN(seconds)) return 'not observed'
   if (seconds < 60) return `${Math.round(seconds)}s ago`
@@ -40,15 +42,28 @@ function words(value: string | null | undefined) {
   return value ? value.replace(/_/g, ' ') : 'not observed'
 }
 
-function stateTone(value: string | null | undefined) {
+function evidenceState(value: string | null | undefined, opts?: { paused?: boolean }): EvidenceState {
+  if (opts?.paused) return 'paused'
   const normalized = String(value ?? '').toLowerCase()
-  if (['live', 'current', 'verified'].includes(normalized)) return 'current'
-  if (['halted', 'off', 'gated', 'manual'].includes(normalized)) return 'held'
-  if (['stale', 'delayed', 'degraded', 'offline', 'failed'].includes(normalized)) {
-    return 'degraded'
+  if (!normalized || normalized === 'not observed' || normalized === 'unknown') return 'unavailable'
+  if (normalized === 'stale' || normalized === 'delayed' || normalized === 'degraded') return 'stale'
+  if (['halted', 'off', 'gated', 'disarmed', 'paused', 'read-only'].includes(normalized)) {
+    return 'paused'
   }
-  return 'unknown'
+  if (['live', 'current', 'healthy', 'verified', 'working', 'observed'].includes(normalized)) {
+    return 'observed'
+  }
+  if (normalized === 'source-only' || normalized.includes('source')) return 'source-only'
+  return 'unavailable'
 }
+
+const EVIDENCE_LEGEND: EvidenceState[] = [
+  'observed',
+  'stale',
+  'paused',
+  'unavailable',
+  'source-only',
+]
 
 export default function MissionControl() {
   const [live, setLive] = useState<Live | null>(null)
@@ -85,84 +100,161 @@ export default function MissionControl() {
       ? live?.desk?.execution ?? live?.markets?.execution ?? null
       : null
     const retained = Boolean(error && live)
+    const statusLabel = error ? 'unavailable' : (live?.status ?? 'not observed')
+    const execWords = runtimeCurrent ? words(execution) : 'unknown'
+    const paused =
+      ['halted', 'off', 'gated', 'paused'].includes(String(execution).toLowerCase())
+
     return {
-      status: error ? 'unavailable' : (live?.status ?? 'not observed'),
+      status: statusLabel,
+      statusState: error
+        ? ('unavailable' as EvidenceState)
+        : evidenceState(live?.status),
       observedAt: fmtObservedAt(live?.observed_at),
-      freshness: error ? (retained ? `poll failed · last report ${fmtAge(live?.freshness_s)}` : 'poll failed') : fmtAge(live?.freshness_s),
-      execution: runtimeCurrent ? words(execution) : 'unknown',
-      executionTone: error ? (retained ? 'degraded' : 'unknown') : stateTone(execution),
-      market: runtimeCurrent ? words(live?.markets?.status) : live?.status === 'stale' ? 'stale' : 'unknown',
+      observedState: live?.observed_at
+        ? error
+          ? ('stale' as EvidenceState)
+          : ('observed' as EvidenceState)
+        : ('unavailable' as EvidenceState),
+      freshness: error
+        ? retained
+          ? `poll failed · last report ${fmtAge(live?.freshness_s)}`
+          : 'poll failed'
+        : fmtAge(live?.freshness_s),
+      freshnessState: error
+        ? retained
+          ? ('stale' as EvidenceState)
+          : ('unavailable' as EvidenceState)
+        : live?.freshness_s != null
+          ? live.status === 'stale'
+            ? ('stale' as EvidenceState)
+            : ('observed' as EvidenceState)
+          : ('unavailable' as EvidenceState),
+      execution: execWords,
+      executionState: error
+        ? retained
+          ? ('stale' as EvidenceState)
+          : ('unavailable' as EvidenceState)
+        : evidenceState(execWords, { paused }),
+      market: runtimeCurrent
+        ? words(live?.markets?.status)
+        : live?.status === 'stale'
+          ? 'stale'
+          : 'unknown',
+      marketState: error
+        ? ('unavailable' as EvidenceState)
+        : evidenceState(
+            runtimeCurrent ? live?.markets?.status : live?.status === 'stale' ? 'stale' : null,
+          ),
       gate: runtimeCurrent ? words(live?.markets?.decision_gate) : 'unknown',
-      sourceTone: (value: string | null | undefined) =>
-        error ? (retained && value ? 'degraded' : 'unknown') : stateTone(value),
+      gateState: runtimeCurrent
+        ? evidenceState(live?.markets?.decision_gate)
+        : ('unavailable' as EvidenceState),
     }
   }, [live, error])
+
+  const horizon = [
+    { label: 'Snapshot', value: state.status, state: state.statusState, source: '/api/v1/live' },
+    {
+      label: 'Source time',
+      value: state.observedAt,
+      state: state.observedState,
+      source: 'observed_at',
+    },
+    {
+      label: 'Age',
+      value: state.freshness,
+      state: state.freshnessState,
+      source: 'freshness_s',
+    },
+    {
+      label: 'Market feed',
+      value: state.market,
+      state: state.marketState,
+      source: 'markets.status',
+    },
+    {
+      label: 'Execution',
+      value: state.execution,
+      state: state.executionState,
+      source: 'desk.execution',
+    },
+  ]
 
   return (
     <div className="public-observatory">
       <section className="public-hero" aria-labelledby="public-title">
         <div>
-          <p className="public-kicker">Sapphire Alpha · decision observatory</p>
-          <h1 id="public-title">
-            Evidence
-            <span>before action.</span>
-          </h1>
+          <p className="public-kicker">Sapphire · Research OS</p>
+          <h1 id="public-title">A system that shows its work.</h1>
           <p className="public-lede">
-            A market claim should show its source, its age, the authority it carries,
-            and what would prove it wrong. Sapphire makes that contract visible before
-            any designated execution rail can act.
+            Sapphire is a self-sovereign research and trading operating system. The public
+            record explains what it observes, how it reasons, what it has actually produced,
+            and what is currently paused or unavailable — without presenting absence as
+            health.
           </p>
           <div className="public-actions">
             <Link href="/research/" className="public-action public-action--primary">
-              Read the evidence
+              Read research
             </Link>
-            <Link href="/dashboard" className="public-action">
-              Open the observatory
+            <Link href="/architecture/" className="public-action">
+              System map
             </Link>
           </div>
         </div>
 
-        <div className="public-hero-horizon" aria-label="Current evidence horizon">
+        <div
+          className="public-hero-horizon horizon-enter"
+          aria-label="Evidence horizon"
+          data-signature="evidence-horizon"
+        >
           <div className="public-horizon-title">
             <span>Evidence horizon</span>
-            <b>Read only</b>
+            <b>Admitted truth only</b>
           </div>
-          {[
-            { label: 'Snapshot', value: state.status, tone: stateTone(state.status) },
-            { label: 'Last report', value: state.observedAt, tone: state.sourceTone(live?.observed_at) },
-            { label: 'Freshness', value: state.freshness, tone: state.sourceTone(live?.status) },
-            { label: 'Market feed', value: state.market, tone: state.sourceTone(live?.markets?.status) },
-            { label: 'Execution', value: state.execution, tone: state.executionTone },
-          ].map((item) => (
-            <div className="public-horizon-row" data-tone={item.tone} key={item.label}>
+          <p className="public-horizon-legend" aria-label="Evidence states">
+            {EVIDENCE_LEGEND.map((s) => (
+              <span key={s} data-evidence-state={s}>
+                {s}
+              </span>
+            ))}
+          </p>
+          {horizon.map((item) => (
+            <div
+              className="public-horizon-row"
+              data-evidence-state={item.state}
+              data-tone={item.state}
+              key={item.label}
+            >
               <span>{item.label}</span>
               <strong>{item.value}</strong>
             </div>
           ))}
           <p>
-            Source: <code>/api/v1/live</code> · authority: none · unknown stays unknown.
+            Source: <code>/api/v1/live</code> · authority: none · unknown stays unknown ·
+            response generation is not the observation time.
           </p>
         </div>
       </section>
 
-      <section className="public-thesis" aria-labelledby="thesis-title">
+      <section className="public-thesis" aria-labelledby="does-title">
         <div>
-          <p className="public-kicker">The thesis</p>
-          <h2 id="thesis-title">Clear enough to disagree with.</h2>
+          <p className="public-kicker">What the system does</p>
+          <h2 id="does-title">Observe. Reason. Gate. Score.</h2>
         </div>
         <div className="public-thesis-copy">
           <p>
-            Sapphire separates the binary claim from the price path. An event gets one
-            probability at one timestamp. Bear, base, and bull belong to the path—not as
-            three incompatible probabilities for the same event.
+            Claims become evidence through a fixed path: cite the source and retrieval time,
+            form one event probability, write the falsifier before the outcome, hold
+            execution behind policy, then resolve and publish the error.
           </p>
-          <Link href="/research/research-methodology/">Inspect the method →</Link>
+          <Link href="/research/research-methodology/">How claims become evidence →</Link>
         </div>
       </section>
 
       <section className="public-method" aria-labelledby="method-title">
         <div>
-          <p className="public-kicker">How a claim travels</p>
+          <p className="public-kicker">How claims become evidence</p>
           <h2 id="method-title">The record is the product.</h2>
         </div>
         <ol>
@@ -182,62 +274,51 @@ export default function MissionControl() {
         </ol>
       </section>
 
-      <section className="public-state" aria-labelledby="state-title">
-        <div className="public-state-copy">
-          <p className="public-kicker">Current boundary</p>
-          <h2 id="state-title">
-            Authority held.
-            <span>No execution is available from this page.</span>
-          </h2>
-          <p>
-            The public observatory is anonymous and read only. It cannot place a trade,
-            approve a proposal, clear a kill switch, increase a cap, or reveal a private
-            holding.
+      <section className="public-entry public-ledger-grid" aria-labelledby="ledger-title">
+        <div>
+          <p className="public-kicker">Latest work</p>
+          <h2 id="ledger-title">Research ledger</h2>
+          <div className="public-entry-links">
+            <Link href="/research/conjecture-2026-07-27/">
+              <span>Opinion book</span>
+              <b>Evidence, probability, path, falsifier →</b>
+            </Link>
+            <Link href="/research/calibration-2026-07-27/">
+              <span>Calibration</span>
+              <b>Scored outcomes and residual error →</b>
+            </Link>
+            <Link href="/research/">
+              <span>Full index</span>
+              <b>All published reports →</b>
+            </Link>
+          </div>
+        </div>
+        <div>
+          <p className="public-kicker">Boundaries</p>
+          <h2 id="principles-title">Operating principles</h2>
+          <dl className="public-principles">
+            <div>
+              <dt>Truth</dt>
+              <dd>A number is observed, or it is absent — never zero-filled.</dd>
+            </div>
+            <div>
+              <dt>Pause</dt>
+              <dd>Paused or stale capability is not presented as live.</dd>
+            </div>
+            <div>
+              <dt>Authority</dt>
+              <dd>This surface cannot trade, approve, or clear a kill switch.</dd>
+            </div>
+            <div>
+              <dt>Privacy</dt>
+              <dd>No wallet identifiers, exact balances, or personal attribution.</dd>
+            </div>
+          </dl>
+          <p className="public-disclaimer">
+            Not investment advice. No guaranteed returns, private positions, or paper
+            backtest leaderboards are published here.
           </p>
         </div>
-        <dl>
-          <div>
-            <dt>Execution</dt>
-            <dd data-tone={state.executionTone}>{state.execution}</dd>
-          </div>
-          <div>
-            <dt>Decision gate</dt>
-            <dd>{state.gate}</dd>
-          </div>
-          <div>
-            <dt>Capital</dt>
-            <dd>Designated rails only</dd>
-          </div>
-          <div>
-            <dt>Public authority</dt>
-            <dd>None</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="public-entry" aria-labelledby="entry-title">
-        <div>
-          <p className="public-kicker">Enter the record</p>
-          <h2 id="entry-title">Read the latest claim, then inspect the system that holds it.</h2>
-        </div>
-        <div className="public-entry-links">
-          <Link href="/research/conjecture-2026-07-27/">
-            <span>Latest opinion book</span>
-            <b>Evidence, probability, path, falsifier →</b>
-          </Link>
-          <Link href="/proof/">
-            <span>Authority contract</span>
-            <b>Proposal, mandate, intent, execution →</b>
-          </Link>
-          <Link href="/dashboard">
-            <span>Live observatory</span>
-            <b>What changed, needs attention, can act →</b>
-          </Link>
-        </div>
-        <p className="public-disclaimer">
-          Not investment advice. No guaranteed returns, private positions, or paper
-          backtest leaderboards are published here.
-        </p>
       </section>
     </div>
   )

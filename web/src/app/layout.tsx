@@ -18,26 +18,24 @@ import './globals.css'
 import { SITE_URL } from '@/lib/site'
 
 const DESCRIPTION =
-  'A decision observatory for market evidence: timestamped event probabilities, path forecasts, ' +
-  'falsifiers, calibration, and explicitly bounded execution authority.'
+  'Sapphire is a self-sovereign research and trading operating system that shows its work: ' +
+  'timestamped evidence, falsifiers, calibration, and explicitly bounded execution authority.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Sapphire Alpha — Research & Execution',
+    default: 'Sapphire Alpha — Research OS',
     template: '%s — Sapphire Alpha',
   },
   description: DESCRIPTION,
   applicationName: 'Sapphire Alpha',
   keywords: [
-    'decision observatory',
+    'research operating system',
     'market evidence provenance',
-    'agent orchestration',
+    'decision observatory',
+    'falsifiable research',
     'verifiable systems',
-    'Arbitrum Orbit',
-    'Robinhood Chain',
-    'FastAPI',
-    'quantitative infrastructure',
+    'bounded execution',
   ],
   authors: [{ name: 'Sapphire Alpha' }],
   creator: 'Sapphire Alpha',
@@ -46,13 +44,13 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'Sapphire Alpha',
-    title: 'Sapphire Alpha — Research & Execution',
+    title: 'Sapphire Alpha — Research OS',
     description: DESCRIPTION,
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sapphire Alpha — Research & Execution',
+    title: 'Sapphire Alpha — Research OS',
     description: DESCRIPTION,
   },
   robots: {
@@ -64,15 +62,12 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#04070d',
-  colorScheme: 'dark',
+  themeColor: '#F3F8F7',
+  colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
 }
 
-/* JSON-LD. Kept minimal and truthful — an Organization plus the site itself.
-   Claiming schema types the site cannot back up is the structured-data
-   equivalent of an unverifiable metric. */
 const jsonLd = {
   '@context': 'https://schema.org',
   '@graph': [
@@ -82,7 +77,7 @@ const jsonLd = {
       name: 'Sapphire Alpha',
       url: SITE_URL,
       description: DESCRIPTION,
-      slogan: 'Verify, don’t trust.',
+      slogan: 'A system that shows its work.',
     },
     {
       '@type': 'WebSite',
@@ -110,7 +105,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-sapphire focus:px-4 focus:py-2 focus:font-mono focus:text-xs focus:text-void"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-signal-coral focus:px-4 focus:py-2 focus:font-mono focus:text-xs focus:text-glacier"
         >
           Skip to content
         </a>

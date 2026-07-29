@@ -1,49 +1,60 @@
 /* ---------------------------------------------------------------------------
-   Sapphire Alpha — shared design system.
+   Sapphire Alpha — signal cartography design system (Task 099).
 
    Imported by BOTH surfaces:
-     · web/          the public marketing site (Next.js)
-     · frontend/     the operator live desk  (Vite)
+     · web/          public research site (Next.js static export)
+     · frontend/     operator mission control (Vite)
 
-   It lives outside either project because the two drifting apart is exactly the
-   failure this file exists to prevent. Change a token here and both surfaces
-   move together; never redefine one of these values inside an app.
+   Blue-hour observatory, not a dark trading terminal. Semantic names and
+   values stay synchronized across build boundaries.
 
    Discipline:
-     · Sapphire is the only accent. It carries every interactive affordance.
-     · Green is VERIFIED state only — healthy, verified, confirmed. Nothing
-       decorative is ever green, so a green pixel always means something.
-     · Amber is degraded, ember is failed. Both should be rare.
-     · Structure is hairlines, not shadows. No glass, no blur, no rounding
-       past 2px. Both surfaces should read as instruments.
+     · Glacier is the canvas. Observatory-ink is primary text.
+     · Atlas-blue is structure and navigation — trusted lines, not hype.
+     · Signal-coral is the single restrained action/emphasis color.
+     · Caution-gold is stale/attention only — never decorative.
+     · Verified green remains claim-bearing only (Verified component).
+     · Structure is hairlines. No glass, blur, or radius past 2px.
    --------------------------------------------------------------------------- */
 
 @theme {
-  --color-void: #071018;
-  --color-raised: #0d1720;
-  --color-sunk: #040a0f;
+  /* --- Blue-hour observatory tokens (canonical) --------------------------- */
+  --color-observatory-ink: #102A36;
+  --color-atlas-blue: #174A67;
+  --color-glacier: #F3F8F7;
+  --color-skywash: #D8EBEE;
+  --color-signal-coral: #E86F51;
+  --color-caution-gold: #E3AF35;
 
-  --color-ink: #e7edf0;
-  --color-ink-dim: #a9b5bb;
-  --color-ink-faint: #708087;
+  /* --- Surface hierarchy (light observatory) ------------------------------ */
+  --color-void: #F3F8F7;
+  --color-raised: #ffffff;
+  --color-sunk: #D8EBEE;
 
-  --color-sapphire: #6edff6;
-  --color-sapphire-deep: #2b8da0;
-  --color-sapphire-wash: #0c2b33;
-  --color-violet: #c56a3d;
-  --color-ice: #b8eaf5;
+  --color-ink: #102A36;
+  --color-ink-dim: #3A5560;
+  --color-ink-faint: #6B848E;
 
-  /* Verified / healthy only. Never decorative. */
-  --color-verified: #2ed69a;
-  --color-degraded: #c56a3d;
-  --color-failed: #e25a56;
+  /* Structure / navigation accent = atlas-blue */
+  --color-sapphire: #174A67;
+  --color-sapphire-deep: #102A36;
+  --color-sapphire-wash: #D8EBEE;
+  /* Restrained action = signal-coral (legacy violet slot) */
+  --color-violet: #E86F51;
+  --color-ice: #174A67;
 
-  --color-line: #1b2a33;
-  --color-line-lit: #314650;
+  /* State — meaning only */
+  --color-verified: #1F7A4C;
+  --color-degraded: #E3AF35;
+  --color-failed: #C44B3C;
 
-  --font-display: var(--font-space-grotesk, 'Space Grotesk'), ui-sans-serif, system-ui, sans-serif;
+  --color-line: #C5D6DA;
+  --color-line-lit: #174A67;
+
+  /* Type roles: Newsreader display · Space Grotesk body · JetBrains Mono evidence */
+  --font-display: var(--font-newsreader, 'Newsreader'), 'Iowan Old Style', 'Baskerville', ui-serif, Georgia, serif;
   --font-conviction: var(--font-newsreader, 'Newsreader'), 'Iowan Old Style', 'Baskerville', ui-serif, Georgia, serif;
-  --font-body: var(--font-inter, 'Inter'), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-space-grotesk, 'Space Grotesk'), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono, 'JetBrains Mono'), ui-monospace, monospace;
 }
 
@@ -61,31 +72,29 @@ html {
 }
 
 body {
-  background: var(--color-void);
-  color: var(--color-ink);
+  background: var(--color-glacier);
+  color: var(--color-observatory-ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
 ::selection {
-  background: var(--color-sapphire);
-  color: #04070d;
+  background: var(--color-atlas-blue);
+  color: var(--color-glacier);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-sapphire);
+  outline: 2px solid var(--color-signal-coral);
   outline-offset: 3px;
 }
 
-/* Tabular figures wherever a number is load-bearing, so digits do not jitter
-   as live telemetry updates in place. */
 .tnum {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
 }
 
-/* --- Atmosphere ----------------------------------------------------------- */
+/* --- Atmosphere (restrained blue-hour wash) ------------------------------- */
 
 .field {
   position: fixed;
@@ -93,10 +102,8 @@ body {
   z-index: -2;
   pointer-events: none;
   background:
-    radial-gradient(circle at 75% 20%, transparent 0 18%, rgba(110, 223, 246, 0.05) 18.15% 18.3%, transparent 18.45% 100%),
-    radial-gradient(circle at 75% 20%, transparent 0 30%, rgba(197, 106, 61, 0.035) 30.1% 30.22%, transparent 30.35% 100%),
-    linear-gradient(90deg, transparent 0 11%, rgba(255,255,255,0.018) 11.05%, transparent 11.1% 89%, rgba(255,255,255,0.018) 89.05%, transparent 89.1%);
-  mask-image: linear-gradient(#000, transparent 88%);
+    linear-gradient(180deg, rgba(216, 235, 238, 0.55) 0%, transparent 42%),
+    linear-gradient(90deg, transparent 0 11%, rgba(23, 74, 103, 0.04) 11.05%, transparent 11.1% 89%, rgba(23, 74, 103, 0.04) 89.05%, transparent 89.1%);
   opacity: 0.9;
 }
 
@@ -106,8 +113,8 @@ body {
   z-index: -3;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 68% 54% at 74% 8%, rgba(34, 121, 139, 0.16), transparent 67%),
-    radial-gradient(ellipse 44% 36% at 18% 18%, rgba(197, 106, 61, 0.065), transparent 72%);
+    radial-gradient(ellipse 70% 48% at 78% 0%, rgba(23, 74, 103, 0.1), transparent 68%),
+    radial-gradient(ellipse 40% 30% at 12% 18%, rgba(232, 111, 81, 0.05), transparent 72%);
 }
 
 .grain {
@@ -115,8 +122,8 @@ body {
   inset: 0;
   z-index: 60;
   pointer-events: none;
-  opacity: 0.035;
-  mix-blend-mode: overlay;
+  opacity: 0.02;
+  mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -125,7 +132,7 @@ body {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -134,7 +141,25 @@ body {
 }
 
 .rise {
-  animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* One orchestrated evidence-horizon entrance (Task 099 signature motion). */
+@keyframes horizon-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.horizon-enter,
+.evidence-horizon-track,
+.public-hero-horizon {
+  animation: horizon-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes pulse-verified {
@@ -151,26 +176,18 @@ body {
   animation: pulse-verified 2.4s ease-in-out infinite;
 }
 
-@keyframes sweep {
-  from {
-    transform: translateY(-100%);
-  }
-  to {
-    transform: translateY(2400%);
-  }
-}
-
-.sweep {
-  animation: sweep 7s linear infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .rise,
   .pulse-verified,
-  .sweep {
+  .horizon-enter,
+  .evidence-horizon-track,
+  .public-hero-horizon {
     animation: none !important;
   }
-  .rise {
+  .rise,
+  .horizon-enter,
+  .evidence-horizon-track,
+  .public-hero-horizon {
     opacity: 1;
     transform: none;
   }
@@ -187,22 +204,21 @@ body {
     var(--color-line-lit) 82%,
     transparent
   );
+  opacity: 0.35;
 }
 
 .underline-grow {
-  background-image: linear-gradient(var(--color-sapphire), var(--color-sapphire));
+  background-image: linear-gradient(var(--color-atlas-blue), var(--color-atlas-blue));
   background-size: 0% 1px;
   background-position: 0 100%;
   background-repeat: no-repeat;
-  transition: background-size 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-size 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .underline-grow:hover {
   background-size: 100% 1px;
 }
 
-/* Shared status chip — used by both surfaces when a categorical state needs
-   a single word and a tone. Colour is meaning, never decoration. */
 .status-chip {
   display: inline-flex;
   align-items: center;
@@ -214,6 +230,7 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-ink-dim);
+  background: var(--color-raised);
 }
 
 .status-chip__dot {
@@ -223,8 +240,35 @@ body {
   background: currentColor;
 }
 
-.status-chip--ice { color: var(--color-ice); border-color: color-mix(in srgb, var(--color-ice) 40%, var(--color-line)); }
-.status-chip--sapphire { color: var(--color-sapphire); border-color: color-mix(in srgb, var(--color-sapphire) 45%, var(--color-line)); }
-.status-chip--degraded { color: var(--color-degraded); border-color: color-mix(in srgb, var(--color-degraded) 40%, var(--color-line)); }
+.status-chip--ice { color: var(--color-atlas-blue); border-color: color-mix(in srgb, var(--color-atlas-blue) 40%, var(--color-line)); }
+.status-chip--sapphire { color: var(--color-atlas-blue); border-color: color-mix(in srgb, var(--color-atlas-blue) 45%, var(--color-line)); }
+.status-chip--degraded { color: var(--color-caution-gold); border-color: color-mix(in srgb, var(--color-caution-gold) 45%, var(--color-line)); }
 .status-chip--failed { color: var(--color-failed); border-color: color-mix(in srgb, var(--color-failed) 40%, var(--color-line)); }
 .status-chip--verified { color: var(--color-verified); border-color: color-mix(in srgb, var(--color-verified) 40%, var(--color-line)); }
+
+/* Evidence-state semantic markers (horizon) */
+[data-evidence-state='observed'] { --horizon-tone: var(--color-atlas-blue); }
+[data-evidence-state='stale'] { --horizon-tone: var(--color-caution-gold); }
+[data-evidence-state='paused'] { --horizon-tone: var(--color-signal-coral); }
+[data-evidence-state='unavailable'],
+[data-evidence-state='source-only'] { --horizon-tone: var(--color-ink-faint); }
+
+/* Print: keep research readable, drop atmosphere */
+@media print {
+  .aurora,
+  .field,
+  .grain,
+  .observatory-glow {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: #102A36;
+  }
+
+  a {
+    color: #174A67;
+    text-decoration: underline;
+  }
+}

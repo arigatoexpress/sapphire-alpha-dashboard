@@ -1,10 +1,8 @@
 @import 'tailwindcss';
+@import '@fontsource/space-grotesk/latin-400.css';
 @import '@fontsource/space-grotesk/latin-500.css';
 @import '@fontsource/space-grotesk/latin-600.css';
 @import '@fontsource/space-grotesk/latin-700.css';
-@import '@fontsource/inter/latin-400.css';
-@import '@fontsource/inter/latin-500.css';
-@import '@fontsource/inter/latin-600.css';
 @import '@fontsource/jetbrains-mono/latin-400.css';
 @import '@fontsource/jetbrains-mono/latin-500.css';
 @import '@fontsource/jetbrains-mono/latin-700.css';
@@ -30,8 +28,8 @@ a {
 .observatory-shell {
   min-height: 100vh;
   background:
-    linear-gradient(90deg, transparent 0 7.9%, rgba(231, 237, 240, 0.025) 8%, transparent 8.1%),
-    var(--color-void);
+    linear-gradient(90deg, transparent 0 7.9%, rgba(23, 74, 103, 0.04) 8%, transparent 8.1%),
+    var(--color-glacier);
 }
 
 .observatory-glow {
@@ -40,8 +38,8 @@ a {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 54% 36% at 77% 4%, rgba(110, 223, 246, 0.08), transparent 68%),
-    radial-gradient(ellipse 32% 24% at 8% 32%, rgba(197, 106, 61, 0.045), transparent 70%);
+    radial-gradient(ellipse 54% 36% at 77% 4%, rgba(23, 74, 103, 0.08), transparent 68%),
+    radial-gradient(ellipse 32% 24% at 8% 32%, rgba(232, 111, 81, 0.04), transparent 70%);
 }
 
 .observatory-header,
@@ -61,7 +59,7 @@ a {
   min-height: 64px;
   padding: 0 32px;
   border-bottom: 1px solid var(--color-line);
-  background: rgba(7, 16, 24, 0.96);
+  background: color-mix(in srgb, var(--color-glacier) 92%, white);
 }
 
 .observatory-brand {
@@ -92,7 +90,7 @@ a {
 
 .observatory-brand > span,
 .observatory-brand b {
-  color: var(--color-sapphire);
+  color: var(--color-atlas-blue);
 }
 
 .observatory-brand b {
@@ -165,17 +163,121 @@ a {
 .observatory-main {
   width: min(100%, 1440px);
   margin: 0 auto;
-  padding: clamp(34px, 5vw, 74px) clamp(20px, 4vw, 64px) 96px;
+  padding: clamp(28px, 4vw, 64px) clamp(16px, 4vw, 64px) 96px;
   overflow-x: clip;
+}
+
+/* CURRENT DECISION — primary operator instrument */
+.current-decision-band {
+  scroll-margin-top: 80px;
+  padding: clamp(20px, 3vw, 36px);
+  border: 1px solid var(--color-line);
+  background: var(--color-raised);
+}
+
+.current-decision-band h1 {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 0;
+  color: var(--color-observatory-ink);
+  font-family: var(--font-conviction);
+  font-size: clamp(1.8rem, 3.8vw, 2.8rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.current-decision-verb {
+  font-family: var(--font-mono);
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-signal-coral);
+}
+
+.current-decision-detail {
+  font-size: 0.95em;
+  color: var(--color-ink-dim);
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+
+.current-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 28px;
+  border-top: 1px solid var(--color-line);
+}
+
+.current-decision-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 16px 4px 0;
+  border-right: 1px solid var(--color-line);
+  min-width: 0;
+}
+
+.current-decision-grid > div:last-child {
+  border-right: 0;
+  padding-right: 0;
+  padding-left: 16px;
+}
+
+.current-decision-grid > div:nth-child(2) {
+  padding-left: 16px;
+}
+
+.current-decision-grid span {
+  color: var(--color-ink-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.current-decision-grid strong {
+  color: var(--color-observatory-ink);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.current-decision-grid strong[data-tone='held'] {
+  color: var(--color-signal-coral);
+}
+
+.current-decision-grid strong[data-tone='degraded'] {
+  color: var(--color-caution-gold);
+}
+
+.current-decision-grid strong[data-tone='unknown'] {
+  color: var(--color-ink-faint);
+}
+
+.current-decision-thesis {
+  margin: 22px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line);
+  color: var(--color-ink-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .observatory-opening {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
   align-items: end;
-  gap: clamp(42px, 9vw, 140px);
-  min-height: min(560px, 62vh);
-  padding: clamp(24px, 4vw, 56px) 0 clamp(48px, 6vw, 84px);
+  gap: clamp(32px, 7vw, 100px);
+  min-height: 0;
+  padding: clamp(36px, 5vw, 64px) 0 clamp(36px, 5vw, 64px);
 }
 
 .observatory-kicker,
@@ -183,30 +285,30 @@ a {
 .evidence-horizon-heading p,
 .measurement-contract > p {
   margin: 0;
-  color: var(--color-sapphire);
+  color: var(--color-atlas-blue);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
-.observatory-opening h1 {
-  max-width: 17ch;
-  margin: 24px 0 0;
-  color: var(--color-ink);
+.observatory-opening h2 {
+  max-width: 22ch;
+  margin: 18px 0 0;
+  color: var(--color-observatory-ink);
   font-family: var(--font-conviction);
-  font-size: clamp(3.7rem, 7.2vw, 7.8rem);
+  font-size: clamp(2rem, 4.2vw, 3.4rem);
   font-weight: 500;
-  letter-spacing: -0.07em;
-  line-height: 0.86;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   text-wrap: balance;
 }
 
 .observatory-lede {
   max-width: 44rem;
-  margin: 38px 0 0;
+  margin: 22px 0 0;
   color: var(--color-ink-dim);
-  font-size: clamp(1rem, 1.35vw, 1.25rem);
+  font-size: clamp(0.98rem, 1.2vw, 1.12rem);
   line-height: 1.65;
   text-wrap: pretty;
 }
@@ -929,8 +1031,12 @@ a {
     padding-top: 64px;
   }
 
-  .observatory-opening h1 {
-    font-size: clamp(3.7rem, 11vw, 6.4rem);
+  .observatory-opening h2 {
+    font-size: clamp(1.9rem, 7vw, 2.8rem);
+  }
+
+  .current-decision-grid {
+    grid-template-columns: 1fr;
   }
 
   .thesis-pulse-heading {
@@ -1000,11 +1106,23 @@ a {
     padding: 54px 0 50px;
   }
 
-  .observatory-opening h1 {
-    max-width: 15ch;
-    margin-top: 18px;
-    font-size: clamp(3.25rem, 14vw, 5.6rem);
-    line-height: 0.88;
+  .observatory-opening h2 {
+    max-width: 18ch;
+    margin-top: 14px;
+    font-size: clamp(1.7rem, 8vw, 2.4rem);
+    line-height: 1.05;
+  }
+
+  .current-decision-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .current-decision-grid > div,
+  .current-decision-grid > div:nth-child(2),
+  .current-decision-grid > div:last-child {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
+    padding: 14px 0;
   }
 
   .observatory-lede {
@@ -1141,7 +1259,20 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .observatory-header nav a,
-  .evidence-horizon-track button::before {
+  .evidence-horizon-track button::before,
+  .horizon-enter,
+  .evidence-horizon-track {
     transition: none;
+    animation: none !important;
+  }
+}
+
+@media print {
+  .observatory-glow {
+    display: none !important;
+  }
+
+  .observatory-shell {
+    background: white;
   }
 }

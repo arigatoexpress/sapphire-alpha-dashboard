@@ -65,7 +65,7 @@ export default function About() {
       <PageHeader
         eyebrow="About"
         title="Correctness is the product."
-        lede="Sapphire Alpha is an independent engineering practice building autonomous trading and agent infrastructure — the kind that has to be right while nobody is watching it."
+        lede="Sapphire Alpha is an independent engineering practice building research and trading infrastructure with fail-closed boundaries — the kind that has to be right while nobody is watching it."
       />
 
       <section className="mx-auto max-w-6xl px-6 pt-14">
