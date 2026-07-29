@@ -28,6 +28,7 @@ MAX_REQUEST_SKEW_SECONDS = 300
 # is the forbidden fix — a threshold that never fires reads green while checking
 # nothing. Shorten the cadence instead. Enforced by test_machine_room_public.py.
 DEFAULT_STALE_AFTER_SECONDS = 180
+MAX_JSON_DEPTH = 64
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 _NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
@@ -88,6 +89,19 @@ _PUBLIC_STRATEGIES = {
 
 class TelemetryValidationError(ValueError):
     """Raised when a producer violates the semantic telemetry contract."""
+
+
+def _require_bounded_structure(value: Any, *, max_depth: int = MAX_JSON_DEPTH) -> None:
+    """Bound recursive semantic validation with an iterative preflight."""
+    pending: list[tuple[Any, int]] = [(value, 0)]
+    while pending:
+        current, depth = pending.pop()
+        if depth > max_depth:
+            raise TelemetryValidationError("telemetry JSON is too deeply nested")
+        if isinstance(current, dict):
+            pending.extend((child, depth + 1) for child in current.values())
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
 
 
 def _keys(value: Any, *, allowed: set[str], required: set[str], where: str) -> dict[str, Any]:
@@ -408,6 +422,7 @@ def _safety_floor(value: Any) -> dict[str, Any]:
 
 def validate_snapshot(raw: Any) -> dict[str, Any]:
     """Return a normalized copy of the only telemetry shape we will store."""
+    _require_bounded_structure(raw)
     _scan_forbidden(raw)
     obj = _keys(
         raw,
@@ -967,6 +982,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     if not isinstance(obj["agents"], list) or len(obj["agents"]) > 32:
         raise TelemetryValidationError("agents must be a bounded list")
     agents: list[dict[str, Any]] = []
+    agent_ids: set[str] = set()
     for index, raw_agent in enumerate(obj["agents"]):
         agent = _keys(
             raw_agent,
@@ -974,9 +990,13 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             required={"id", "role", "state", "activity", "verification", "provider_class", "updated_at"},
             where=f"agents[{index}]",
         )
+        agent_id = _identifier(agent["id"], where=f"agents[{index}].id")
+        if agent_id in agent_ids:
+            raise TelemetryValidationError("agent ids must be unique")
+        agent_ids.add(agent_id)
         agents.append(
             {
-                "id": _identifier(agent["id"], where=f"agents[{index}].id"),
+                "id": agent_id,
                 "role": _text(agent["role"], where=f"agents[{index}].role", limit=64),
                 "state": _enum(agent["state"], _AGENT_STATES, where=f"agents[{index}].state"),
                 "activity": _text(agent["activity"], where=f"agents[{index}].activity", limit=120),
@@ -1031,6 +1051,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
     if not isinstance(obj["events"], list) or len(obj["events"]) > 100:
         raise TelemetryValidationError("events must be a bounded list")
     events: list[dict[str, Any]] = []
+    event_ids: set[str] = set()
     for index, raw_event in enumerate(obj["events"]):
         event = _keys(
             raw_event,
@@ -1038,9 +1059,13 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             required={"id", "observed_at", "event_class", "source", "target", "label", "status"},
             where=f"events[{index}]",
         )
+        event_id = _identifier(event["id"], where=f"events[{index}].id")
+        if event_id in event_ids:
+            raise TelemetryValidationError("event ids must be unique")
+        event_ids.add(event_id)
         events.append(
             {
-                "id": _identifier(event["id"], where=f"events[{index}].id"),
+                "id": event_id,
                 "observed_at": _timestamp(event["observed_at"], where=f"events[{index}].observed_at"),
                 "event_class": _enum(
                     event["event_class"], _SIGNAL_CLASSES, where=f"events[{index}].event_class"
@@ -1154,6 +1179,16 @@ def _age_seconds(now: float, value: Any) -> float | None:
     return age if age >= 0 else None
 
 
+def _timestamp_epoch(value: Any) -> float | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.timestamp() if parsed.tzinfo is not None else None
+
+
 def _epoch_age_seconds(now: float, value: Any) -> float | None:
     if (
         isinstance(value, bool)
@@ -1257,8 +1292,15 @@ def _age_runtime_projection(
         if not isinstance(agent, dict):
             expired_agent = True
             continue
+        updated_epoch = _timestamp_epoch(agent.get("updated_at"))
         age = _age_seconds(now, agent.get("updated_at"))
-        if not parent_current or age is None or age > stale_after_seconds:
+        if (
+            not parent_current
+            or updated_epoch is None
+            or updated_epoch > snapshot_observed_at
+            or age is None
+            or age > stale_after_seconds
+        ):
             expired_agent = True
             agent["state"] = "offline"
             agent["verification"] = "pending"
@@ -1271,7 +1313,15 @@ def _age_runtime_projection(
     for event in events if isinstance(events, list) else []:
         if not isinstance(event, dict):
             continue
-        if parent_current and _age_seconds(now, event.get("observed_at")) is not None:
+        event_epoch = _timestamp_epoch(event.get("observed_at"))
+        event_age = _age_seconds(now, event.get("observed_at"))
+        if (
+            parent_current
+            and event_epoch is not None
+            and event_epoch <= snapshot_observed_at
+            and event_age is not None
+            and event_age <= stale_after_seconds
+        ):
             projected_events.append(event)
     snapshot["events"] = projected_events
 
@@ -1301,8 +1351,15 @@ def _age_runtime_projection(
 
     desk = snapshot.get("desk")
     if isinstance(desk, dict):
+        desk_epoch = _timestamp_epoch(desk.get("updated_at"))
         desk_age = _age_seconds(now, desk.get("updated_at"))
-        if not parent_current or desk_age is None or desk_age > stale_after_seconds:
+        if (
+            not parent_current
+            or desk_epoch is None
+            or desk_epoch > snapshot_observed_at
+            or desk_age is None
+            or desk_age > stale_after_seconds
+        ):
             _expire_desk_runtime(desk)
         current_tracks: list[dict[str, Any]] = []
         for track in desk.get("tracks", []):
@@ -1325,6 +1382,15 @@ def _age_runtime_projection(
             )
             if (
                 epistemics.get("fresh") is not True
+                or (
+                    isinstance(epistemics.get("updated_ts"), (int, float))
+                    and float(epistemics["updated_ts"]) > snapshot_observed_at + 0.001
+                )
+                or (
+                    isinstance(learning, dict)
+                    and isinstance(learning.get("updated_ts"), (int, float))
+                    and float(learning["updated_ts"]) > snapshot_observed_at + 0.001
+                )
                 or epistemic_age is None
                 or epistemic_age > stale_after_seconds
                 or learning_age is None
@@ -1615,12 +1681,23 @@ class LiveTelemetryStore:
             )
 
         received_at, snapshot = selected
-        observed = datetime.fromisoformat(snapshot["observed_at"]).timestamp()
+        try:
+            candidate = _normalize_stored(copy.deepcopy(snapshot))
+            _require_bounded_structure(candidate)
+            projected = validate_snapshot(candidate)
+            observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
+            if (
+                isinstance(received_at, bool)
+                or not isinstance(received_at, (int, float))
+                or not math.isfinite(float(received_at))
+            ):
+                raise TelemetryValidationError("invalid durable receive time")
+        except Exception:
+            return _empty_snapshot(status="offline")
         if observed > now:
             return _empty_snapshot(status="offline")
         freshness_s = round(max(0.0, now - observed), 1)
         status = "live" if freshness_s <= stale_after_seconds else "stale"
-        projected = _normalize_stored(copy.deepcopy(snapshot))
         _age_runtime_projection(
             projected,
             now=now,

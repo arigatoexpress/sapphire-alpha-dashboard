@@ -29,6 +29,7 @@ import html
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -318,9 +319,10 @@ _PAUSE_SENTINELS: dict[str, Path] = {
 }
 _RUNTIME_TTL_SECONDS = 180.0
 _MAX_PAUSE_DOCUMENT_BYTES = 64 * 1024
+_MAX_RUNTIME_DOCUMENT_BYTES = 64 * 1024
+_MAX_FLEET_DOCUMENT_BYTES = 256 * 1024
 _MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES = 256 * 1024
 _MAX_PERSISTED_JSON_DEPTH = 64
-_MAX_FLEET_FUTURE_SKEW_SECONDS = 5.0
 
 _RUNTIME_READINESS: dict[str, Any] = {
     "schema_version": "sapphire-runtime-readiness/v1",
@@ -490,8 +492,14 @@ async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
     if len(body) > 64 * 1024:
         raise HTTPException(status_code=413, detail="telemetry body too large")
     try:
-        payload = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = _decode_bounded_json(body, max_bytes=64 * 1024)
+    except (
+        _UnverifiablePersistedDocument,
+        RecursionError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         raise HTTPException(status_code=422, detail="invalid telemetry JSON") from None
     try:
         snapshot = live_telemetry_store.accept(
@@ -506,6 +514,8 @@ async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="invalid telemetry signature") from None
     except FileExistsError:
         raise HTTPException(status_code=409, detail="telemetry replay rejected") from None
+    except RecursionError:
+        raise HTTPException(status_code=422, detail="invalid telemetry JSON") from None
     except RuntimeError:
         raise HTTPException(status_code=503, detail="telemetry ingest unavailable") from None
     except TelemetryValidationError as exc:
@@ -533,8 +543,14 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
     if len(body) > 8 * 1024:
         raise HTTPException(status_code=413, detail="MOSS telemetry body too large")
     try:
-        payload = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = _decode_bounded_json(body, max_bytes=8 * 1024)
+    except (
+        _UnverifiablePersistedDocument,
+        RecursionError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         raise HTTPException(status_code=422, detail="invalid MOSS telemetry JSON") from None
     try:
         snapshot = moss_telemetry_store.accept(
@@ -549,6 +565,8 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="invalid MOSS telemetry signature") from None
     except FileExistsError:
         raise HTTPException(status_code=409, detail="MOSS telemetry replay rejected") from None
+    except RecursionError:
+        raise HTTPException(status_code=422, detail="invalid MOSS telemetry JSON") from None
     except RuntimeError:
         raise HTTPException(status_code=503, detail="MOSS telemetry ingest unavailable") from None
     except (MossTelemetryValidationError, TelemetryValidationError) as exc:
@@ -586,15 +604,6 @@ async def api_transparency(
     return transparency.snapshot(ledger, public=public)
 
 
-def _read_json(path: Path) -> Any:
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        log.warning("failed to read %s: %s", path, exc)
-    return None
-
-
 def _persisted_time(value: Any) -> datetime | None:
     try:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -608,29 +617,83 @@ def _persisted_time(value: Any) -> datetime | None:
     return parsed.astimezone(UTC) if parsed.tzinfo is not None else None
 
 
-def _observation_time(data: dict[str, Any]) -> datetime | None:
-    for key in ("observed_at", "updated_at", "updated", "last_seen", "timestamp", "epoch"):
-        if (parsed := _persisted_time(data.get(key))) is not None:
-            return parsed
-    return None
+_SOURCE_TIMESTAMP_FIELDS = frozenset(
+    {
+        "observed_at",
+        "updated_at",
+        "updated",
+        "last_seen",
+        "timestamp",
+        "epoch",
+        "generated_at",
+    }
+)
+
+
+def _strict_source_time(
+    data: dict[str, Any],
+    *,
+    field: str,
+) -> datetime | None:
+    """Parse exactly one declared time field; aliases never repair evidence."""
+    if _SOURCE_TIMESTAMP_FIELDS.intersection(data) != {field}:
+        return None
+    return _persisted_time(data.get(field))
+
+
+def _current_source_time(
+    data: dict[str, Any],
+    *,
+    field: str,
+    now: datetime,
+    ttl_seconds: float = _RUNTIME_TTL_SECONDS,
+) -> tuple[datetime | None, bool]:
+    observed = _strict_source_time(data, field=field)
+    age = (now - observed).total_seconds() if observed is not None else None
+    return observed, bool(age is not None and 0 <= age <= ttl_seconds)
+
+
+def _runtime_document(
+    path: Path,
+    *,
+    expected_type: type[dict[Any, Any]] | type[list[Any]],
+    max_bytes: int = _MAX_RUNTIME_DOCUMENT_BYTES,
+) -> Any:
+    """Return one admitted local runtime value, or ``None`` fail closed."""
+    try:
+        admitted = _read_admitted_json_value(path, max_bytes=max_bytes)
+    except _UnverifiablePersistedDocument as exc:
+        log.warning("runtime document unavailable: %s", exc.__class__.__name__)
+        return None
+    if admitted is None:
+        return None
+    raw, _source_identity = admitted
+    return raw if isinstance(raw, expected_type) else None
 
 
 def _executor_heartbeat(*, now: datetime | None = None) -> dict[str, Any]:
     """Executor liveness from one persisted heartbeat; absence stays unknown."""
     now = now or datetime.now(UTC)
-    data = _read_json(_RH_CHAIN_DIR / "executor-heartbeat.json")
+    data = _runtime_document(
+        _RH_CHAIN_DIR / "executor-heartbeat.json",
+        expected_type=dict,
+    )
     if not isinstance(data, dict):
         return {"status": "unknown", "alive": None, "last_seen": None, "pid": None}
 
-    observed = _observation_time(data)
-    current = (
-        observed is not None
-        and 0 <= (now - observed).total_seconds() <= _RUNTIME_TTL_SECONDS
-    )
-    status_str = str(data.get("status", "unknown")).lower()
-    reported_alive = status_str in {"alive", "ok", "running", "healthy"} or (
-        data.get("alive") is True
-    )
+    observed, current = _current_source_time(data, field="observed_at", now=now)
+    reported_status = data.get("status")
+    status_str = reported_status.lower() if isinstance(reported_status, str) else "unknown"
+    alive_states = {"alive", "ok", "running", "healthy"}
+    inactive_states = {"dead", "down", "stopped", "halted"}
+    if status_str not in alive_states | inactive_states:
+        current = False
+    reported_alive = status_str in alive_states
+    explicit_alive = data.get("alive")
+    if explicit_alive is not None and (
+        not isinstance(explicit_alive, bool) or explicit_alive != reported_alive
+    ):
+        current = False
     return {
         "status": status_str if current else "unknown",
         "alive": reported_alive if current else None,
@@ -639,30 +702,81 @@ def _executor_heartbeat(*, now: datetime | None = None) -> dict[str, Any]:
     }
 
 
-def _skin_book() -> dict[str, Any]:
-    """Read only a persisted skin-book observation."""
-    data = _read_json(_RH_CHAIN_DIR / "skin-book.json")
-    if not isinstance(data, dict):
-        data = {}
-
-    positions = data.get("positions", [])
-    fills = data.get("fills", [])
-    observed = _observation_time(data)
+def _empty_skin_book(*, observed: datetime | None = None) -> dict[str, Any]:
     return {
         "updated_at": observed.isoformat() if observed is not None else None,
-        "mode": data.get("mode") or "unavailable",
-        "banner": data.get("banner", "Skin book"),
-        "deployed_usd": _safe_float(data.get("deployed_usd")),
-        "n_open": int(data.get("n_open", len(positions))),
-        "positions_count": len(positions),
-        "fills_count": len(fills),
-        "skin_in_game": (
-            data.get("skin_in_game")
-            if isinstance(data.get("skin_in_game"), bool)
-            else None
-        ),
-        "limits": data.get("limits", {}),
+        "mode": "unavailable",
+        "banner": "Skin book",
+        "deployed_usd": None,
+        "n_open": None,
+        "positions_count": None,
+        "fills_count": None,
+        "skin_in_game": None,
+        "limits": {},
     }
+
+
+def _admitted_skin_book(
+    *,
+    now: datetime,
+) -> tuple[dict[str, Any], str | None]:
+    data = _runtime_document(
+        _RH_CHAIN_DIR / "skin-book.json",
+        expected_type=dict,
+    )
+    if not isinstance(data, dict):
+        return _empty_skin_book(), None
+    observed, current = _current_source_time(data, field="observed_at", now=now)
+    if not current:
+        return _empty_skin_book(observed=observed), None
+
+    positions = data.get("positions")
+    fills = data.get("fills")
+    mode = data.get("mode")
+    deployed = data.get("deployed_usd")
+    n_open = data.get("n_open")
+    limits = data.get("limits")
+    wallet_address = data.get("wallet_address")
+    return (
+        {
+            "updated_at": observed.isoformat() if observed is not None else None,
+            "mode": mode if isinstance(mode, str) and mode else "unavailable",
+            "banner": (
+                data["banner"]
+                if isinstance(data.get("banner"), str) and data["banner"]
+                else "Skin book"
+            ),
+            "deployed_usd": (
+                float(deployed)
+                if (
+                    isinstance(deployed, (int, float))
+                    and not isinstance(deployed, bool)
+                    and math.isfinite(float(deployed))
+                )
+                else None
+            ),
+            "n_open": (
+                n_open
+                if isinstance(n_open, int) and not isinstance(n_open, bool) and n_open >= 0
+                else None
+            ),
+            "positions_count": len(positions) if isinstance(positions, list) else None,
+            "fills_count": len(fills) if isinstance(fills, list) else None,
+            "skin_in_game": (
+                data.get("skin_in_game")
+                if isinstance(data.get("skin_in_game"), bool)
+                else None
+            ),
+            "limits": limits if isinstance(limits, dict) else {},
+        },
+        wallet_address if isinstance(wallet_address, str) else None,
+    )
+
+
+def _skin_book(*, now: datetime | None = None) -> dict[str, Any]:
+    """Read only a persisted skin-book observation."""
+    skin, _wallet_address = _admitted_skin_book(now=now or datetime.now(UTC))
+    return skin
 
 
 def _invalid_pause_observation(source: str) -> dict[str, Any]:
@@ -737,12 +851,33 @@ class _UnverifiablePersistedDocument(ValueError):
     """A local document could not be bound to one stable admitted descriptor."""
 
 
-def _read_admitted_json_object(
+def _decode_bounded_json(
+    payload: bytes,
+    *,
+    max_bytes: int,
+) -> Any:
+    """Decode one bounded JSON value with duplicate/non-finite rejection."""
+    if len(payload) > max_bytes:
+        raise _UnverifiablePersistedDocument
+
+    def reject_constant(_value: str) -> Any:
+        raise ValueError("non-finite JSON number")
+
+    raw = json.loads(
+        payload.decode("utf-8"),
+        object_pairs_hook=_unique_json_object,
+        parse_constant=reject_constant,
+    )
+    _require_bounded_json_depth(raw)
+    return raw
+
+
+def _read_admitted_json_value(
     path: Path,
     *,
     max_bytes: int,
-) -> tuple[dict[str, Any], tuple[int, int]] | None:
-    """Read one bounded local JSON object through a stable no-follow descriptor."""
+) -> tuple[Any, tuple[int, int]] | None:
+    """Read one bounded local JSON value through a stable no-follow descriptor."""
     parent_fd: int | None = None
     file_fd: int | None = None
     fresh_parent_fd: int | None = None
@@ -827,13 +962,10 @@ def _read_admitted_json_object(
         ):
             raise _UnverifiablePersistedDocument
 
-        raw = json.loads(
-            payload.decode("utf-8"),
-            object_pairs_hook=_unique_json_object,
+        raw = _decode_bounded_json(
+            payload,
+            max_bytes=max_bytes,
         )
-        _require_bounded_json_depth(raw)
-        if not isinstance(raw, dict):
-            raise _UnverifiablePersistedDocument
         return raw, (after.st_dev, after.st_ino)
     except _UnverifiablePersistedDocument:
         raise
@@ -852,6 +984,21 @@ def _read_admitted_json_object(
             os.close(file_fd)
         if parent_fd is not None:
             os.close(parent_fd)
+
+
+def _read_admitted_json_object(
+    path: Path,
+    *,
+    max_bytes: int,
+) -> tuple[dict[str, Any], tuple[int, int]] | None:
+    """Read one admitted object while preserving the original pause contract."""
+    admitted = _read_admitted_json_value(path, max_bytes=max_bytes)
+    if admitted is None:
+        return None
+    raw, identity = admitted
+    if not isinstance(raw, dict):
+        raise _UnverifiablePersistedDocument
+    return raw, identity
 
 
 _PAUSE_TIMESTAMP_FIELDS = frozenset(
@@ -968,7 +1115,10 @@ def _evaluate_pause_truth(
 def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
     """Project one persisted gate and two fail-closed pause observations."""
     now = now or datetime.now(UTC)
-    raw_gate = _read_json(_RH_CHAIN_DIR / "gate.json")
+    raw_gate = _runtime_document(
+        _RH_CHAIN_DIR / "gate.json",
+        expected_type=dict,
+    )
     gate = raw_gate if isinstance(raw_gate, dict) else {}
     observations: list[dict[str, Any]] = []
     for source, path in _PAUSE_SENTINELS.items():
@@ -976,10 +1126,10 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
             observations.append(item)
     pause = _evaluate_pause_truth(observations, now=now)
 
-    gate_observed = _observation_time(gate)
-    gate_current = (
-        gate_observed is not None
-        and 0 <= (now - gate_observed).total_seconds() <= _RUNTIME_TTL_SECONDS
+    gate_observed, gate_current = _current_source_time(
+        gate,
+        field="observed_at",
+        now=now,
     )
     reported_mode = gate.get("mode")
     mode = (
@@ -1009,6 +1159,7 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
             state, label = "disarmed", "Gate disarmed"
 
     wallet_addr = gate.get("wallet_address")
+    cap_usd = gate.get("cap_usd")
     return {
         "state": state,
         "label": label,
@@ -1016,18 +1167,29 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
         "killswitch": killswitch,
         "pause_state": pause["state"],
         "mode": mode,
-        "wallet_address": _mask_address(wallet_addr),
-        "cap_usd": gate.get("cap_usd") if gate_current else None,
+        "wallet_address": (
+            _mask_address(wallet_addr)
+            if gate_current and isinstance(wallet_addr, str)
+            else None
+        ),
+        "cap_usd": (
+            cap_usd
+            if (
+                gate_current
+                and isinstance(cap_usd, (int, float))
+                and not isinstance(cap_usd, bool)
+                and math.isfinite(float(cap_usd))
+            )
+            else None
+        ),
         "executor_alive": _executor_heartbeat(now=now)["alive"],
         "updated_at": gate_observed.isoformat() if gate_observed is not None else None,
     }
 
 
-def _wallet_status() -> dict[str, Any]:
+def _wallet_status(*, now: datetime | None = None) -> dict[str, Any]:
     """Privacy-preserving wallet / PnL tile."""
-    skin = _skin_book()
-    raw = _read_json(_RH_CHAIN_DIR / "skin-book.json")
-    wallet_addr = raw.get("wallet_address") if isinstance(raw, dict) else None
+    skin, wallet_addr = _admitted_skin_book(now=now or datetime.now(UTC))
     return {
         "address": _mask_address(wallet_addr),
         "deployed_usd": skin["deployed_usd"],
@@ -1040,22 +1202,44 @@ def _wallet_status() -> dict[str, Any]:
     }
 
 
-def _recent_signals() -> list[dict[str, Any]]:
+def _recent_signals(*, now: datetime | None = None) -> list[dict[str, Any]]:
     """Recent observed trading signals with synthetic display identifiers."""
-    data = _read_json(_RH_CHAIN_DIR / "signals.json")
-
+    now = now or datetime.now(UTC)
+    data = _runtime_document(
+        _RH_CHAIN_DIR / "signals.json",
+        expected_type=list,
+    )
     if isinstance(data, list):
-        return [
-            {
-                "id": f"sig-{i+1:03d}",
-                "instrument": s.get("instrument", "UNKNOWN"),
-                "side": s.get("side", "-"),
-                "venue": s.get("venue", "manual"),
-                "confidence": s.get("confidence", "medium"),
-                "timestamp": s.get("timestamp"),
-            }
-            for i, s in enumerate(data[:12])
-        ]
+        projected: list[dict[str, Any]] = []
+        for signal in data[:12]:
+            if not isinstance(signal, dict):
+                continue
+            observed, current = _current_source_time(
+                signal,
+                field="timestamp",
+                now=now,
+            )
+            required = ("instrument", "side", "venue", "confidence")
+            if (
+                not current
+                or observed is None
+                or any(
+                    not isinstance(signal.get(field), str) or not signal[field]
+                    for field in required
+                )
+            ):
+                continue
+            projected.append(
+                {
+                    "id": f"sig-{len(projected)+1:03d}",
+                    "instrument": signal["instrument"][:64],
+                    "side": signal["side"][:16],
+                    "venue": signal["venue"][:64],
+                    "confidence": signal["confidence"][:24],
+                    "timestamp": observed.isoformat(),
+                }
+            )
+        return projected
     # Missing observations must stay visibly empty; production never fabricates alpha.
     return []
 
@@ -1236,12 +1420,31 @@ async def _probe_tradingview_webhook() -> dict[str, Any]:
             async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
                 r = await client.get(url.rstrip("/") + "/alerts?limit=1")
                 if r.status_code == 200:
-                    payload = r.json()
-                    pending_alerts = int(payload.get("total", 0))
-                    alerts = payload.get("alerts")
-                    if isinstance(alerts, list) and alerts and isinstance(alerts[0], dict):
-                        observed = _observation_time(alerts[0])
-                        last_ping = observed.isoformat() if observed is not None else None
+                    payload = _decode_bounded_json(
+                        r.content,
+                        max_bytes=_MAX_RUNTIME_DOCUMENT_BYTES,
+                    )
+                    alerts = payload.get("alerts") if isinstance(payload, dict) else None
+                    if (
+                        isinstance(alerts, list)
+                        and alerts
+                        and isinstance(alerts[0], dict)
+                    ):
+                        observed, current = _current_source_time(
+                            alerts[0],
+                            field="observed_at",
+                            now=datetime.fromtimestamp(now, UTC),
+                        )
+                        if current and observed is not None:
+                            total = payload.get("total")
+                            pending_alerts = (
+                                total
+                                if isinstance(total, int)
+                                and not isinstance(total, bool)
+                                and total >= 0
+                                else 0
+                            )
+                            last_ping = observed.isoformat()
     except Exception:
         pass
 
@@ -1510,7 +1713,8 @@ _EMPTY_FLEET = {
 
 
 def _fleet_snapshot_path() -> Path:
-    return Path(_env("FLEET_SNAPSHOT_PATH", "data/fleet.json"))
+    path = Path(_env("FLEET_SNAPSHOT_PATH", "data/fleet.json"))
+    return path if path.is_absolute() else Path.cwd() / path
 
 
 def _no_paths(value: Any) -> str:
@@ -1529,39 +1733,73 @@ def _whitelist_fleet(
     """Reduce an untrusted fleet.json to the exact serving shape."""
     if not isinstance(raw, dict):
         return dict(_EMPTY_FLEET)
-    generated_at = raw.get("generated_at")
-    age_s = _fleet_age_seconds(generated_at, now=now)
-    if not isinstance(generated_at, str) or age_s is None:
+    observed, current = _current_source_time(
+        raw,
+        field="generated_at",
+        now=now or datetime.now(UTC),
+    )
+    if observed is None:
         return dict(_EMPTY_FLEET)
-    if age_s > _RUNTIME_TTL_SECONDS:
+    if observed > (now or datetime.now(UTC)):
+        return dict(_EMPTY_FLEET)
+    if not current:
         return {
-            "generated_at": generated_at,
+            "generated_at": observed.isoformat(),
             "leases": [],
             "gates": [],
             "counts": {"leases": None, "gates_open": None},
         }
-    leases = [
-        {
-            "agent": _no_paths(lease.get("agent")),
-            "repo": _no_paths(lease.get("repo")),
-            "purpose": _no_paths(lease.get("purpose")),
-            "expires_at": _no_paths(lease.get("expires_at")),
-        }
-        for lease in raw.get("leases", [])
-        if isinstance(lease, dict)
-    ]
-    gates = [
-        {
-            "id": int(gate.get("id", 0)),
-            "title": _no_paths(gate.get("title")),
-            "age_hours": _safe_float(gate.get("age_hours")),
-            "status": _no_paths(gate.get("status")),
-        }
-        for gate in raw.get("gates", [])
-        if isinstance(gate, dict)
-    ]
+    raw_leases = raw.get("leases")
+    raw_gates = raw.get("gates")
+    if (
+        not isinstance(raw_leases, list)
+        or not isinstance(raw_gates, list)
+        or len(raw_leases) > 100
+        or len(raw_gates) > 100
+    ):
+        return dict(_EMPTY_FLEET)
+    leases: list[dict[str, Any]] = []
+    for lease in raw_leases:
+        fields = ("agent", "repo", "purpose", "expires_at")
+        if not isinstance(lease, dict) or any(
+            not isinstance(lease.get(field), str) for field in fields
+        ):
+            return dict(_EMPTY_FLEET)
+        leases.append(
+            {
+                "agent": _no_paths(lease["agent"]),
+                "repo": _no_paths(lease["repo"]),
+                "purpose": _no_paths(lease["purpose"]),
+                "expires_at": _no_paths(lease["expires_at"]),
+            }
+        )
+
+    gates: list[dict[str, Any]] = []
+    for gate in raw_gates:
+        gate_id = gate.get("id") if isinstance(gate, dict) else None
+        title = gate.get("title") if isinstance(gate, dict) else None
+        age_hours = gate.get("age_hours") if isinstance(gate, dict) else None
+        gate_status = gate.get("status") if isinstance(gate, dict) else None
+        if (
+            not isinstance(gate_id, int)
+            or isinstance(gate_id, bool)
+            or not isinstance(title, str)
+            or not isinstance(age_hours, (int, float))
+            or isinstance(age_hours, bool)
+            or not math.isfinite(float(age_hours))
+            or not isinstance(gate_status, str)
+        ):
+            return dict(_EMPTY_FLEET)
+        gates.append(
+            {
+                "id": gate_id,
+                "title": _no_paths(title),
+                "age_hours": round(float(age_hours), 3),
+                "status": _no_paths(gate_status),
+            }
+        )
     return {
-        "generated_at": generated_at,
+        "generated_at": observed.isoformat(),
         "leases": leases,
         "gates": gates,
         "counts": {"leases": len(leases), "gates_open": len(gates)},
@@ -1576,15 +1814,16 @@ def _fleet_age_seconds(
     if not generated_at:
         return None
     try:
-        gen = datetime.fromisoformat(generated_at)
+        gen = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
         if gen.tzinfo is None:
-            gen = gen.replace(tzinfo=UTC)
+            return None
+        gen = gen.astimezone(UTC)
         observed_now = now or datetime.now(UTC)
         delta = (observed_now - gen).total_seconds()
-        if delta < -_MAX_FLEET_FUTURE_SKEW_SECONDS:
+        if delta < 0:
             return None
-        return round(max(0.0, delta), 1)
-    except (TypeError, ValueError):
+        return round(delta, 1)
+    except (AttributeError, TypeError, ValueError):
         return None
 
 
@@ -1592,7 +1831,13 @@ def _fleet_age_seconds(
 @limiter.limit(_api_rate_limit)
 async def api_fleet(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
     """Fleet presence (leases) + human-approval inbox (gates) with staleness."""
-    snapshot = _whitelist_fleet(_read_json(_fleet_snapshot_path()))
+    snapshot = _whitelist_fleet(
+        _runtime_document(
+            _fleet_snapshot_path(),
+            expected_type=dict,
+            max_bytes=_MAX_FLEET_DOCUMENT_BYTES,
+        )
+    )
     age_s = _fleet_age_seconds(snapshot["generated_at"])
     if user == PUBLIC_USER:
         return {
