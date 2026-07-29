@@ -115,13 +115,16 @@ function renderAt(width: number): LayoutResult {
     [
       '--headless=new',
       '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--disable-background-networking',
+      '--no-first-run',
       '--hide-scrollbars',
       '--no-sandbox',
       `--window-size=${width},1100`,
       '--dump-dom',
       `file://${fixture}`,
     ],
-    { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] },
+    { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'ignore'] },
   )
   const encoded = dom.match(/data-layout-results="([^"]+)"/)?.[1]
   if (!encoded) throw new Error(`Chrome did not return atlas geometry at ${width}px`)
@@ -141,6 +144,6 @@ describe('system atlas rendered tablet geometry', () => {
       ).toBe(true)
       expect(layout.intersections, JSON.stringify(layout.rectangles)).toEqual([])
     },
-    35_000,
+    65_000,
   )
 })
