@@ -10,7 +10,12 @@ describe('persisted evidence timestamps', () => {
   it('never presents widget render time as the research observation', () => {
     const widgets = {
       research: {
-        clips: [{ id: 'research-001', title: 'Observed note', observed_at: OBSERVED_AT }],
+        clips: [{
+          id: 'research-001',
+          title: 'Observed note',
+          observed_at: OBSERVED_AT,
+          age_s: 3600,
+        }],
       },
       rendered_at: REQUEST_TIME,
     } as PublicWidgets
@@ -26,6 +31,8 @@ describe('persisted evidence timestamps', () => {
 
     expect(segment?.observedAt).toBe('2026-07-28 18:00:00Z')
     expect(segment?.observedAt).not.toContain('19:00:00')
+    expect(segment?.freshness).toBe('1h ago')
+    expect(segment?.uncertainty).not.toContain('age not computed')
   })
 
   it('never presents MOSS response time as the on-chain observation', () => {
