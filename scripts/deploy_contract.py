@@ -1279,42 +1279,33 @@ def verify_build_record(
 
 def immutable_image(build: Mapping[str, Any], build_id: str) -> str:
     images = _nested(build, "results", "images")
-    if not isinstance(images, list) or len(images) != 2:
+    if not isinstance(images, list) or len(images) != 1:
         raise ContractViolation("build output image mismatch")
-    names: set[str] = set()
-    digests: set[str] = set()
-    for image in images:
-        if not isinstance(image, Mapping) or set(image) != {
-            "artifactRegistryPackage",
-            "digest",
-            "name",
-            "pushTiming",
-        }:
-            raise ContractViolation("build output image mismatch")
-        digest = image["digest"]
-        timing = image["pushTiming"]
-        expected_package = (
-            "projects/sapphire-479610/locations/us/repositories/gcr.io/"
-            f"packages/sapphire-alpha-dashboard/versions/{digest}"
-        )
-        if (
-            not isinstance(digest, str)
-            or not digest.startswith("sha256:")
-            or HEX64.fullmatch(digest.removeprefix("sha256:")) is None
-            or image["artifactRegistryPackage"] != expected_package
-            or not isinstance(timing, Mapping)
-            or set(timing) != {"startTime", "endTime"}
-            or not all(isinstance(value, str) and value for value in timing.values())
-        ):
-            raise ContractViolation("build output image mismatch")
-        names.add(str(image["name"]))
-        digests.add(digest)
+    image = images[0]
+    if not isinstance(image, Mapping) or set(image) != {
+        "artifactRegistryPackage",
+        "digest",
+        "name",
+        "pushTiming",
+    }:
+        raise ContractViolation("build output image mismatch")
+    digest = image["digest"]
+    timing = image["pushTiming"]
+    expected_package = (
+        "projects/sapphire-479610/locations/us/repositories/gcr.io/"
+        f"packages/sapphire-alpha-dashboard/versions/{digest}"
+    )
     if (
-        names != {IMAGE_REPOSITORY, f"{IMAGE_REPOSITORY}:{build_id}"}
-        or len(digests) != 1
+        not isinstance(digest, str)
+        or not digest.startswith("sha256:")
+        or HEX64.fullmatch(digest.removeprefix("sha256:")) is None
+        or image["name"] != f"{IMAGE_REPOSITORY}:{build_id}"
+        or image["artifactRegistryPackage"] != expected_package
+        or not isinstance(timing, Mapping)
+        or set(timing) != {"startTime", "endTime"}
+        or not all(isinstance(value, str) and value for value in timing.values())
     ):
         raise ContractViolation("build output image mismatch")
-    digest = digests.pop()
     return f"{IMAGE_REPOSITORY}@{digest}"
 
 

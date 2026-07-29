@@ -265,15 +265,6 @@ def _build_record(descriptor: dict, descriptor_sha: str) -> dict:
             "images": [
                 {
                     "digest": "sha256:" + "9" * 64,
-                    "name": guard.IMAGE_REPOSITORY,
-                    "artifactRegistryPackage": (
-                        "projects/sapphire-479610/locations/us/repositories/gcr.io/"
-                        "packages/sapphire-alpha-dashboard/versions/sha256:" + "9" * 64
-                    ),
-                    "pushTiming": {"startTime": "start", "endTime": "end"},
-                },
-                {
-                    "digest": "sha256:" + "9" * 64,
                     "name": f"{guard.IMAGE_REPOSITORY}:build-123",
                     "artifactRegistryPackage": (
                         "projects/sapphire-479610/locations/us/repositories/gcr.io/"
@@ -458,13 +449,106 @@ def test_release_build_must_be_terminal_success(status):
         )
 
 
-def test_build_results_require_one_digest_across_package_and_exact_build_tag():
+def test_build_results_require_exact_provider_single_image_record():
     descriptor = _descriptor()
     build = _build_record(descriptor, "1" * 64)
-    immutable = guard.immutable_image(build, "build-123")
-    assert immutable.endswith("sha256:" + "9" * 64)
 
-    build["results"]["images"][1]["digest"] = "sha256:" + "8" * 64
+    immutable = guard.immutable_image(build, "build-123")
+
+    assert immutable == f"{guard.IMAGE_REPOSITORY}@sha256:" + "9" * 64
+
+
+def test_successful_build_record_accepts_provider_single_image_record():
+    descriptor = _descriptor()
+    descriptor_sha = guard.sha256_bytes(guard.canonical(descriptor))
+    build = _build_record(descriptor, descriptor_sha)
+
+    result = guard.verify_build_record(
+        descriptor,
+        descriptor_sha,
+        "build-123",
+        run=_runner(build=build),
+        require_success=True,
+    )
+
+    assert result["ok"] is True
+
+
+def test_r2_provider_single_image_result_regression():
+    build_id = "a12d5f93-cc3e-4af7-a532-3459b0839947"
+    digest = "sha256:b91e2beecdd3c0183c1dd47e44c2e48547fa91f0d3cc7bd70d2ab4ab4bc73bc4"
+    build = {
+        "results": {
+            "images": [
+                {
+                    "artifactRegistryPackage": (
+                        "projects/sapphire-479610/locations/us/repositories/gcr.io/"
+                        f"packages/sapphire-alpha-dashboard/versions/{digest}"
+                    ),
+                    "digest": digest,
+                    "name": f"{guard.IMAGE_REPOSITORY}:{build_id}",
+                    "pushTiming": {
+                        "startTime": "2026-07-29T19:49:25.324038751Z",
+                        "endTime": "2026-07-29T19:49:26.218924311Z",
+                    },
+                }
+            ]
+        }
+    }
+
+    assert guard.immutable_image(build, build_id) == (
+        f"{guard.IMAGE_REPOSITORY}@{digest}"
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "zero",
+        "duplicate",
+        "legacy_untagged_alias",
+        "untagged",
+        "wrong_tag",
+        "invalid_digest",
+        "package_mismatch",
+        "missing_field",
+        "extra_field",
+        "missing_timing",
+        "extra_timing",
+        "empty_timing",
+    ],
+)
+def test_build_results_reject_noncanonical_image_records(mutation):
+    descriptor = _descriptor()
+    build = _build_record(descriptor, "1" * 64)
+    image = build["results"]["images"][0]
+    if mutation == "zero":
+        build["results"]["images"] = []
+    elif mutation == "duplicate":
+        build["results"]["images"].append(copy.deepcopy(image))
+    elif mutation == "legacy_untagged_alias":
+        alias = copy.deepcopy(image)
+        alias["name"] = guard.IMAGE_REPOSITORY
+        build["results"]["images"].insert(0, alias)
+    elif mutation == "untagged":
+        image["name"] = guard.IMAGE_REPOSITORY
+    elif mutation == "wrong_tag":
+        image["name"] = f"{guard.IMAGE_REPOSITORY}:other-build"
+    elif mutation == "invalid_digest":
+        image["digest"] = "sha256:not-a-digest"
+    elif mutation == "package_mismatch":
+        image["artifactRegistryPackage"] += "-other"
+    elif mutation == "missing_field":
+        image.pop("artifactRegistryPackage")
+    elif mutation == "extra_field":
+        image["media"] = "unexpected"
+    elif mutation == "missing_timing":
+        image["pushTiming"].pop("endTime")
+    elif mutation == "extra_timing":
+        image["pushTiming"]["duration"] = "1s"
+    elif mutation == "empty_timing":
+        image["pushTiming"]["endTime"] = ""
+
     with pytest.raises(guard.ContractViolation, match="build output image mismatch"):
         guard.immutable_image(build, "build-123")
 
