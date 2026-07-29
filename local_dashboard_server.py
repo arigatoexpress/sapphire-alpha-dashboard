@@ -2,10 +2,10 @@
 """Local offline fallback for the Sapphire Alpha dashboard.
 
 Serves the built frontend assets from `frontend/dist` and mirrors the public
-`/api/v1/live` endpoint by running the local telemetry collector directly.
+`/api/v1/live` endpoint from one separately persisted, admitted snapshot.
 
-No cloud credentials, secrets, or network push are required. The demo works
-entirely on the Mac using the same collector that normally feeds Cloud Run.
+No cloud credentials, secrets, network push, or request-time collection are
+required. Missing or unverifiable persisted evidence stays offline.
 
 Usage:
     python local_dashboard_server.py --port 8080
@@ -29,32 +29,80 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from live_telemetry import validate_snapshot  # type: ignore[import]
-from main import _build_identity as _runtime_build_identity  # type: ignore[import]
-from telemetry.collector import build_snapshot, configured_latencies, Sources  # type: ignore[import]
+from live_telemetry import (  # type: ignore[import]  # noqa: E402
+    DEFAULT_STALE_AFTER_SECONDS,
+    _age_runtime_projection,
+    _empty_snapshot,
+    validate_snapshot,
+)
+from main import (  # type: ignore[import]  # noqa: E402
+    _MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES,
+    _UnverifiablePersistedDocument,
+    _build_identity as _runtime_build_identity,
+    _read_admitted_json_object,
+    _readiness_snapshot as _runtime_readiness,
+)
 
 
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 DEFAULT_PORT = 8080
+DEFAULT_LOCAL_TELEMETRY_SNAPSHOT = (
+    Path.home() / "ops-state" / "sapphire-observations" / "live-snapshot.json"
+)
 
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _build_live_snapshot() -> dict[str, Any]:
-    """Run the local collector and return a public-safe projection."""
-    raw = build_snapshot(Sources.defaults(), link_latencies=configured_latencies())
-    # The general live contract has one already-public view. The old
-    # ``public_projection`` redaction tier was deliberately deleted; keeping
-    # that stale import made the documented offline fallback crash at startup.
-    projected = validate_snapshot(raw)
-    now = time.time()
-    observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
+def _local_snapshot_path() -> Path:
+    configured = os.getenv("SAPPHIRE_LOCAL_TELEMETRY_SNAPSHOT", "").strip()
+    return Path(configured) if configured else DEFAULT_LOCAL_TELEMETRY_SNAPSHOT
+
+
+def _offline_live_snapshot(*, now: float) -> dict[str, Any]:
+    projected = _empty_snapshot(status="offline")
+    projected["served_at"] = datetime.fromtimestamp(now, UTC).isoformat()
+    return projected
+
+
+def _build_live_snapshot(
+    *,
+    snapshot_path: Path | None = None,
+    now: float | None = None,
+) -> dict[str, Any]:
+    """Load, age, and project one admitted persisted local snapshot."""
+    now = time.time() if now is None else now
+    source = snapshot_path or _local_snapshot_path()
+    try:
+        admitted = _read_admitted_json_object(
+            source,
+            max_bytes=_MAX_LOCAL_TELEMETRY_DOCUMENT_BYTES,
+        )
+    except _UnverifiablePersistedDocument:
+        return _offline_live_snapshot(now=now)
+    if admitted is None:
+        return _offline_live_snapshot(now=now)
+    raw, _source_identity = admitted
+    try:
+        projected = validate_snapshot(raw)
+        observed = datetime.fromisoformat(projected["observed_at"]).timestamp()
+    except (RecursionError, TypeError, ValueError):
+        return _offline_live_snapshot(now=now)
+    if observed > now:
+        return _offline_live_snapshot(now=now)
     freshness_s = round(max(0.0, now - observed), 1)
+    _age_runtime_projection(
+        projected,
+        now=now,
+        snapshot_observed_at=observed,
+        stale_after_seconds=DEFAULT_STALE_AFTER_SECONDS,
+    )
     projected.update(
         {
-            "status": "live" if freshness_s <= 180 else "stale",
+            "status": (
+                "live" if freshness_s <= DEFAULT_STALE_AFTER_SECONDS else "stale"
+            ),
             "freshness_s": freshness_s,
             "served_at": datetime.fromtimestamp(now, UTC).isoformat(),
             "received_at": projected["observed_at"],
@@ -67,6 +115,7 @@ def _empty_moss_snapshot() -> dict[str, Any]:
     return {
         "version": 1,
         "status": "offline",
+        "observed_at": None,
         "freshness_s": None,
         "served_at": _utc_now(),
         "public_view": True,
@@ -83,8 +132,8 @@ def _empty_moss_snapshot() -> dict[str, Any]:
 def _empty_fleet_counts() -> dict[str, Any]:
     return {
         "public_view": True,
-        "leases": 0,
-        "gates_open": 0,
+        "leases": None,
+        "gates_open": None,
         "snapshot_age_s": None,
     }
 
@@ -94,37 +143,33 @@ def _empty_widgets() -> dict[str, Any]:
     rendered_at = _utc_now()
     return {
         "gate": {
-            "state": "killswitch",
-            "label": "Local fallback stopped",
-            "armed": False,
-            "killswitch": True,
-            "mode": "offline",
-            "executor_alive": False,
-            "updated_at": rendered_at,
+            "state": "unavailable",
+            "label": "Pause state unavailable",
+            "armed": None,
+            "killswitch": None,
+            "pause_state": "unknown",
+            "mode": "unavailable",
+            "executor_alive": None,
+            "updated_at": None,
         },
         "wallet": {"disclosure": "withheld"},
-        "telegram_queue": {
-            "pending": None,
-            "gate": "telegram",
-            "status": "not_observed",
-            "recent_count": None,
-            "proposals": [],
-        },
         "recent_signals": [],
         "research": {
             "clips": [],
             "live": False,
             "policy": {
-                "research_role": "evidence_not_authority",
+                "research_role": "unverified_advisory_input",
                 "single_input_cap": 0.25,
-                "minimum_independent_checks": 2,
+                "minimum_distinct_inputs": 4,
+                "review_status": "unverified",
+                "primary_source_provenance": "not_attested",
                 "can_set_conviction": False,
                 "can_authorize_execution": False,
             },
         },
         "tradingview": {
             "status": "not_observed",
-            "last_ping": "",
+            "last_ping": None,
             "pending_alerts": None,
         },
         "business_health": {
@@ -139,8 +184,7 @@ def _empty_widgets() -> dict[str, Any]:
         },
         "system_health": {
             "dashboard": "ok",
-            "gate": "killswitch",
-            "telegram": "not_observed",
+            "gate": "unavailable",
             "tradingview": "not_observed",
             "timestamp": rendered_at,
         },
@@ -198,6 +242,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_json(200, _runtime_build_identity(), cache_control="no-store")
             return
 
+        if self.path == "/api/v1/readiness":
+            self._send_json(200, _runtime_readiness(), cache_control="no-store")
+            return
+
         if self.path == "/api/v1/live":
             try:
                 self._send_json(200, _build_live_snapshot())
@@ -231,13 +279,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Local Sapphire Alpha dashboard fallback")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="port to listen on")
+    parser = argparse.ArgumentParser(
+        description="Local Sapphire Alpha dashboard fallback"
+    )
+    parser.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help="port to listen on"
+    )
     parser.add_argument("--host", default="127.0.0.1", help="interface to bind")
     args = parser.parse_args()
 
     if not FRONTEND_DIST.is_dir():
-        print(f"frontend/dist not found at {FRONTEND_DIST}; run 'npm run build' first", file=sys.stderr)
+        print(
+            f"frontend/dist not found at {FRONTEND_DIST}; run 'npm run build' first",
+            file=sys.stderr,
+        )
         return 1
 
     server = HTTPServer((args.host, args.port), DashboardHandler)

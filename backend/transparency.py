@@ -1,10 +1,10 @@
-"""Transparency pane — projections over the trade-rail explanation ledger.
+"""Transparency pane — projections over a persisted explanation ledger.
 
-The Telegram rail's FREE-REIGN mode (telegram-bot/explain.py) appends one
-structured record per auto-decision to ``explanations.jsonl``: signal source
-and features, strategy track, deskos walk-forward verification stats, a
-plain-English thesis, the risk bounds applied, and (as later lines, never
-rewrites) post-trade outcome attribution.
+An admitted producer may append one structured record per observed decision to
+``explanations.jsonl``: signal features, strategy track, walk-forward
+verification stats, a plain-English thesis, risk bounds, and (as later lines,
+never rewrites) outcome attribution.  This module is history only; it has no
+approval, callback, polling, or execution semantics.
 
 This module is read-only over that ledger and serves two projections,
 mirroring the live-telemetry operator/public split:

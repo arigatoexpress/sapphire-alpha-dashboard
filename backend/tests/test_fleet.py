@@ -122,7 +122,11 @@ def test_fleet_staleness_reflects_old_snapshot(fleet_file):
     fleet_file.write_text(json.dumps(_snapshot(generated_at=old)), encoding="utf-8")
     r = client.get("/api/fleet", auth=AUTH)
     assert r.status_code == 200
-    assert r.json()["snapshot_age_s"] >= 3500
+    data = r.json()
+    assert data["snapshot_age_s"] >= 3500
+    assert data["leases"] == []
+    assert data["gates"] == []
+    assert data["counts"] == {"leases": None, "gates_open": None}
 
 
 # --- defense in depth: never trust the file --------------------------------------

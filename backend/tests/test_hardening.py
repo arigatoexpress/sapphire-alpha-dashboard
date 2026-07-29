@@ -3,7 +3,7 @@
 Fills gaps left by test_smoke / test_public_mode / test_widgets:
   - AUTH_PASSWORD_SECRET file loading (happy path, precedence, whitespace,
     missing file, policy still enforced on file contents)
-  - DASHBOARD_FORCE_KILLSWITCH / DASHBOARD_ARMED gate overrides
+  - persisted, tri-state pause and gate observations
   - full security-header set, including on 401/404/403 error responses
   - raw path-traversal middleware ('..' path segments -> 403)
   - /api/health and /healthz response shape
@@ -122,58 +122,52 @@ def test_password_secret_empty_file_rejected(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Killswitch / armed gate overrides
+# Persisted pause / gate truth
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def gate_env(monkeypatch):
-    """Pin every gate input via env so local state files cannot leak in."""
-    monkeypatch.setenv("DASHBOARD_ARMED", "0")
-    monkeypatch.setenv("DASHBOARD_FORCE_KILLSWITCH", "0")
-    monkeypatch.setenv("DASHBOARD_MODE", "telegram")
-    return monkeypatch
+def gate_env(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path / "rh-chain")
+    monkeypatch.setattr(
+        main,
+        "_PAUSE_SENTINELS",
+        {
+            "mac": tmp_path / "mac-pause",
+            "rh_chain": tmp_path / "rh-chain-pause",
+        },
+    )
+    return monkeypatch, tmp_path
 
 
-def test_force_killswitch_engages(gate_env):
-    gate_env.setenv("DASHBOARD_FORCE_KILLSWITCH", "1")
+def test_missing_pause_sources_are_unavailable(gate_env):
     gate = main._gate_status()
-    assert gate["state"] == "killswitch"
-    assert gate["killswitch"] is True
-    assert gate["label"] == "Killswitch engaged"
-
-
-def test_killswitch_overrides_armed(gate_env):
-    gate_env.setenv("DASHBOARD_ARMED", "1")
-    gate_env.setenv("DASHBOARD_FORCE_KILLSWITCH", "1")
-    gate = main._gate_status()
-    assert gate["state"] == "killswitch"
-    assert gate["armed"] is True  # armed flag preserved, state still killswitch
-
-
-def test_armed_without_killswitch(gate_env):
-    gate_env.setenv("DASHBOARD_ARMED", "1")
-    gate = main._gate_status()
-    assert gate["state"] == "armed"
-    assert gate["killswitch"] is False
-
-
-def test_disarmed_default(gate_env):
-    gate = main._gate_status()
-    assert gate["state"] == "disarmed"
-    assert gate["armed"] is False
-    assert gate["killswitch"] is False
+    assert gate["state"] == "unavailable"
+    assert gate["armed"] is None
+    assert gate["killswitch"] is None
 
 
 def test_killswitch_visible_in_public_view(gate_env):
     """Anonymous viewers must still see the killswitch state (safety signal)."""
-    gate_env.setenv("PUBLIC_READ_ONLY", "1")
-    gate_env.setenv("DASHBOARD_FORCE_KILLSWITCH", "1")
+    monkeypatch, tmp_path = gate_env
+    (tmp_path / "mac-pause").write_text(
+        '{"created_at":"2026-07-28T00:00:00Z"}',
+        encoding="utf-8",
+    )
+    (tmp_path / "rh-chain-pause").write_text(
+        json.dumps(
+            {
+                "state": "clear",
+                "observed_at": datetime.now().astimezone().isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
     r = client.get("/api/v1/status")
     assert r.status_code == 200
     data = r.json()
     assert data["public_view"] is True
-    assert data["gate"]["state"] == "killswitch"
+    assert data["gate"]["state"] == "paused"
     assert data["gate"]["killswitch"] is True
     # But operator-only gate fields stay dropped.
     assert "cap_usd" not in data["gate"]
@@ -181,9 +175,9 @@ def test_killswitch_visible_in_public_view(gate_env):
 
 
 def test_full_wallet_address_never_in_public_payload(gate_env):
-    gate_env.setenv("PUBLIC_READ_ONLY", "1")
+    monkeypatch, _tmp_path = gate_env
     full_addr = "0x1234567890abcdef1234567890abcdef12345678"
-    gate_env.setenv("WALLET_ADDRESS", full_addr)
+    monkeypatch.setenv("WALLET_ADDRESS", full_addr)
     for path in ("/api/v1/status", "/api/v1/widgets"):
         r = client.get(path)
         assert r.status_code == 200

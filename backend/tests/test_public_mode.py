@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,24 +32,28 @@ FORBIDDEN_SUBSTRINGS = [
 
 @pytest.fixture
 def public_mode(monkeypatch, tmp_path):
+    observed_at = datetime.now(UTC).isoformat()
     # Reset the TV probe cache so the fixture's URL never leaks into other tests.
     monkeypatch.setattr(main, "_tv_probe_cache", {"ts": 0.0, "result": None})
-    # A Cloud Run instance does not have the operator's local telegram queue.
-    monkeypatch.setattr(main, "_TELEGRAM_DIR", tmp_path / "telegram-bot")
+    rh = tmp_path / "rh-chain"
+    rh.mkdir()
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", rh)
+    monkeypatch.setattr(
+        main,
+        "_PAUSE_SENTINELS",
+        {
+            "mac": tmp_path / "missing-mac",
+            "rh_chain": tmp_path / "missing-rh-chain",
+        },
+    )
     monkeypatch.setenv("PUBLIC_READ_ONLY", "1")
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
-    monkeypatch.setenv(
-        "WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678"
-    )
+    monkeypatch.setenv("WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678")
     # Realistic-looking sensitive state that sanitization must strip.
-    monkeypatch.setenv(
-        "TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090"
-    )
-    monkeypatch.setenv(
-        "DASHBOARD_SKIN_BOOK",
+    monkeypatch.setenv("TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090")
+    (rh / "skin-book.json").write_text(
         json.dumps(
             {
-                "updated": 1783914740,
+                "observed_at": observed_at,
                 "deployed_usd": 123.45,
                 "n_open": 2,
                 "skin_in_game": True,
@@ -57,12 +62,21 @@ def public_mode(monkeypatch, tmp_path):
                 "limits": {"per_order_cap_pct": 5, "max_daily_usd": 100},
             }
         ),
+        encoding="utf-8",
     )
-    monkeypatch.setenv(
-        "DASHBOARD_SIGNALS_JSON",
+    (rh / "signals.json").write_text(
         json.dumps(
-            [{"instrument": "BTC", "side": "BUY", "venue": "on_chain", "confidence": "high"}]
+            [
+                {
+                    "instrument": "BTC",
+                    "side": "BUY",
+                    "venue": "on_chain",
+                    "confidence": "high",
+                    "timestamp": observed_at,
+                }
+            ]
         ),
+        encoding="utf-8",
     )
     monkeypatch.setenv(
         "DASHBOARD_RESEARCH_CLIPS_JSON",
@@ -73,24 +87,28 @@ def public_mode(monkeypatch, tmp_path):
                     "title": "Cycle evidence",
                     "source": "benjamin_cowen",
                     "path": "/Users/aribs/Knowledge/cycle.md",
+                    "observed_at": observed_at,
                 },
                 {
                     "id": "liquidity-1",
                     "title": "Liquidity countercase",
                     "source": "arthur_hayes",
                     "path": "/Users/aribs/Knowledge/liquidity.md",
+                    "observed_at": observed_at,
                 },
                 {
                     "id": "structure-1",
                     "title": "Crypto structure",
                     "source": "bankless",
                     "path": "/Users/aribs/Knowledge/structure.md",
+                    "observed_at": observed_at,
                 },
                 {
                     "id": "compute-1",
                     "title": "AI frontier",
                     "source": "limitless",
                     "path": "/Users/aribs/Knowledge/compute.md",
+                    "observed_at": observed_at,
                 },
             ]
         ),
@@ -118,34 +136,34 @@ def test_anonymous_widgets_sanitized(public_mode):
     body = json.dumps(data)
 
     for needle in FORBIDDEN_SUBSTRINGS:
-        assert needle not in body, f"forbidden string {needle!r} leaked into public payload"
+        assert needle not in body, (
+            f"forbidden string {needle!r} leaked into public payload"
+        )
 
     assert data["public_view"] is True
     # Gate: state booleans kept, caps/wallet dropped.
-    assert data["gate"]["state"] in {"killswitch", "armed", "disarmed"}
+    assert data["gate"]["state"] == "unavailable"
+    assert data["gate"]["killswitch"] is None
     assert "cap_usd" not in data["gate"]
     assert "wallet_address" not in data["gate"]
     # Wallet: no identifier, capital, position count, or inferred funding state.
     assert data["wallet"] == {"disclosure": "withheld"}
-    # Telegram: an absent Cloud Run-local file is unknown, not an observed zero,
-    # and an environment flag alone is not proof that polling is alive.
-    assert data["telegram_queue"]["pending"] is None
-    assert data["telegram_queue"]["recent_count"] is None
-    assert data["telegram_queue"]["status"] == "not_observed"
-    assert data["telegram_queue"]["proposals"] == []
+    assert "telegram_queue" not in data
     # Signals: symbol/side/time only — no confidence/venue (strategy internals).
     for sig in data["recent_signals"]:
         assert set(sig) == {"id", "instrument", "side", "timestamp"}
     # Research clips: titles may be public, but source identities and the
     # operator's named thesis/analyst policy are private.
     for clip in data["research"]["clips"]:
-        assert set(clip) == {"id", "title", "observed_at"}
+        assert set(clip) == {"id", "title", "observed_at", "age_s"}
     assert data["research"]["clips"][0]["title"] == "Cycle evidence"
     assert "sources_observed" not in data["research"]
     assert data["research"]["policy"] == {
-        "research_role": "evidence_not_authority",
+        "research_role": "unverified_advisory_input",
         "single_input_cap": 0.25,
-        "minimum_independent_checks": 2,
+        "minimum_distinct_inputs": 4,
+        "review_status": "unverified",
+        "primary_source_provenance": "not_attested",
         "can_set_conviction": False,
         "can_authorize_execution": False,
     }
@@ -164,7 +182,9 @@ def test_anonymous_widgets_sanitized(public_mode):
         "Michael Nadeau",
         "0x1234",
     ):
-        assert needle not in body, f"private identity {needle!r} leaked into public payload"
+        assert needle not in body, (
+            f"private identity {needle!r} leaked into public payload"
+        )
     # TradingView: no endpoint URL, no log tail.
     assert "endpoint" not in data["tradingview"]
     assert "recent_log" not in data["tradingview"]
@@ -193,7 +213,7 @@ def test_authed_widgets_full_payload(public_mode):
     assert "public_view" not in data
     assert data["wallet"]["deployed_usd"] == 123.45
     assert data["wallet"]["limits"] == {"per_order_cap_pct": 5, "max_daily_usd": 100}
-    assert data["gate"]["cap_usd"] == 25
+    assert data["gate"]["cap_usd"] is None
     assert "endpoint" in data["tradingview"]
     assert data["recent_signals"][0]["confidence"] == "high"
     assert data["recent_signals"][0]["venue"] == "on_chain"

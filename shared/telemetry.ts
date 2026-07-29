@@ -58,10 +58,10 @@ export type ProviderClass =
 export type MarketStatus = 'current' | 'delayed' | 'stale' | 'offline'
 
 /** `_GATES` */
-export type DecisionGate = 'telegram' | 'manual' | 'off'
+export type DecisionGate = 'manual' | 'off' | 'unknown'
 
 /** `_EXECUTION` */
-export type Execution = 'off' | 'paper' | 'gated'
+export type Execution = 'off' | 'paper' | 'gated' | 'halted' | 'unknown'
 
 /** `_EVENT_STATES` */
 export type EventStatus = 'observed' | 'verified' | 'pending' | 'degraded' | 'failed' | 'recovered'
@@ -285,7 +285,7 @@ export interface LiveDesk {
   /** Minimal technical execution floor; historical simulation is not authority. */
   safety_floor: {
     gate_valid: boolean
-    pause_clear: boolean
+    pause_clear: boolean | null
     ledger: 'reconciled' | 'unknown'
     bounded_policy: boolean
   }

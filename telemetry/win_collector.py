@@ -1,6 +1,6 @@
 r"""Windows workhorse telemetry publisher for Sapphire Alpha Dashboard.
 
-Collects agent-worker heartbeat, telegram-bot status, Ollama ps, and GPU status
+Collects agent-worker heartbeat, Ollama ps, GPU status, and persisted desk state
 from a Windows node and pushes a schema-v1 signed telemetry snapshot to:
     https://sapphirealpha.xyz/api/v1/telemetry
 
@@ -8,7 +8,7 @@ Environment:
     TELEMETRY_INGEST_SECRET          required for --push
     SAPPHIRE_TELEMETRY_ENDPOINT      defaults to https://sapphirealpha.xyz/api/v1/telemetry
     AGENT_WORKER_DIR                 defaults to %USERPROFILE%\agent-worker
-    TELEGRAM_BOT_DIR                 defaults to %USERPROFILE%\telegram-bot
+    DESK_STATE_DIR                   defaults to %USERPROFILE%\.sapphire\desk
     OLLAMA_URL                       defaults to http://127.0.0.1:11434
 
 Run on Windows (one-shot):
@@ -148,14 +148,14 @@ def _unknown_desk() -> dict[str, Any]:
             "new_entries": "waiting", "reason": "not observed",
         },
         "safety_floor": {
-            "gate_valid": False, "pause_clear": False,
+            "gate_valid": False, "pause_clear": None,
             "ledger": "unknown", "bounded_policy": False,
         },
     }
 
 
 def _desk_projection(path: Path) -> dict[str, Any]:
-    """Read only the bounded public contract emitted by the Telegram desk."""
+    """Read only a bounded persisted desk observation."""
     value = _read_json(path)
     try:
         required = {
@@ -228,7 +228,10 @@ def _desk_projection(path: Path) -> dict[str, Any]:
                         "gate_valid", "pause_clear", "ledger", "bounded_policy",
                     }
                     or not isinstance(safety_floor.get("gate_valid"), bool)
-                    or not isinstance(safety_floor.get("pause_clear"), bool)
+                    or (
+                        safety_floor.get("pause_clear") is not None
+                        and not isinstance(safety_floor.get("pause_clear"), bool)
+                    )
                     or safety_floor.get("ledger") not in {"reconciled", "unknown"}
                     or not isinstance(safety_floor.get("bounded_policy"), bool)
                 )
@@ -532,83 +535,6 @@ def _desk_projection(path: Path) -> dict[str, Any]:
     return result
 
 
-def _parse_bot_log_tail(path: Path) -> dict[str, Any]:
-    """Parse the last 'alive' line from telegram-bot/bot.log."""
-    out: dict[str, Any] = {"seen": False}
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return out
-    for line in reversed(lines):
-        if "alive" not in line:
-            continue
-        # Expected: 2026-07-22 19:30:05 alive pid=12252 offset=... pending=1 armed=halted
-        m = re.search(
-            r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+alive\s+pid=(\d+)\s+offset=(\d+)\s+pending=(\d+)\s+armed=(\w+)",
-            line,
-        )
-        if not m:
-            continue
-        try:
-            # bot.log timestamps are written in Windows local time.
-            out["seen"] = True
-            out["ts"] = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
-            out["pid"] = int(m.group(2))
-            out["offset"] = int(m.group(3))
-            out["pending"] = int(m.group(4))
-            out["armed"] = m.group(5)
-            return out
-        except (ValueError, OSError):
-            continue
-    return out
-
-
-def _telegram_handoff_rate_per_min(
-    agent_worker_dir: Path,
-    *,
-    now: float,
-    window_s: float = MEASUREMENT_WINDOW_SECONDS,
-) -> float | None:
-    """Telegram-authored worker tasks created per minute.
-
-    ``desk.enqueue_dev`` writes a durable queue file carrying this marker before
-    the bot may claim that work was dispatched. The worker later moves that same
-    file from ``queue`` to ``done`` without changing its creation mtime, so the
-    two directories together are an append-only view of actual handoffs.
-
-    The previous implementation counted every timestamped ``bot.log`` line.
-    Periodic ``alive`` heartbeats therefore rendered as Telegram -> worker task
-    traffic even when no task crossed that edge.
-    """
-    if window_s <= 0:
-        return None
-    floor = now - window_s
-    observed = 0
-    marker = b"(queued from Telegram by Ari)"
-    for directory in (agent_worker_dir / "queue", agent_worker_dir / "done"):
-        try:
-            entries = list(directory.iterdir())
-        except OSError:
-            # A task may be waiting in queue or may already have moved to done.
-            # Seeing only one side is an incomplete window, not a measured zero.
-            return None
-        for entry in entries:
-            try:
-                modified = entry.stat().st_mtime
-                if not (floor <= modified <= now) or not entry.is_file():
-                    continue
-                size = entry.stat().st_size
-                with entry.open("rb") as handle:
-                    if size > 1024:
-                        handle.seek(size - 1024)
-                    tail = handle.read()
-            except OSError:
-                continue
-            if marker in tail:
-                observed += 1
-    return round(observed / (window_s / 60.0), 3)
-
-
 def _directory_rate_per_min(
     path: Path,
     *,
@@ -726,8 +652,22 @@ def _disk_free_gb(path: str = "C:\\") -> float | None:
         return None
 
 
-def _pause_present(home: Path) -> bool:
-    return (home / ".sapphire" / "autonomous_trading_pause").exists()
+def _pause_observation(home: Path) -> tuple[str, str | None]:
+    """Read the durable pause sentinel; absence is not evidence of clear."""
+    path = home / ".sapphire" / "autonomous_trading_pause"
+    if not path.exists():
+        return "unknown", None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return "unknown", None
+        observed = raw.get("observed_at") or raw.get("created_at")
+        if not isinstance(observed, str) or not observed:
+            observed = datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
+        datetime.fromisoformat(observed.replace("Z", "+00:00"))
+        return "active", observed
+    except (OSError, ValueError, json.JSONDecodeError):
+        return "unknown", None
 
 
 def _agent_id(label: str, index: int) -> str:
@@ -752,7 +692,7 @@ def build_snapshot(
     home: Path,
     *,
     agent_worker_dir: Path | None = None,
-    telegram_bot_dir: Path | None = None,
+    desk_state_dir: Path | None = None,
     ollama_url: str = DEFAULT_OLLAMA_URL,
     now: float | None = None,
 ) -> dict[str, Any]:
@@ -761,17 +701,20 @@ def build_snapshot(
     observed_at = _ts_iso(now)
 
     agent_worker_dir = agent_worker_dir or home / "agent-worker"
-    telegram_bot_dir = telegram_bot_dir or home / "telegram-bot"
+    desk_state_dir = desk_state_dir or home / ".sapphire" / "desk"
 
     hb = _read_json(agent_worker_dir / "heartbeat.json")
     metrics = _read_json(agent_worker_dir / "metrics.json")
-    bot = _parse_bot_log_tail(telegram_bot_dir / "bot.log")
     ps = _ollama_ps(ollama_url)
     tags = _ollama_tags(ollama_url)
     gpu = _nvidia_smi()
     disk_free = _disk_free_gb()
-    pause_on = _pause_present(home)
-    desk = _desk_projection(telegram_bot_dir / "desk-summary.json")
+    pause_state, pause_observed_at = _pause_observation(home)
+    desk = _desk_projection(desk_state_dir / "desk-summary.json")
+    desk.setdefault("safety_floor", _unknown_desk()["safety_floor"])
+    desk["safety_floor"]["pause_clear"] = (
+        False if pause_state == "active" else None
+    )
 
     # Heartbeat freshness
     hb_ts = hb.get("ts") or metrics.get("last_sweep")
@@ -785,14 +728,6 @@ def build_snapshot(
         hb_age_s = 86_400.0
     hb_age_s = max(0.0, hb_age_s)
     hb_state = str(hb.get("state") or "unknown").lower()
-
-    # Bot freshness
-    bot_timestamp = _nonnegative_number(bot.get("ts"))
-    bot_age_s = (
-        max(0.0, now - bot_timestamp)
-        if bot.get("seen") and bot_timestamp is not None
-        else 86_400.0
-    )
 
     # Ollama freshness
     ollama_age_s = 0.0 if ps["ok"] else 86_400.0
@@ -818,17 +753,6 @@ def build_snapshot(
         worker_status = "down"
         worker_state = "offline"
 
-    # Telegram bot health
-    if bot.get("seen") and bot_age_s <= 300:
-        bot_status = "healthy"
-        bot_state = "working"
-    elif bot.get("seen") and bot_age_s <= 900:
-        bot_status = "degraded"
-        bot_state = "idle"
-    else:
-        bot_status = "down"
-        bot_state = "offline"
-
     # Ollama inference health
     ollama_status = "healthy" if ps["ok"] else "down"
 
@@ -840,7 +764,6 @@ def build_snapshot(
     # into plausible-looking activity rates and load levels.
     loaded_models = _nonnegative_int(ps.get("loaded_count"))
     available_models = _nonnegative_int(tags.get("count"))
-    pending = _nonnegative_int(bot.get("pending"))
     tasks_total = _nonnegative_int(metrics.get("tasks"))
     pass_count = _nonnegative_int(metrics.get("pass"))
     fail_count = _nonnegative_int(metrics.get("fail"))
@@ -852,7 +775,10 @@ def build_snapshot(
     # path has no observable on this host, and none of them are filled in with a
     # stand-in. The old link block published `pending * 4`, `loaded_models * 8`,
     # `gpu_util * 1.5` and a cumulative task counter as events per minute.
-    bot_message_rate = _telegram_handoff_rate_per_min(agent_worker_dir, now=now)
+    worker_intake_rate = _directory_rate_per_min(
+        agent_worker_dir / "queue",
+        now=now,
+    )
     archive_completion_rate = _directory_rate_per_min(agent_worker_dir / "done", now=now)
     inference_latency_ms = ps.get("latency_ms")
     worker_provider = (
@@ -880,17 +806,8 @@ def build_snapshot(
             "label": "Agent worker",
             "status": worker_status,
             "load_band": "medium" if worker_state == "working" else "idle",
-            "activity_rate": bot_message_rate,
+            "activity_rate": worker_intake_rate,
             "freshness_s": round(min(hb_age_s, 86_400.0), 3),
-        },
-        {
-            "id": "telegram-bot",
-            "zone": "edge",
-            "label": "Telegram command bot",
-            "status": bot_status,
-            "load_band": "medium" if bot_state == "working" or (pending is not None and pending > 0) else "idle",
-            "activity_rate": bot_message_rate,
-            "freshness_s": round(min(bot_age_s, 86_400.0), 3),
         },
         {
             "id": "ollama-inference",
@@ -913,9 +830,6 @@ def build_snapshot(
     ]
 
     links = [
-        # Durable Telegram-authored queue files per minute. The queue handoff has
-        # no paired timestamps to difference, so there is no latency here.
-        {"source": "telegram-bot", "target": "agent-worker", "status": worker_status, "latency_ms": None, "event_rate": bot_message_rate, "signal_class": "agent"},
         # Measured round trip to the inference server. Ollama's request log is
         # empty on this host, so its request rate is genuinely unobservable.
         {"source": "agent-worker", "target": "ollama-inference", "status": ollama_status, "latency_ms": inference_latency_ms, "event_rate": None, "signal_class": "agent"},
@@ -948,22 +862,13 @@ def build_snapshot(
             index=0,
         ),
         _agent(
-            role="Telegram command bot",
-            state=bot_state,
-            activity=_count_text(pending, "pending command"),
-            verification="verified" if bot_status == "healthy" else "pending" if bot_status == "degraded" else "failed",
-            provider="local CPU",
-            updated_at=_ts_iso(now - bot_age_s) if bot.get("seen") else observed_at,
-            index=1,
-        ),
-        _agent(
             role="Ollama inference host",
             state="working" if ps["ok"] else "offline",
             activity=f"{_count_text(loaded_models, 'loaded model')} | {_count_text(available_models, 'available model')}",
             verification="verified" if ps["ok"] else "failed",
             provider="local GPU",
             updated_at=observed_at,
-            index=2,
+            index=1,
         ),
         _agent(
             role="GPU workhorse",
@@ -984,21 +889,11 @@ def build_snapshot(
             verification="verified" if gpu_healthy else "failed",
             provider="local GPU",
             updated_at=observed_at,
-            index=3,
+            index=2,
         ),
     ]
 
     events: list[dict[str, Any]] = []
-    if bot.get("seen"):
-        events.append({
-            "id": f"win-tg-{int(now)}",
-            "observed_at": _ts_iso(now - bot_age_s),
-            "event_class": "agent",
-            "source": "edge",
-            "target": "intelligence",
-            "label": "Telegram bot heartbeat observed",
-            "status": "verified" if bot_status == "healthy" else "degraded",
-        })
     if ps["ok"]:
         events.append({
             "id": f"win-ollama-{int(now)}",
@@ -1033,10 +928,10 @@ def build_snapshot(
             "label": "GPU state observed",
             "status": "verified",
         })
-    if pause_on:
+    if pause_state == "active":
         events.append({
             "id": f"win-pause-{int(now)}",
-            "observed_at": observed_at,
+            "observed_at": pause_observed_at,
             "event_class": "reliability",
             "source": "compute",
             "target": "compute",
@@ -1069,8 +964,8 @@ def build_snapshot(
             "feed_age_s": None,
             "events_per_min": None,
             "paper_strategies": None,
-            "decision_gate": "off",
-            "execution": "off",
+            "decision_gate": "unknown",
+            "execution": "unknown",
         },
         "events": events,
         "desk": desk,
@@ -1124,7 +1019,9 @@ def main() -> int:
     snapshot = build_snapshot(
         home,
         agent_worker_dir=Path(os.environ.get("AGENT_WORKER_DIR", str(home / "agent-worker"))),
-        telegram_bot_dir=Path(os.environ.get("TELEGRAM_BOT_DIR", str(home / "telegram-bot"))),
+        desk_state_dir=Path(
+            os.environ.get("DESK_STATE_DIR", str(home / ".sapphire" / "desk"))
+        ),
         ollama_url=os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA_URL),
     )
 

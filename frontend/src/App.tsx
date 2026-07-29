@@ -50,6 +50,7 @@ const SECTIONS = [
   { href: '#timeline', label: 'Changed' },
   { href: '#evidence', label: 'Evidence' },
 ]
+const RUNTIME_TTL_SECONDS = 180
 
 function words(value: string | null | undefined) {
   return value ? value.replace(/_/g, ' ') : NOT_OBSERVED
@@ -64,7 +65,11 @@ function isFleetCounts(fleet: FleetData | FleetCounts): fleet is FleetCounts {
 }
 
 function fleetCount(fleet: FleetData | FleetCounts | null, key: 'leases' | 'gates') {
-  if (!fleet) return null
+  if (
+    !fleet ||
+    fleet.snapshot_age_s == null ||
+    fleet.snapshot_age_s > RUNTIME_TTL_SECONDS
+  ) return null
   if (isFleetCounts(fleet)) return key === 'leases' ? fleet.leases : fleet.gates_open
   return key === 'leases' ? fleet.counts.leases : fleet.counts.gates_open
 }
@@ -86,19 +91,28 @@ function percent(value: number | null | undefined, digits = 0) {
   return value == null ? NOT_OBSERVED : `${(value * 100).toFixed(digits)}%`
 }
 
-export default function App() {
+export default function App(
+  { initialWidgets }: { initialWidgets?: PublicWidgets } = {},
+) {
   const build = useBuildIdentity()
   const { snapshot, error, loading } = useLiveTelemetry()
   const { snapshot: moss, error: mossError } = useMossSnapshot()
   const { fleet, error: fleetError } = useFleet()
-  const { widgets, error: widgetsError } = usePublicWidgets()
+  const { widgets: polledWidgets, error: widgetsError } = usePublicWidgets()
+  const widgets = initialWidgets ?? polledWidgets
 
-  const execution = snapshot?.desk?.execution ?? snapshot?.markets.execution ?? null
+  const execution =
+    snapshot?.status === 'live'
+      ? snapshot?.desk?.execution ?? snapshot?.markets.execution ?? null
+      : null
   const status = error ? 'unavailable' : (snapshot?.status ?? (loading ? 'warming' : 'not observed'))
   const narration = useMemo(() => (snapshot ? narrate(snapshot) : null), [snapshot])
   const gateCount = fleetCount(fleet, 'gates')
   const leaseCount = fleetCount(fleet, 'leases')
-  const epistemics = snapshot?.desk?.epistemics
+  const epistemics =
+    snapshot?.status === 'live' && snapshot.desk?.epistemics?.fresh
+      ? snapshot.desk.epistemics
+      : null
   const thesis = epistemics?.thesis
 
   const segments = useMemo(
@@ -323,13 +337,17 @@ function ThesisPulse({
   snapshot: LiveSnapshot | null
   execution: string | null
 }) {
-  const epistemics = snapshot?.desk?.epistemics
+  const runtimeCurrent = snapshot?.status === 'live'
+  const epistemics =
+    runtimeCurrent && snapshot.desk?.epistemics?.fresh
+      ? snapshot.desk.epistemics
+      : null
   const thesis = epistemics?.thesis
   const regime = epistemics?.regime
   const learning = epistemics?.learning
   const falsifier = epistemics?.falsifiers?.[0]
-  const autonomy = snapshot?.desk?.autonomy
-  const floor = snapshot?.desk?.safety_floor
+  const autonomy = runtimeCurrent ? snapshot.desk?.autonomy : null
+  const floor = runtimeCurrent ? snapshot.desk?.safety_floor : null
   const floorChecks = floor
     ? [floor.gate_valid, floor.pause_clear, floor.ledger === 'reconciled', floor.bounded_policy]
     : []
@@ -563,7 +581,7 @@ function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
     <details>
       <summary>
         <span>Research record</span>
-        <strong>{clips.length ? `${clips.length} reviewed` : NOT_OBSERVED}</strong>
+        <strong>{clips.length ? `${clips.length} unverified` : NOT_OBSERVED}</strong>
       </summary>
       <div className="disclosure-body">
         {clips.length ? (
@@ -576,12 +594,14 @@ function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
             ))}
           </ol>
         ) : (
-          <p>No reviewed evidence has been published in this observation.</p>
+          <p>No analyst input has been published in this observation.</p>
         )}
         <p className="disclosure-note">
-          Minimum checks: {formatCount(widgets?.research.policy.minimum_independent_checks)} ·
+          Unverified advisory input · distinct-input floor:{' '}
+          {formatCount(widgets?.research.policy.minimum_distinct_inputs)} ·
           single-input cap:{' '}
-          {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}
+          {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}{' '}
+          · review status: {widgets ? words(widgets.research.policy.review_status) : NOT_OBSERVED}
         </p>
       </div>
     </details>
@@ -690,14 +710,28 @@ export function buildEvidenceSegments({
 }): EvidenceSegment[] {
   const observed = observedTime(snapshot?.observed_at)
   const freshness = formatAge(snapshot?.freshness_s)
-  const marketFreshness = formatAge(snapshot?.markets.feed_age_s)
+  const parentCurrent = snapshot?.status === 'live'
+  const marketFreshness = formatAge(
+    parentCurrent ? snapshot?.markets.feed_age_s : snapshot?.freshness_s,
+  )
+  const nestedUnavailable = snapshot?.status === 'stale' ? 'stale' : NOT_OBSERVED
   const liveTone = (value: string | null | undefined) =>
     errors.live ? 'degraded' as const : toneForValue(value)
   const fleetObservedAt =
     fleet && !isFleetCounts(fleet) ? observedTime(fleet.generated_at) : NOT_OBSERVED
   const fleetFreshness = formatAge(fleet?.snapshot_age_s)
+  const fleetCurrent =
+    fleet?.snapshot_age_s != null && fleet.snapshot_age_s <= RUNTIME_TTL_SECONDS
   const leaseCount = fleetCount(fleet, 'leases')
   const gateCount = fleetCount(fleet, 'gates')
+  const researchObservedAt = widgets?.research.clips
+    .map((clip) => clip.observed_at)
+    .filter((value) => !Number.isNaN(Date.parse(value)))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0]
+  const researchAge = widgets?.research.clips
+    .map((clip) => clip.age_s)
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right)[0]
 
   return [
     {
@@ -720,7 +754,7 @@ export function buildEvidenceSegments({
     {
       id: 'market',
       label: 'Market feed',
-      value: snapshot?.markets.status ?? NOT_OBSERVED,
+      value: parentCurrent ? snapshot?.markets.status ?? NOT_OBSERVED : nestedUnavailable,
       source: '/api/v1/live · markets',
       observedAt: observed,
       freshness: marketFreshness,
@@ -732,12 +766,12 @@ export function buildEvidenceSegments({
         : snapshot?.markets.events_per_min == null
           ? 'rate not measured'
           : 'rate measured',
-      tone: liveTone(snapshot?.markets.status),
+      tone: liveTone(parentCurrent ? snapshot?.markets.status : snapshot?.status),
     },
     {
       id: 'decisions',
       label: 'Decision gate',
-      value: snapshot?.markets.decision_gate ?? NOT_OBSERVED,
+      value: parentCurrent ? snapshot?.markets.decision_gate ?? NOT_OBSERVED : 'unknown',
       source: '/api/v1/live · desk',
       observedAt: observedTime(snapshot?.desk?.updated_at ?? snapshot?.observed_at),
       freshness,
@@ -749,12 +783,12 @@ export function buildEvidenceSegments({
         : snapshot?.desk
           ? 'bounded public counts'
           : 'no desk observation',
-      tone: liveTone(snapshot?.markets.decision_gate),
+      tone: liveTone(parentCurrent ? snapshot?.markets.decision_gate : snapshot?.status),
     },
     {
       id: 'execution',
       label: 'Execution',
-      value: words(execution),
+      value: parentCurrent ? words(execution) : 'unknown',
       source: '/api/v1/live · execution',
       observedAt: observed,
       freshness,
@@ -768,29 +802,29 @@ export function buildEvidenceSegments({
         : execution
           ? 'reported state'
           : 'no execution observation',
-      tone: liveTone(execution),
+      tone: liveTone(parentCurrent ? execution : snapshot?.status),
     },
     {
       id: 'research',
       label: 'Research',
-      value: widgets
-        ? `${formatCount(widgets.research.clips.length)} reviewed`
+      value: researchObservedAt
+        ? `${formatCount(widgets.research.clips.length)} unverified`
         : NOT_OBSERVED,
       source: '/api/v1/widgets · research',
-      observedAt: observedTime(widgets?.rendered_at),
-      freshness: widgets?.rendered_at ? 'timestamp supplied; age not computed' : NOT_OBSERVED,
-      authority: 'decision input',
+      observedAt: observedTime(researchObservedAt),
+      freshness: researchObservedAt ? formatAge(researchAge) : NOT_OBSERVED,
+      authority: 'unverified advisory input',
       uncertainty: errors.widgets
         ? 'poll failed; value is from the last report'
-        : widgets
-          ? 'bounded reviewed clips; no freshness age'
-          : 'no watchboard observation',
+        : researchObservedAt
+          ? 'bounded timestamped analyst text; review and primary-source provenance are not attested'
+          : 'no persisted research observation',
       tone: errors.widgets ? 'degraded' : 'unknown',
     },
     {
       id: 'fleet',
       label: 'Coordination',
-      value: fleet
+      value: fleetCurrent && leaseCount != null && gateCount != null
         ? `${formatCount(leaseCount)} holds · ${formatCount(gateCount)} gates`
         : NOT_OBSERVED,
       source: '/api/fleet',
@@ -799,19 +833,27 @@ export function buildEvidenceSegments({
       authority: 'coordination only',
       uncertainty: errors.fleet
         ? 'poll failed; value is from the last report'
-        : fleet
-          ? isFleetCounts(fleet)
-            ? 'counts-only projection; observation time absent'
-            : 'sanitized fleet projection'
-          : 'no fleet observation',
-      tone: errors.fleet ? 'degraded' : fleet ? 'current' : 'unknown',
+        : fleet?.snapshot_age_s != null
+          ? !fleetCurrent
+            ? 'snapshot expired; counts withdrawn'
+            : isFleetCounts(fleet)
+              ? 'counts-only projection; observation time absent'
+              : 'sanitized fleet projection'
+          : 'no timed fleet observation',
+      tone: errors.fleet
+        ? 'degraded'
+        : fleetCurrent
+          ? 'current'
+          : fleet?.snapshot_age_s != null
+            ? 'degraded'
+            : 'unknown',
     },
     {
       id: 'moss',
       label: 'On-chain',
       value: moss?.status ?? NOT_OBSERVED,
       source: '/api/v1/moss',
-      observedAt: observedTime(moss?.served_at),
+      observedAt: observedTime(moss?.observed_at),
       freshness: formatAge(moss?.freshness_s),
       authority: moss?.authority ?? 'not established',
       uncertainty: errors.moss
@@ -859,7 +901,16 @@ function buildAttention({
     })
   }
 
-  if (widgets?.gate.killswitch) {
+  if (
+    widgets?.gate.pause_state === 'unknown' ||
+    widgets?.gate.killswitch == null
+  ) {
+    items.push({
+      label: 'Pause state is unavailable',
+      detail: 'No runtime or entry claim is admitted until both persisted pause sources are current.',
+      tone: 'degraded',
+    })
+  } else if (widgets.gate.killswitch) {
     items.push({
       label: 'Kill switch is engaged',
       detail: 'Any entry path remains ineligible until a separate approved resume transition.',
@@ -873,7 +924,8 @@ function buildAttention({
     })
   }
 
-  const blocked = snapshot?.desk?.decisions.blocked
+  const blocked =
+    snapshot?.status === 'live' ? snapshot.desk?.decisions.blocked : null
   if (blocked != null && blocked > 0) {
     items.push({
       label: `${blocked} ${blocked === 1 ? 'decision is' : 'decisions are'} policy-blocked`,

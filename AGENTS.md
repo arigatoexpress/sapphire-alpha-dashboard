@@ -57,7 +57,10 @@ python local_dashboard_server.py --port 8080
 open http://127.0.0.1:8080
 ```
 It serves the existing `frontend/dist` bundle and mirrors `/api/v1/live` by
-running the local telemetry collector directly. `/api/v1/moss`,
+loading the admitted schema-v1 snapshot at
+`~/ops-state/sapphire-observations/live-snapshot.json` (override with
+`SAPPHIRE_LOCAL_TELEMETRY_SNAPSHOT`). Collection and persistence must run as a
+separate job; a GET only loads, ages, and fails closed. `/api/v1/moss`,
 `/api/v1/widgets`, and `/api/fleet` return complete fail-closed offline stubs
 so the UI renders cleanly without operator auth or invented observations.
 
@@ -97,17 +100,21 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
   and SHA-256 of both shipped HTML entrypoints; no private paths or host metadata)
 - Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
 - Public compute projection: `GET /api/v1/live` (one undelayed numeric view for every reader)
+- Public source/dependency posture: `GET /api/v1/readiness` (inert source identity;
+  unavailable runtime dependencies; never authority)
 - Public fixed vault taxonomy: `GET /api/v1/vault-map` (no private metadata); raw `GET /vault/rag-map` remains authenticated
 - Narrow public/operator projections: `GET /api/v1/moss`, `GET /api/v1/transparency`
 - Legacy reads with anonymous sanitizers: `GET /api/v1/status`, `GET /api/v1/widgets`, `GET /api/v1/tradingview/alerts`
 
 ## Widget data sources
 The `/api/v1/widgets` endpoint aggregates:
-- Trading gate state (`~/ops-state/rh-chain/gate.json`, `skin-book.json`, env overrides).
-- Executor heartbeat (`~/ops-state/rh-chain/executor-heartbeat.json` or `DASHBOARD_EXECUTOR_HEARTBEAT`).
-- Wallet / PnL (`~/ops-state/rh-chain/skin-book.json` or `DASHBOARD_SKIN_BOOK`).
-- Telegram approval queue (`~/ops-state/telegram-bot/pending_queue.json`, `decisions.jsonl`).
-- Recent signals (`~/ops-state/rh-chain/signals.json` or `DASHBOARD_SIGNALS_JSON`).
+- Trading gate state (`~/ops-state/rh-chain/gate.json`) only when it carries a
+  persisted observation timestamp and two classified pause sources.
+- Executor heartbeat (`~/ops-state/rh-chain/executor-heartbeat.json`) only while
+  its persisted observation is inside the runtime TTL.
+- Wallet / PnL (`~/ops-state/rh-chain/skin-book.json`) with no request-time
+  timestamp replacement.
+- Recent signals (`~/ops-state/rh-chain/signals.json`) with no fabricated time.
 - Explicit multi-source research clips from `DASHBOARD_RESEARCH_CLIPS_JSON`. Unknown
   sources are rejected, candidates are capped at two clips per analyst, actual feed
   share is capped at 25%, and absence stays empty—there is no fabricated or
@@ -117,16 +124,15 @@ The `/api/v1/widgets` endpoint aggregates:
 
 The `/api/v1/tradingview/alerts` endpoint proxies recent alerts from the configured `TV_WEBHOOK_URL` receiver (`/alerts`).
 
-The `/api/v1/transparency` endpoint serves the trade-rail explanation ledger (`~/ops-state/telegram-bot/explanations.jsonl`, schema 1 from telegram-bot `explain.py`): operators get the full whitelisted record; the public projection gets hashed ids and coarse USD bands (MOSS-pane masking precedent).
+The `/api/v1/transparency` endpoint serves the read-only explanation history
+(`~/ops-state/sapphire-observations/explanations.jsonl`, schema 1): operators
+get the full whitelisted record; the public projection gets hashed ids and
+coarse USD bands. It is not a control or approval source.
 
 ## Env overrides for Cloud Run
 - `AUTH_USERNAME`, `AUTH_PASSWORD` (required, min 12 chars)
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN_FILE`, `TG_MINIAPP_ALLOWED_IDS`,
-  `TG_MINIAPP_DECISION_URL` — private Mini App authentication and the bot decision deep link.
 - `WALLET_ADDRESS` — full on-chain address (e.g. Robinhood Chain L2 wallet); dashboard masks it.
-- `MAX_ORDER_USD`, `TELEGRAM_BOT_POLLING`
-- `DASHBOARD_ARMED`, `DASHBOARD_MODE`, `DASHBOARD_FORCE_KILLSWITCH`
-- `DASHBOARD_EXECUTOR_HEARTBEAT`, `DASHBOARD_SKIN_BOOK`, `DASHBOARD_SIGNALS_JSON`, `DASHBOARD_TV_LOG`
+- `DASHBOARD_TV_LOG`
 - `DASHBOARD_EXPLANATIONS_PATH` — override path to the explanations.jsonl ledger (Cloud Run has no Mac filesystem)
 - `TV_WEBHOOK_STATUS`, `TV_WEBHOOK_URL`, `TV_LAST_PING`, `TV_PENDING_ALERTS`
   - `TV_WEBHOOK_URL` should be the **base origin** of the receiver (no path); the dashboard probes `<url>/webhook/health` and proxies `<url>/alerts`.

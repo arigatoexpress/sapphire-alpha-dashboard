@@ -1,41 +1,27 @@
-from datetime import UTC, datetime
+import json
+from datetime import UTC, datetime, timedelta
 
 import local_dashboard_server
+from tests.test_live_telemetry import _sample
 
 
-def test_offline_fallback_uses_the_current_single_view_contract(monkeypatch):
-    observed_at = datetime.now(UTC).isoformat()
-    raw = {"raw": True}
-    validated = {
-        "version": 1,
-        "observed_at": observed_at,
-        "sequence": 7,
-        "summary": {},
-        "nodes": [],
-        "links": [],
-        "agents": [],
-        "markets": {},
-        "events": [],
-        "desk": {},
-    }
-    monkeypatch.setattr(local_dashboard_server.Sources, "defaults", lambda: object())
-    monkeypatch.setattr(local_dashboard_server, "configured_latencies", lambda: {})
-    monkeypatch.setattr(
-        local_dashboard_server,
-        "build_snapshot",
-        lambda _sources, *, link_latencies: raw,
+def test_offline_fallback_uses_the_current_single_view_contract(tmp_path):
+    observed = datetime.now(UTC) - timedelta(seconds=10)
+    candidate = tmp_path / "live-snapshot.json"
+    candidate.write_text(
+        json.dumps(_sample(observed_at=observed.isoformat(), sequence=7)),
+        encoding="utf-8",
     )
-    monkeypatch.setattr(
-        local_dashboard_server,
-        "validate_snapshot",
-        lambda candidate: validated if candidate is raw else None,
-    )
+    candidate.chmod(0o600)
 
-    snapshot = local_dashboard_server._build_live_snapshot()
+    snapshot = local_dashboard_server._build_live_snapshot(
+        snapshot_path=candidate,
+        now=datetime.now(UTC).timestamp(),
+    )
 
     assert snapshot["status"] == "live"
     assert snapshot["freshness_s"] >= 0
-    assert snapshot["received_at"] == observed_at
+    assert snapshot["received_at"] == observed.isoformat()
     assert snapshot["served_at"]
 
 
@@ -43,25 +29,28 @@ def test_offline_fallback_covers_the_dashboard_watchboard_contract():
     widgets = local_dashboard_server._empty_widgets()
 
     assert widgets["gate"] == {
-        "state": "killswitch",
-        "label": "Local fallback stopped",
-        "armed": False,
-        "killswitch": True,
-        "mode": "offline",
-        "executor_alive": False,
-        "updated_at": widgets["rendered_at"],
+        "state": "unavailable",
+        "label": "Pause state unavailable",
+        "armed": None,
+        "killswitch": None,
+        "pause_state": "unknown",
+        "mode": "unavailable",
+        "executor_alive": None,
+        "updated_at": None,
     }
     assert widgets["recent_signals"] == []
     assert widgets["research"]["clips"] == []
     assert widgets["research"]["live"] is False
     assert widgets["research"]["policy"] == {
-        "research_role": "evidence_not_authority",
+        "research_role": "unverified_advisory_input",
         "single_input_cap": 0.25,
-        "minimum_independent_checks": 2,
+        "minimum_distinct_inputs": 4,
+        "review_status": "unverified",
+        "primary_source_provenance": "not_attested",
         "can_set_conviction": False,
         "can_authorize_execution": False,
     }
-    assert widgets["system_health"]["telegram"] == "not_observed"
+    assert "telegram" not in widgets["system_health"]
     assert widgets["tradingview"]["status"] == "not_observed"
 
 

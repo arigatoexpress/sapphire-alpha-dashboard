@@ -170,8 +170,13 @@ python local_dashboard_server.py --port 8080
 open http://127.0.0.1:8080/dashboard
 ```
 
-The fallback runs the local telemetry collector and serves explicit offline
-projections for assets, evidence/system watch, and fleet coordination. It never
+The fallback reads one separately persisted schema-v1 snapshot from
+`~/ops-state/sapphire-observations/live-snapshot.json`; set
+`SAPPHIRE_LOCAL_TELEMETRY_SNAPSHOT` to use another admitted absolute path.
+Request handling never runs a collector or writes the snapshot: every GET only
+loads, ages, and projects the same bounded evidence. A missing, malformed,
+linked, replaced, writable, or stale source becomes an explicit offline
+projection for assets, evidence/system watch, and fleet coordination. It never
 turns an unavailable upstream into an observed zero or an executable state.
 
 ## Verification

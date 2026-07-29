@@ -71,10 +71,6 @@ export const NODE_VOCABULARY: Record<string, VocabularyEntry> = {
     plainName: 'Task runner',
     oneLiner: 'Picks jobs off the queue one at a time and sees each of them through.',
   },
-  'telegram-bot': {
-    plainName: 'Chat assistant',
-    oneLiner: 'Sends a phone message when a person needs to decide something, and waits for a reply.',
-  },
   'ollama-inference': {
     plainName: 'Local model runner',
     oneLiner: 'Loads the AI models on the home machine and answers the questions put to them.',
@@ -105,10 +101,6 @@ export const LINK_VOCABULARY: Record<string, VocabularyEntry> = {
   'intelligence->archive': {
     plainName: 'Agents writing things down',
     oneLiner: 'Anything the helpers work out gets saved so it is not learned twice.',
-  },
-  'telegram-bot->agent-worker': {
-    plainName: 'Chat message becoming a job',
-    oneLiner: 'A message sent from a phone turns into a piece of work for the system to do.',
   },
   'agent-worker->ollama-inference': {
     plainName: 'Job asking the model a question',
@@ -212,10 +204,6 @@ export const AGENT_VOCABULARY: Record<string, VocabularyEntry> = {
   'agent-worker': {
     plainName: 'Task runner',
     oneLiner: 'Picks jobs off the queue one at a time and sees each of them through.',
-  },
-  'telegram-command-bot': {
-    plainName: 'Chat assistant',
-    oneLiner: 'Sends a phone message when a person needs to decide something, and waits for a reply.',
   },
   'ollama-inference-host': {
     plainName: 'Local model runner',

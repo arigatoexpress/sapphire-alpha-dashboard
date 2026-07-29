@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -14,9 +15,7 @@ from main import (
     _mask_address,
     _recent_signals,
     _research_feed,
-    _sanitize_proposal,
     _skin_book,
-    _telegram_queue,
     _tradingview_status,
     _wallet_status,
     app,
@@ -32,40 +31,26 @@ def test_mask_address():
     assert _mask_address("") == ""
 
 
-def test_sanitize_proposal_strips_pii():
-    raw = {
-        "action": "buy",
-        "instrument": "RICH",
-        "side": "BUY",
-        "confidence": "high",
-        "chat_id": 123456,
-        "user_id": 789,
-        "username": "ari",
-        "wallet_address": "0x1234567890abcdef1234567890abcdef12345678",
-        "status": "pending",
-        "timestamp": "2026-07-16T00:00:00Z",
-    }
-    safe = _sanitize_proposal(raw, 1)
-    assert safe["id"] == "prop-001"
-    assert safe["instrument"] == "RICH"
-    assert safe["side"] == "BUY"
-    assert "chat_id" not in safe
-    assert "user_id" not in safe
-    assert "username" not in safe
-    assert safe["wallet_address"] == "0x1234...5678"
+def test_executor_heartbeat_persisted(tmp_path, monkeypatch):
+    import main
 
-
-def test_executor_heartbeat_env(monkeypatch):
-    monkeypatch.setenv("DASHBOARD_EXECUTOR_HEARTBEAT", json.dumps({"status": "alive", "pid": 42}))
-    hb = _executor_heartbeat()
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
+    now = main.datetime.now(main.UTC)
+    (tmp_path / "executor-heartbeat.json").write_text(
+        json.dumps({"status": "alive", "pid": 42, "observed_at": now.isoformat()}),
+        encoding="utf-8",
+    )
+    hb = _executor_heartbeat(now=now)
     assert hb["alive"] is True
     assert hb["status"] == "alive"
     assert hb["pid"] == 42
 
 
-def test_skin_book_env(monkeypatch):
+def test_skin_book_persisted(tmp_path, monkeypatch):
+    import main
+
     payload = {
-        "updated": 1783914740,
+        "observed_at": main.datetime.now(main.UTC).isoformat(),
         "mode": "tg_approve_then_manual_fill",
         "deployed_usd": 12.5,
         "n_open": 1,
@@ -74,7 +59,8 @@ def test_skin_book_env(monkeypatch):
         "fills": [{"symbol": "RICH"}],
         "limits": {"per_order_cap_pct": 5},
     }
-    monkeypatch.setenv("DASHBOARD_SKIN_BOOK", json.dumps(payload))
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
+    (tmp_path / "skin-book.json").write_text(json.dumps(payload), encoding="utf-8")
     book = _skin_book()
     assert book["deployed_usd"] == 12.5
     assert book["n_open"] == 1
@@ -83,11 +69,21 @@ def test_skin_book_env(monkeypatch):
     assert book["skin_in_game"] is True
 
 
-def test_wallet_status_env(monkeypatch):
-    monkeypatch.setenv("WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678")
-    monkeypatch.setenv(
-        "DASHBOARD_SKIN_BOOK",
-        json.dumps({"updated": 1783914740, "deployed_usd": 5.0, "n_open": 0, "skin_in_game": True}),
+def test_wallet_status_persisted(tmp_path, monkeypatch):
+    import main
+
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
+    (tmp_path / "skin-book.json").write_text(
+        json.dumps(
+            {
+                "observed_at": main.datetime.now(main.UTC).isoformat(),
+                "wallet_address": "0x1234567890abcdef1234567890abcdef12345678",
+                "deployed_usd": 5.0,
+                "n_open": 0,
+                "skin_in_game": True,
+            }
+        ),
+        encoding="utf-8",
     )
     wallet = _wallet_status()
     assert wallet["address"] == "0x1234...5678"
@@ -95,52 +91,28 @@ def test_wallet_status_env(monkeypatch):
     assert wallet["skin_in_game"] is True
 
 
-def test_telegram_queue_missing_source_is_unknown_not_zero(tmp_path, monkeypatch):
+def test_recent_signals_persisted(tmp_path, monkeypatch):
     import main
 
-    monkeypatch.setattr(main, "_TELEGRAM_DIR", tmp_path / "missing-telegram-dir")
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
-    queue = _telegram_queue()
-    assert queue["pending"] is None
-    assert queue["recent_count"] is None
-    assert queue["status"] == "not_observed"
-    assert queue["proposals"] == []
-
-
-def test_telegram_queue_observed_empty_is_zero(tmp_path, monkeypatch):
-    import main
-
-    telegram_dir = tmp_path / "telegram-bot"
-    telegram_dir.mkdir()
-    (telegram_dir / "pending_queue.json").write_text("[]", encoding="utf-8")
-    monkeypatch.setattr(main, "_TELEGRAM_DIR", telegram_dir)
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
-
-    queue = _telegram_queue()
-
-    assert queue["pending"] == 0
-    assert queue["recent_count"] == 0
-    assert queue["status"] == "polling"
-
-
-def test_telegram_queue_observed_pause(tmp_path, monkeypatch):
-    import main
-
-    telegram_dir = tmp_path / "telegram-bot"
-    telegram_dir.mkdir()
-    (telegram_dir / "pending_queue.json").write_text("[]", encoding="utf-8")
-    monkeypatch.setattr(main, "_TELEGRAM_DIR", telegram_dir)
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "false")
-
-    assert _telegram_queue()["status"] == "paused"
-
-
-def test_recent_signals_env(monkeypatch):
+    observed_at = main.datetime.now(main.UTC).isoformat()
     signals = [
-        {"instrument": "BTC", "side": "BUY", "venue": "on_chain", "confidence": "high"},
-        {"instrument": "ETH", "side": "SELL", "venue": "cex", "confidence": "low"},
+        {
+            "instrument": "BTC",
+            "side": "BUY",
+            "venue": "on_chain",
+            "confidence": "high",
+            "timestamp": observed_at,
+        },
+        {
+            "instrument": "ETH",
+            "side": "SELL",
+            "venue": "cex",
+            "confidence": "low",
+            "timestamp": observed_at,
+        },
     ]
-    monkeypatch.setenv("DASHBOARD_SIGNALS_JSON", json.dumps(signals))
+    monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
+    (tmp_path / "signals.json").write_text(json.dumps(signals), encoding="utf-8")
     result = _recent_signals()
     assert len(result) == 2
     assert result[0]["instrument"] == "BTC"
@@ -150,24 +122,27 @@ def test_recent_signals_env(monkeypatch):
 def test_recent_signals_missing_is_honestly_empty(tmp_path, monkeypatch):
     import main
 
-    monkeypatch.delenv("DASHBOARD_SIGNALS_JSON", raising=False)
     monkeypatch.setattr(main, "_RH_CHAIN_DIR", tmp_path)
     assert _recent_signals() == []
 
 
 def test_research_feed_is_multi_source_and_caps_any_one_analyst(monkeypatch):
+    observed_at = datetime.now(UTC).isoformat()
     monkeypatch.setenv(
         "DASHBOARD_RESEARCH_CLIPS_JSON",
         json.dumps(
             [
-                {"id": "n1", "title": "Fees", "source": "michael_nadeau", "path": "/private/1"},
-                {"id": "n2", "title": "Supply", "source": "michael_nadeau", "path": "/private/2"},
-                {"id": "n3", "title": "Third Nadeau item", "source": "michael_nadeau"},
-                {"id": "c1", "title": "Cycle", "source": "benjamin_cowen"},
-                {"id": "h1", "title": "Liquidity", "source": "arthur_hayes"},
-                {"id": "b1", "title": "Structure", "source": "bankless"},
-                {"id": "l1", "title": "Compute", "source": "limitless"},
-                {"id": "x1", "title": "Unknown oracle", "source": "unknown_person"},
+                {**clip, "observed_at": observed_at}
+                for clip in [
+                    {"id": "n1", "title": "Fees", "source": "michael_nadeau", "path": "/private/1"},
+                    {"id": "n2", "title": "Supply", "source": "michael_nadeau", "path": "/private/2"},
+                    {"id": "n3", "title": "Third Nadeau item", "source": "michael_nadeau"},
+                    {"id": "c1", "title": "Cycle", "source": "benjamin_cowen"},
+                    {"id": "h1", "title": "Liquidity", "source": "arthur_hayes"},
+                    {"id": "b1", "title": "Structure", "source": "bankless"},
+                    {"id": "l1", "title": "Compute", "source": "limitless"},
+                    {"id": "x1", "title": "Unknown oracle", "source": "unknown_person"},
+                ]
             ]
         ),
     )
@@ -195,12 +170,16 @@ def test_research_feed_is_multi_source_and_caps_any_one_analyst(monkeypatch):
 
 
 def test_research_feed_rejects_an_analyst_only_packet(monkeypatch):
+    observed_at = datetime.now(UTC).isoformat()
     monkeypatch.setenv(
         "DASHBOARD_RESEARCH_CLIPS_JSON",
         json.dumps(
             [
-                {"id": "n1", "title": "Fees", "source": "michael_nadeau"},
-                {"id": "n2", "title": "Supply", "source": "michael_nadeau"},
+                {**clip, "observed_at": observed_at}
+                for clip in [
+                    {"id": "n1", "title": "Fees", "source": "michael_nadeau"},
+                    {"id": "n2", "title": "Supply", "source": "michael_nadeau"},
+                ]
             ]
         ),
     )
@@ -255,7 +234,7 @@ def test_widgets_returns_new_keys():
     data = r.json()
     assert "gate" in data
     assert "wallet" in data
-    assert "telegram_queue" in data
+    assert "telegram_queue" not in data
     assert "recent_signals" in data
     assert "research" in data
     assert "tradingview" in data
@@ -269,32 +248,4 @@ def test_status_returns_wallet():
     assert r.status_code == 200
     data = r.json()
     assert "wallet" in data
-    assert data["gate"]["state"] in {"killswitch", "armed", "disarmed"}
-
-
-def test_widgets_no_pii_in_telegram(tmp_path, monkeypatch):
-    import main
-
-    telegram_dir = tmp_path / "telegram-bot"
-    telegram_dir.mkdir()
-    (telegram_dir / "pending_queue.json").write_text(
-        json.dumps(
-            [
-                {
-                    "instrument": "RICH",
-                    "side": "BUY",
-                    "chat_id": 123456,
-                    "user_id": 789,
-                    "username": "ari",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(main, "_TELEGRAM_DIR", telegram_dir)
-    monkeypatch.setenv("TELEGRAM_BOT_POLLING", "true")
-    queue = _telegram_queue()
-    for prop in queue["proposals"]:
-        assert "chat_id" not in prop
-        assert "user_id" not in prop
-        assert "username" not in prop
+    assert data["gate"]["state"] in {"paused", "armed", "disarmed", "unavailable"}

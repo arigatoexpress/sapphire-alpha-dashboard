@@ -69,8 +69,8 @@ const MODES = [
     name: 'Free-reign (bounded autonomous)',
     authority: 'Pre-authorized envelope',
     description:
-      'On designated RH Agentic and L2 rails only: free-reign easy auto-approves ' +
-      'inside clip-to-cap, daily, and wallet fences. Mode never expands the envelope.',
+      'Designated RH Agentic and L2 rails only: a future admitted runtime could accept ' +
+      'actions only inside clip-to-cap, daily, and wallet fences.',
   },
   {
     name: 'Paused',
@@ -94,6 +94,7 @@ const ENDPOINTS = [
   ['/api/health', 'Service liveness'],
   ['/api/build', 'Source, runtime revision, and shipped asset manifests'],
   ['/api/v1/live', 'Typed architecture telemetry used by the Evidence Horizon'],
+  ['/api/v1/readiness', 'Exact inert-source and unavailable-runtime dependency state'],
   ['/api/v1/moss', 'Privacy-bounded on-chain observer state'],
   ['/api/v1/transparency', 'Capital and activity summaries with sensitive detail omitted'],
   ['/api/v1/status', 'Sanitized control-plane and service posture'],
@@ -110,10 +111,10 @@ const LEDGER = [
     body: 'Ingest verifies the body signature, payload size, schema, and sequence before persistence. Anonymous callers receive a separate projection.',
   },
   {
-    state: 'Shipped',
-    tone: 'text-verified',
-    title: 'Fail-closed execution controls',
-    body: 'Wallet scope, capital limits, approval state, and the kill switch sit outside model judgement and default to refusal.',
+    state: 'Source shipped',
+    tone: 'text-ice',
+    title: 'Fail-closed control contract',
+    body: 'The source contract defaults to refusal. Runtime installation, credentials, broker reconciliation, and production execution remain unavailable until separately proven.',
   },
   {
     state: 'Shipped',

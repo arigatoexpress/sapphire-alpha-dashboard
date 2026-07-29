@@ -28,6 +28,7 @@ SECRET = "telemetry-test-secret-that-is-long-enough"
 
 def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
     now = observed_at or datetime.now(UTC).isoformat()
+    now_epoch = datetime.fromisoformat(now.replace("Z", "+00:00")).timestamp()
     return {
         "version": 1,
         "observed_at": now,
@@ -86,7 +87,7 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
             "feed_age_s": 4.2,
             "events_per_min": 19.0,
             "paper_strategies": 7,
-            "decision_gate": "telegram",
+            "decision_gate": "manual",
             "execution": "off",
         },
         "desk": {
@@ -156,7 +157,7 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
                 "collector": "current",
             },
             "epistemics": {
-                "updated_ts": 1785162653.5,
+                "updated_ts": now_epoch,
                 "fresh": True,
                 "thesis": {
                     "id": "cycle-map",
@@ -186,7 +187,7 @@ def _sample(*, observed_at: str | None = None, sequence: int = 42) -> dict:
                     "mean_brier": None,
                     "accuracy": None,
                     "lessons": 0,
-                    "updated_ts": 1785162653.5,
+                    "updated_ts": now_epoch,
                 },
             },
             "autonomy": {

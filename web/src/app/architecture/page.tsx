@@ -21,9 +21,9 @@ const LAYERS = [
   {
     term: 'Execution',
     body:
-      'A Windows GPU node runs inference, free-reign policy ticks, and order placement. ' +
-      'Robinhood Agentic MCP handles the brokerage rail; on-chain uses provisioned wallets. ' +
-      'Both act only inside caps and designated envelopes.',
+      'A Windows GPU node is the intended host for inference and bounded execution. ' +
+      'Robinhood Agentic MCP and provisioned wallets are candidate rails, not evidence ' +
+      'that credentials, runtime installation, reconciliation, or order placement exist.',
   },
   {
     term: 'Orchestration',

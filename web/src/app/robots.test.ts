@@ -11,6 +11,7 @@ describe('public crawler policy', () => {
     )
 
     expect(disallowed).not.toContain('/dashboard')
-    expect(disallowed).toEqual(expect.arrayContaining(['/api/', '/vault/', '/miniapp']))
+    expect(disallowed).toEqual(expect.arrayContaining(['/api/', '/vault/']))
+    expect(disallowed).not.toContain('/miniapp')
   })
 })

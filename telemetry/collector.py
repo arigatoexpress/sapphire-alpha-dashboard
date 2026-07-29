@@ -329,7 +329,6 @@ def build_snapshot(
     observed_at = datetime.fromtimestamp(now, UTC).isoformat()
     rh_health = _read(sources.rh_health)
     feed = _read(sources.rh_feed)
-    memes = _read(sources.memes)
     paper = _read(sources.paper)
     gpu = _read(sources.gpu)
     desk = _read(sources.desk_cycle)
@@ -553,8 +552,10 @@ def build_snapshot(
             "feed_age_s": feed_age if _epoch(feed.get("updated")) is not None else None,
             "events_per_min": markets_rate,
             "paper_strategies": paper_strategy_count,
-            "decision_gate": "telegram",
-            "execution": "off",
+            # This collector has no authority observation.  In particular, the
+            # retired chat callback rail is not an execution gate.
+            "decision_gate": "unknown",
+            "execution": "unknown",
         },
         "events": events,
     }

@@ -59,7 +59,6 @@ describe('telemetry — the captured payloads match the type', () => {
     const windowsNodeIds = new Set([
       'win-workhorse',
       'agent-worker',
-      'telegram-bot',
       'ollama-inference',
       'knowledge-archive',
     ])

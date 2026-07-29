@@ -155,6 +155,12 @@ export type ApprovalBundleDTO = {
     consumer_result_sha256: string
     consumer_review_sha256: string
     consumer_source_sha256: string
+    task063_merged_commit: string
+    task063_status: string
+    task065_status: string
+    credential_enrollment_status: string
+    broker_reconciliation_status: string
+    runtime_installation_status: string
     production_execution_available: number
   }
   eligibility: {
@@ -729,11 +735,41 @@ export function ApprovalView({
                 label="Consumer source"
                 value={bundle.dependency_pins.consumer_source_sha256}
               />
+              <HashRow
+                label="Task 063 merged commit"
+                value={bundle.dependency_pins.task063_merged_commit}
+              />
               <div>
                 <dt>Installed package / schema</dt>
                 <dd className="mono">
                   fleet-lease {bundle.dependency_pins.fleet_lease_version} · approval{' '}
                   {bundle.dependency_pins.approval_schema_version}
+                </dd>
+              </div>
+              <div>
+                <dt>Task 063 source</dt>
+                <dd className="mono">{bundle.dependency_pins.task063_status}</dd>
+              </div>
+              <div>
+                <dt>Task 065</dt>
+                <dd className="mono">{bundle.dependency_pins.task065_status}</dd>
+              </div>
+              <div>
+                <dt>Credential enrollment</dt>
+                <dd className="mono">
+                  {bundle.dependency_pins.credential_enrollment_status}
+                </dd>
+              </div>
+              <div>
+                <dt>Broker reconciliation</dt>
+                <dd className="mono">
+                  {bundle.dependency_pins.broker_reconciliation_status}
+                </dd>
+              </div>
+              <div>
+                <dt>Runtime installation</dt>
+                <dd className="mono">
+                  {bundle.dependency_pins.runtime_installation_status}
                 </dd>
               </div>
               <div>
