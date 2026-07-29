@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import SystemAtlas from '@/components/SystemAtlas'
 
 type Live = {
   status?: string
@@ -236,6 +237,8 @@ export default function MissionControl() {
           </p>
         </div>
       </section>
+
+      <SystemAtlas />
 
       <section className="public-thesis" aria-labelledby="does-title">
         <div>
