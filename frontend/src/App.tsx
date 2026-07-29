@@ -160,6 +160,14 @@ export default function App(
       ? '0'
       : NOT_OBSERVED
 
+  const decision = deriveCurrentDecision({
+    snapshot,
+    widgets,
+    execution,
+    error,
+    attention,
+  })
+
   return (
     <div className="observatory-shell" data-execution={execution ?? 'unknown'}>
       <div className="observatory-glow" aria-hidden="true" />
@@ -167,7 +175,7 @@ export default function App(
       <header className="observatory-header">
         <a className="observatory-brand" href="/">
           <span aria-hidden="true">◇</span>
-          Sapphire <b>Alpha</b>
+          Sapphire <b>Mission Control</b>
         </a>
         <nav aria-label="Observatory sections">
           {SECTIONS.map((section) => (
@@ -184,13 +192,44 @@ export default function App(
       </header>
 
       <main className="observatory-main">
+        <section
+          className="current-decision-band"
+          aria-labelledby="current-decision-title"
+          data-decision={decision.verb}
+        >
+          <p className="observatory-kicker">CURRENT DECISION</p>
+          <h1 id="current-decision-title">
+            <span className="current-decision-verb">{decision.verb}</span>
+            <span className="current-decision-detail">{decision.summary}</span>
+          </h1>
+          <div className="current-decision-grid" role="group" aria-label="Decision factors">
+            <div>
+              <span>Pause + authority</span>
+              <strong data-tone={decision.pauseTone}>{decision.pause}</strong>
+            </div>
+            <div>
+              <span>Evidence freshness</span>
+              <strong data-tone={decision.freshnessTone}>{decision.freshness}</strong>
+            </div>
+            <div>
+              <span>Exact next gate</span>
+              <strong data-tone={decision.nextTone}>{decision.nextGate}</strong>
+            </div>
+          </div>
+          <p className="current-decision-thesis">
+            Thesis: {thesis?.claim ?? 'No thesis observed.'}
+            {' · '}
+            Attention items: {attentionCount}
+          </p>
+        </section>
+
         <section className="observatory-opening" aria-labelledby="observatory-title">
           <div>
-            <p className="observatory-kicker">Decision observatory · read-only view</p>
-            <h1 id="observatory-title">{thesis?.claim ?? 'No thesis observed.'}</h1>
+            <p className="observatory-kicker">Operator desk · read-only view</p>
+            <h2 id="observatory-title">{thesis?.claim ?? 'No thesis observed.'}</h2>
             <p className="observatory-lede">
-              The current claim, regime fit, falsifier, learning record, and execution
-              availability—separated so conviction never hides uncertainty.
+              What is true, what is stale, what is blocked, and what exact attended action
+              is next — without presenting absence as health.
             </p>
           </div>
 
@@ -476,7 +515,7 @@ function EvidenceHorizon({
   }
 
   return (
-    <section className="evidence-horizon" aria-labelledby="horizon-title">
+    <section className="evidence-horizon horizon-enter" aria-labelledby="horizon-title">
       <div className="evidence-horizon-heading">
         <div>
           <p>Evidence horizon</p>
@@ -496,6 +535,17 @@ function EvidenceHorizon({
             aria-controls="evidence-horizon-detail"
             tabIndex={segment.id === active.id ? 0 : -1}
             data-tone={segment.tone}
+            data-evidence-state={
+              segment.tone === 'current'
+                ? 'observed'
+                : segment.tone === 'degraded'
+                  ? 'stale'
+                  : segment.tone === 'held'
+                    ? 'paused'
+                    : segment.value === NOT_OBSERVED
+                      ? 'unavailable'
+                      : 'source-only'
+            }
             onClick={() => onSelect(segment.id)}
             onFocus={() => onSelect(segment.id)}
             onKeyDown={(event) => moveFocus(event, index)}
@@ -691,6 +741,101 @@ function AssetDisclosure({
       </dl>
     </details>
   )
+}
+
+function deriveCurrentDecision({
+  snapshot,
+  widgets,
+  execution,
+  error,
+  attention,
+}: {
+  snapshot: LiveSnapshot | null
+  widgets: PublicWidgets | null
+  execution: string | null
+  error: string
+  attention: AttentionItem[]
+}): {
+  verb: string
+  summary: string
+  pause: string
+  pauseTone: EvidenceTone
+  freshness: string
+  freshnessTone: EvidenceTone
+  nextGate: string
+  nextTone: EvidenceTone
+} {
+  const pauseUnknown =
+    widgets?.gate.pause_state === 'unknown' ||
+    widgets?.gate.killswitch == null ||
+    widgets == null
+  const killswitch = widgets?.gate.killswitch === true
+  const paused =
+    killswitch ||
+    ['halted', 'off', 'gated', 'paused'].includes(String(execution ?? '').toLowerCase())
+  const stale = snapshot?.status === 'stale' || Boolean(error)
+  const unobserved = !snapshot?.observed_at && !error
+
+  let verb = 'HOLD'
+  let summary = 'No attended action is admitted until evidence and pause truth are current.'
+  if (unobserved && !widgets) {
+    verb = 'REFUSE'
+    summary = 'No persisted observation yet — refuse present-tense claims.'
+  } else if (pauseUnknown) {
+    verb = 'REFUSE'
+    summary = 'Pause state unavailable — no runtime or entry claim is admitted.'
+  } else if (killswitch) {
+    verb = 'HOLD'
+    summary = 'Kill switch engaged — entry remains ineligible until approved resume.'
+  } else if (paused) {
+    verb = 'HOLD'
+    summary = 'Execution is held — no order path from this read-only surface.'
+  } else if (stale) {
+    verb = 'HOLD'
+    summary = 'Evidence is stale or poll-failed — do not act on present-tense values.'
+  } else if (attention.length > 0) {
+    verb = 'ATTENDED ACTION'
+    summary = attention[0].detail
+  } else if (snapshot?.status === 'live') {
+    verb = 'HOLD'
+    summary = 'Observation current; no automatic action is authorized from this desk.'
+  }
+
+  const pauseLabel = pauseUnknown
+    ? 'unavailable'
+    : killswitch
+      ? 'kill switch engaged'
+      : paused
+        ? words(execution) || 'paused'
+        : widgets?.gate.pause_state
+          ? words(widgets.gate.pause_state)
+          : 'not observed'
+
+  const freshnessLabel = error
+    ? snapshot
+      ? `poll failed · last report ${formatAge(snapshot.freshness_s)}`
+      : 'unavailable'
+    : formatAge(snapshot?.freshness_s)
+
+  const nextGate = pauseUnknown
+    ? 'Restore both pause sources before any readiness claim'
+    : killswitch
+      ? 'Separate approved resume transition required'
+      : attention[0]?.label ??
+        (snapshot?.status === 'live'
+          ? 'No open gate observed on this surface'
+          : 'Wait for a current admitted snapshot')
+
+  return {
+    verb,
+    summary,
+    pause: pauseLabel,
+    pauseTone: pauseUnknown ? 'unknown' : killswitch || paused ? 'held' : 'current',
+    freshness: freshnessLabel,
+    freshnessTone: error || snapshot?.status === 'stale' ? 'degraded' : toneForValue(snapshot?.status),
+    nextGate,
+    nextTone: pauseUnknown || killswitch || attention.length ? 'held' : 'unknown',
+  }
 }
 
 export function buildEvidenceSegments({

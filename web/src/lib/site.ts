@@ -4,8 +4,8 @@ export const SITE_URL = 'https://sapphirealpha.xyz'
 
 export const SITE_NAME = 'Sapphire Alpha'
 
-export const SITE_TAGLINE = 'Research-driven trading infrastructure you can inspect.'
+export const SITE_TAGLINE = 'A system that shows its work.'
 
 export const SITE_DESCRIPTION =
-  'Sapphire Alpha publishes data-backed market opinions with falsifiers and documents a ' +
-  'fail-closed execution design without claiming unavailable runtime state.'
+  'Sapphire is a self-sovereign research and trading operating system that publishes ' +
+  'timestamped evidence, falsifiers, and fail-closed boundaries without claiming unavailable runtime state.'

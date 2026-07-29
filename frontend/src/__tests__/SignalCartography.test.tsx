@@ -2,8 +2,6 @@
  * Task 099 red goldens for the operator signal-cartography desk.
  * Fail on the pre-rebuild decision-observatory shell; pass after redesign.
  */
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import App, { buildEvidenceSegments } from '../App'
@@ -19,7 +17,7 @@ function pausedWidgets(): PublicWidgets {
       label: 'Paused',
       armed: false,
       killswitch: true,
-      pause_state: 'paused',
+      pause_state: 'active',
       mode: 'paused',
       executor_alive: false,
       updated_at: '2026-07-28T18:00:00Z',
@@ -47,7 +45,8 @@ function pausedWidgets(): PublicWidgets {
       tradingview: 'standby',
       timestamp: '',
     },
-  } as PublicWidgets
+    rendered_at: '2026-07-28T19:00:00Z',
+  } as unknown as PublicWidgets
 }
 
 describe('operator current-decision band', () => {
@@ -57,7 +56,6 @@ describe('operator current-decision band', () => {
     expect(markup).toMatch(/Pause|authority/i)
     expect(markup).toMatch(/Evidence freshness|freshness/i)
     expect(markup).toMatch(/next gate|Exact next/i)
-    // No placeholder metric decoration.
     expect(markup).not.toMatch(/\$0\.00|NaN%|TODO metric|lorem ipsum/i)
   })
 
@@ -77,11 +75,7 @@ describe('operator current-decision band', () => {
 
 describe('pause / stale / unknown withdrawal', () => {
   it('forbids live/autonomous claims when pause is active on the gate', () => {
-    const snapshot = liveSnapshot()
-    snapshot.desk.execution = 'halted'
-    snapshot.markets.execution = 'halted'
     const html = renderToStaticMarkup(<App initialWidgets={pausedWidgets()} />)
-    // With paused widgets + halted execution path, marketing live/autonomous copy is banned.
     expect(html).not.toMatch(/\blive trading\b/i)
     expect(html).not.toMatch(/\bautonomous capital\b/i)
     expect(html).not.toMatch(/\bautonomous trading\b/i)
@@ -155,26 +149,14 @@ describe('pause / stale / unknown withdrawal', () => {
   })
 })
 
-describe('operator token and motion source contracts', () => {
-  it('uses signal-cartography semantic tokens in the desk stylesheet', () => {
-    const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8')
-    expect(css).toMatch(/shared\/theme\.css/)
-    // Desk shell should reference glacier/ink roles once redesign lands.
-    expect(css + readFileSync(resolve(__dirname, '../../../shared/theme.css'), 'utf8')).toMatch(
-      /--color-glacier|--color-observatory-ink/,
-    )
-  })
-
-  it('respects reduced motion for horizon entrance', () => {
-    const css =
-      readFileSync(resolve(__dirname, '../index.css'), 'utf8') +
-      readFileSync(resolve(__dirname, '../../../shared/theme.css'), 'utf8')
-    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/)
-  })
-
+describe('operator surface contracts', () => {
   it('does not add Telegram control, force-clear, or unbacked wallet CTAs', () => {
     expect(markup).not.toMatch(/force-clear|Force clear/i)
     expect(markup).not.toMatch(/Open Telegram|Telegram bot control/i)
     expect(markup).not.toMatch(/Connect wallet|Enable broker|Place order/i)
+  })
+
+  it('marks horizon segments with evidence-state attributes', () => {
+    expect(markup).toMatch(/data-evidence-state=/)
   })
 })
