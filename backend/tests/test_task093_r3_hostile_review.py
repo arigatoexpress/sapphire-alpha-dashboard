@@ -121,6 +121,8 @@ def test_local_fallback_repeated_gets_only_age_one_persisted_snapshot(
         encoding="utf-8",
     )
     candidate.chmod(0o600)
+    source_before = candidate.read_bytes()
+    stat_before = candidate.stat()
 
     first = local_dashboard_server._build_live_snapshot(
         snapshot_path=candidate,
@@ -136,6 +138,25 @@ def test_local_fallback_repeated_gets_only_age_one_persisted_snapshot(
     assert second["freshness_s"] - first["freshness_s"] == 30
     assert second["markets"]["feed_age_s"] - first["markets"]["feed_age_s"] == 30
     assert first["served_at"] != second["served_at"]
+    stat_after = candidate.stat()
+    assert candidate.read_bytes() == source_before
+    assert (
+        stat_after.st_mode,
+        stat_after.st_uid,
+        stat_after.st_gid,
+        stat_after.st_nlink,
+        stat_after.st_size,
+        stat_after.st_mtime_ns,
+        stat_after.st_ctime_ns,
+    ) == (
+        stat_before.st_mode,
+        stat_before.st_uid,
+        stat_before.st_gid,
+        stat_before.st_nlink,
+        stat_before.st_size,
+        stat_before.st_mtime_ns,
+        stat_before.st_ctime_ns,
+    )
 
 
 def test_local_fallback_rejects_unadmitted_snapshot_objects(tmp_path: Path) -> None:
