@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { LiveSnapshot } from '@shared/telemetry'
 import SystemAtlas from '@/components/SystemAtlas'
+import { startLivePoller } from '@/components/live-poller'
 
 type EvidenceState = 'observed' | 'stale' | 'paused' | 'unavailable' | 'source-only'
 
@@ -53,32 +54,18 @@ export default function MissionControl() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    let cancelled = false
-    const pull = async () => {
-      try {
-        const response = await fetch('/api/v1/live', { cache: 'no-store' })
-        if (!response.ok) throw new Error(`status ${response.status}`)
-        const data = (await response.json()) as LiveSnapshot
-        if (!cancelled) {
-          setLive(data)
-          setError('')
-        }
-      } catch (reason) {
-        if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : 'unavailable')
-        }
-      }
-    }
-    pull()
-    const timer = window.setInterval(pull, 15_000)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+    return startLivePoller({
+      fetcher: window.fetch.bind(window),
+      onSnapshot: (snapshot) => {
+        setLive(snapshot)
+        setError('')
+      },
+      onUnavailable: setError,
+    })
   }, [])
 
   const state = useMemo(() => {
-    const runtimeCurrent = live?.status === 'live'
+    const runtimeCurrent = live?.status === 'live' && !error
     const execution = runtimeCurrent
       ? live?.desk?.execution ?? live?.markets?.execution ?? null
       : null

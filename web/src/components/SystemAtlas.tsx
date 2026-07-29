@@ -103,7 +103,10 @@ export default function SystemAtlas({
           <span>authority: none</span>
         </figcaption>
 
-        <div className="system-atlas__map">
+        <div
+          className="system-atlas__map"
+          data-layout={nodes.length > 12 ? 'dense' : 'orbit'}
+        >
           {nodes.length ? (
             <>
               <svg
