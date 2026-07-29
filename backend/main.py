@@ -51,12 +51,18 @@ from slowapi.util import get_remote_address
 try:
     from . import public_vault_map, transparency
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
-    from .moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
+    from .moss_telemetry import (
+        MossTelemetryValidationError,
+        store as moss_telemetry_store,
+    )
 except ImportError:  # Tests import `main` directly from backend/.
     import public_vault_map
     import transparency
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
-    from moss_telemetry import MossTelemetryValidationError, store as moss_telemetry_store
+    from moss_telemetry import (
+        MossTelemetryValidationError,
+        store as moss_telemetry_store,
+    )
 
 log = logging.getLogger("sapphire-alpha-dashboard")
 logging.basicConfig(level=logging.INFO)
@@ -95,6 +101,7 @@ async def _reject_path_traversal(request: Request, call_next: Any) -> Response:
             content={"detail": "forbidden"},
         )
     return await call_next(request)
+
 
 # CORS: default deny; allow configured origin only.
 _cors_origin = _env("CORS_ORIGIN", "")
@@ -169,7 +176,9 @@ def _surface_manifest(root: Path, entrypoint_url: str) -> dict[str, Any]:
             entries.append(f"{relative}\0{size}\0{digest}\n")
 
     manifest_sha256 = (
-        hashlib.sha256("".join(entries).encode("utf-8")).hexdigest() if entries else None
+        hashlib.sha256("".join(entries).encode("utf-8")).hexdigest()
+        if entries
+        else None
     )
     return {
         "entrypoint_url": entrypoint_url,
@@ -277,10 +286,14 @@ def _resolve_static(root: Path, relative: str) -> Path | None:
         return None
 
     cleaned = relative.strip("/")
-    candidates = ("index.html",) if not cleaned else (
-        cleaned,
-        f"{cleaned}.html",
-        f"{cleaned}/index.html",
+    candidates = (
+        ("index.html",)
+        if not cleaned
+        else (
+            cleaned,
+            f"{cleaned}.html",
+            f"{cleaned}/index.html",
+        )
     )
 
     for candidate in candidates:
@@ -382,9 +395,13 @@ def _auth_credentials() -> tuple[str, str]:
         try:
             password = Path(secret_path).read_text(encoding="utf-8").strip()
         except Exception as exc:
-            raise RuntimeError(f"Failed to read AUTH_PASSWORD_SECRET at {secret_path}: {exc}") from exc
+            raise RuntimeError(
+                f"Failed to read AUTH_PASSWORD_SECRET at {secret_path}: {exc}"
+            ) from exc
     if not password:
-        raise RuntimeError("AUTH_PASSWORD environment variable or AUTH_PASSWORD_SECRET file must be set")
+        raise RuntimeError(
+            "AUTH_PASSWORD environment variable or AUTH_PASSWORD_SECRET file must be set"
+        )
     if len(password) < 12:
         raise RuntimeError("AUTH_PASSWORD must be at least 12 characters")
     weak = {"sapphire", "password", "changeme", "admin", "123456", "sapphirealpha"}
@@ -509,15 +526,23 @@ async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
             parsed_json=payload,
         )
     except OverflowError:
-        raise HTTPException(status_code=413, detail="telemetry body too large") from None
+        raise HTTPException(
+            status_code=413, detail="telemetry body too large"
+        ) from None
     except PermissionError:
-        raise HTTPException(status_code=401, detail="invalid telemetry signature") from None
+        raise HTTPException(
+            status_code=401, detail="invalid telemetry signature"
+        ) from None
     except FileExistsError:
-        raise HTTPException(status_code=409, detail="telemetry replay rejected") from None
+        raise HTTPException(
+            status_code=409, detail="telemetry replay rejected"
+        ) from None
     except RecursionError:
         raise HTTPException(status_code=422, detail="invalid telemetry JSON") from None
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="telemetry ingest unavailable") from None
+        raise HTTPException(
+            status_code=503, detail="telemetry ingest unavailable"
+        ) from None
     except TelemetryValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     return {"accepted": True, "sequence": snapshot["sequence"]}
@@ -551,7 +576,9 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
         ValueError,
         json.JSONDecodeError,
     ):
-        raise HTTPException(status_code=422, detail="invalid MOSS telemetry JSON") from None
+        raise HTTPException(
+            status_code=422, detail="invalid MOSS telemetry JSON"
+        ) from None
     try:
         snapshot = moss_telemetry_store.accept(
             body=body,
@@ -560,15 +587,25 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
             parsed_json=payload,
         )
     except OverflowError:
-        raise HTTPException(status_code=413, detail="MOSS telemetry body too large") from None
+        raise HTTPException(
+            status_code=413, detail="MOSS telemetry body too large"
+        ) from None
     except PermissionError:
-        raise HTTPException(status_code=401, detail="invalid MOSS telemetry signature") from None
+        raise HTTPException(
+            status_code=401, detail="invalid MOSS telemetry signature"
+        ) from None
     except FileExistsError:
-        raise HTTPException(status_code=409, detail="MOSS telemetry replay rejected") from None
+        raise HTTPException(
+            status_code=409, detail="MOSS telemetry replay rejected"
+        ) from None
     except RecursionError:
-        raise HTTPException(status_code=422, detail="invalid MOSS telemetry JSON") from None
+        raise HTTPException(
+            status_code=422, detail="invalid MOSS telemetry JSON"
+        ) from None
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="MOSS telemetry ingest unavailable") from None
+        raise HTTPException(
+            status_code=503, detail="MOSS telemetry ingest unavailable"
+        ) from None
     except (MossTelemetryValidationError, TelemetryValidationError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     return {"accepted": True, "sequence": snapshot["sequence"]}
@@ -576,7 +613,9 @@ async def ingest_moss_telemetry(request: Request) -> dict[str, Any]:
 
 @app.get("/api/v1/moss")
 @limiter.limit(_api_rate_limit)
-async def api_moss(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+async def api_moss(
+    request: Request, user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
     """Serve exact operator detail or a banded anonymous MOSS projection.
 
     Capital is the one thing that stays redacted (Ari, 2026-07-25) — but it is
@@ -586,7 +625,9 @@ async def api_moss(request: Request, user: str = Depends(auth_or_public)) -> dic
     """
     public = user == PUBLIC_USER
     try:
-        delay_seconds = max(0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "0"))))
+        delay_seconds = max(
+            0.0, min(300.0, float(_env("PUBLIC_TELEMETRY_DELAY_SECONDS", "0")))
+        )
     except ValueError:
         delay_seconds = 0.0
     return moss_telemetry_store.get(public=public, delay_seconds=delay_seconds)
@@ -599,8 +640,10 @@ async def api_transparency(
 ) -> dict[str, Any]:
     """Explanation-ledger pane: operator full detail or sanitized public bands."""
     public = user == PUBLIC_USER
-    ledger = Path(_env("DASHBOARD_EXPLANATIONS_PATH", "")
-                  or (_OBSERVATIONS_DIR / transparency.LEDGER_NAME))
+    ledger = Path(
+        _env("DASHBOARD_EXPLANATIONS_PATH", "")
+        or (_OBSERVATIONS_DIR / transparency.LEDGER_NAME)
+    )
     return transparency.snapshot(ledger, public=public)
 
 
@@ -683,7 +726,9 @@ def _executor_heartbeat(*, now: datetime | None = None) -> dict[str, Any]:
 
     observed, current = _current_source_time(data, field="observed_at", now=now)
     reported_status = data.get("status")
-    status_str = reported_status.lower() if isinstance(reported_status, str) else "unknown"
+    status_str = (
+        reported_status.lower() if isinstance(reported_status, str) else "unknown"
+    )
     alive_states = {"alive", "ok", "running", "healthy"}
     inactive_states = {"dead", "down", "stopped", "halted"}
     if status_str not in alive_states | inactive_states:
@@ -992,7 +1037,9 @@ def _read_admitted_json_value(
             )
         except OSError as exc:
             raise _UnverifiablePersistedDocument from exc
-        stable_descriptor = _stable_stat_identity(before) == _stable_stat_identity(after)
+        stable_descriptor = _stable_stat_identity(before) == _stable_stat_identity(
+            after
+        )
         stable_parent = (
             _stable_stat_identity(parent_before)
             == _stable_stat_identity(parent_after)
@@ -1158,9 +1205,7 @@ def _evaluate_pause_truth(
     return {
         "state": state,
         "clear": True if state == "clear" else False if state == "active" else None,
-        "observed_at": (
-            min(observed_times).isoformat() if observed_times else None
-        ),
+        "observed_at": (min(observed_times).isoformat() if observed_times else None),
     }
 
 
@@ -1171,7 +1216,7 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
         _RH_CHAIN_DIR / "gate.json",
         expected_type=dict,
     )
-    gate = raw_gate if isinstance(raw_gate, dict) else {}
+    gate = _admitted_gate_document(raw_gate)
     observations: list[dict[str, Any]] = []
     for source, path in _PAUSE_SENTINELS.items():
         if (item := _pause_file_observation(source, path)) is not None:
@@ -1224,19 +1269,46 @@ def _gate_status(*, now: datetime | None = None) -> dict[str, Any]:
             if gate_current and isinstance(wallet_addr, str)
             else None
         ),
-        "cap_usd": (
-            cap_usd
-            if (
-                gate_current
-                and isinstance(cap_usd, (int, float))
-                and not isinstance(cap_usd, bool)
-                and math.isfinite(float(cap_usd))
-            )
-            else None
-        ),
+        "cap_usd": (cap_usd if gate_current and cap_usd is not None else None),
         "executor_alive": _executor_heartbeat(now=now)["alive"],
         "updated_at": gate_observed.isoformat() if gate_observed is not None else None,
     }
+
+
+_GATE_REQUIRED_FIELDS = frozenset({"observed_at", "armed", "mode"})
+_GATE_OPTIONAL_FIELDS = frozenset({"wallet_address", "cap_usd"})
+_MAX_GATE_CAP_USD = 1_000_000_000
+
+
+def _admitted_gate_document(raw: Any) -> dict[str, Any]:
+    """Admit only the small, bounded gate schema used by this projection."""
+    if (
+        not isinstance(raw, dict)
+        or not _GATE_REQUIRED_FIELDS.issubset(raw)
+        or not set(raw).issubset(_GATE_REQUIRED_FIELDS | _GATE_OPTIONAL_FIELDS)
+        or type(raw.get("armed")) is not bool
+        or raw.get("mode") not in {"bounded_auto", "manual", "off"}
+        or not isinstance(raw.get("observed_at"), str)
+    ):
+        return {}
+
+    cap_usd = raw.get("cap_usd")
+    if cap_usd is not None:
+        if type(cap_usd) not in {int, float}:
+            return {}
+        if isinstance(cap_usd, float) and not math.isfinite(cap_usd):
+            return {}
+        if cap_usd < 0 or cap_usd > _MAX_GATE_CAP_USD:
+            return {}
+
+    wallet_address = raw.get("wallet_address")
+    if wallet_address is not None and (
+        not isinstance(wallet_address, str)
+        or not wallet_address.strip()
+        or len(wallet_address) > 240
+    ):
+        return {}
+    return raw
 
 
 def _wallet_status(*, now: datetime | None = None) -> dict[str, Any]:
@@ -1283,7 +1355,7 @@ def _recent_signals(*, now: datetime | None = None) -> list[dict[str, Any]]:
                 continue
             projected.append(
                 {
-                    "id": f"sig-{len(projected)+1:03d}",
+                    "id": f"sig-{len(projected) + 1:03d}",
                     "instrument": signal["instrument"][:64],
                     "side": signal["side"][:16],
                     "venue": signal["venue"][:64],
@@ -1310,7 +1382,9 @@ _RESEARCH_POLICY: dict[str, Any] = {
     "rules": {
         "analysts_are_advisory_only": True,
         "single_analyst_evidence_cap": 0.25,
-        "minimum_independent_primary_sources": 2,
+        "minimum_distinct_analyst_inputs": 4,
+        "review_status": "unverified",
+        "primary_source_provenance": "not_attested",
         "analyst_can_set_conviction": False,
         "analyst_can_authorize_execution": False,
     },
@@ -1356,23 +1430,29 @@ def _clean_research_text(value: Any, *, fallback: str) -> str:
 
 
 def _research_feed(*, now: datetime | None = None) -> dict[str, Any]:
-    """Return an explicit, balanced research feed with no fabricated fallback.
+    """Return an explicit, balanced analyst-input feed with no false review claim.
 
-    Producers provide reviewed clips through ``DASHBOARD_RESEARCH_CLIPS_JSON``.
+    Producers provide timestamped inputs through ``DASHBOARD_RESEARCH_CLIPS_JSON``.
     Unknown sources are rejected and no source may occupy more than two slots.
     Every admitted clip carries exactly one zoned ``observed_at`` no older than
     the declared 24-hour research TTL; the projection publishes its computed age.
-    The clips remain advisory: the policy shipped beside them makes clear that
-    Ari's checked-in thesis owns conviction and a separate gate owns execution.
+    The input schema does not contain persisted review or primary-source
+    provenance, so these clips remain explicitly unverified and never become a
+    live research claim.
     """
 
     now = now or datetime.now(UTC)
-    raw = _env("DASHBOARD_RESEARCH_CLIPS_JSON", "").strip()
+    raw = _env("DASHBOARD_RESEARCH_CLIPS_JSON", "")
     parsed: Any = []
-    if raw:
+    try:
+        raw_bytes = raw.encode("utf-8")
+    except UnicodeEncodeError:
+        raw_bytes = b""
+        log.warning("DASHBOARD_RESEARCH_CLIPS_JSON is not valid UTF-8")
+    if raw_bytes.strip():
         try:
             parsed = _decode_bounded_json(
-                raw.encode("utf-8"),
+                raw_bytes,
                 max_bytes=_MAX_RESEARCH_DOCUMENT_BYTES,
             )
         except (
@@ -1478,7 +1558,7 @@ def _research_feed(*, now: datetime | None = None) -> dict[str, Any]:
     return {
         "clips": clips,
         "sources_observed": sorted(source_counts),
-        "live": bool(clips),
+        "live": False,
         "policy": _RESEARCH_POLICY,
     }
 
@@ -1527,7 +1607,9 @@ async def _probe_tradingview_webhook() -> dict[str, Any]:
                         r.content,
                         max_bytes=_MAX_RUNTIME_DOCUMENT_BYTES,
                     )
-                    alerts = payload.get("alerts") if isinstance(payload, dict) else None
+                    alerts = (
+                        payload.get("alerts") if isinstance(payload, dict) else None
+                    )
                     if (
                         isinstance(alerts, list)
                         and alerts
@@ -1572,13 +1654,17 @@ async def _tradingview_status() -> dict[str, Any]:
         try:
             path = Path(log_path_env)
             if path.exists():
-                status["recent_log"] = path.read_text(encoding="utf-8", errors="ignore").splitlines()[-10:]
+                status["recent_log"] = path.read_text(
+                    encoding="utf-8", errors="ignore"
+                ).splitlines()[-10:]
         except Exception as exc:
             log.warning("failed to read TV log %s: %s", log_path_env, exc)
     return status
 
 
-async def _probe_health(name: str, url: str | None, timeout: float = 2.0) -> dict[str, Any]:
+async def _probe_health(
+    name: str, url: str | None, timeout: float = 2.0
+) -> dict[str, Any]:
     """Probe a business health endpoint without leaking PII."""
     if not url:
         return {"name": name, "status": "not_configured", "detail": "no URL configured"}
@@ -1674,9 +1760,11 @@ def _public_research(feed: dict[str, Any]) -> dict[str, Any]:
         ],
         "live": bool(feed.get("live", False)),
         "policy": {
-            "research_role": "evidence_not_authority",
+            "research_role": "unverified_advisory_input",
             "single_input_cap": rules["single_analyst_evidence_cap"],
-            "minimum_independent_checks": rules["minimum_independent_primary_sources"],
+            "minimum_distinct_inputs": rules["minimum_distinct_analyst_inputs"],
+            "review_status": rules["review_status"],
+            "primary_source_provenance": rules["primary_source_provenance"],
             "can_set_conviction": rules["analyst_can_set_conviction"],
             "can_authorize_execution": rules["analyst_can_authorize_execution"],
         },
@@ -1694,7 +1782,9 @@ def _public_tradingview(tv: dict[str, Any]) -> dict[str, Any]:
 def _public_business_health(health: dict[str, Any]) -> dict[str, Any]:
     services = health.get("services", [])
     return {
-        "services": [{"name": s.get("name", ""), "status": s.get("status", "")} for s in services],
+        "services": [
+            {"name": s.get("name", ""), "status": s.get("status", "")} for s in services
+        ],
         "ok_count": sum(1 for s in services if s.get("status") == "ok"),
         "total": len(services),
         "timestamp": health.get("timestamp", ""),
@@ -1712,7 +1802,9 @@ def _public_system_health(health: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/v1/status")
 @limiter.limit(_api_rate_limit)
-async def api_status(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+async def api_status(
+    request: Request, user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
     gate = _gate_status()
     wallet = _wallet_status()
     system_health = await _system_health()
@@ -1737,7 +1829,9 @@ async def api_status(request: Request, user: str = Depends(auth_or_public)) -> d
 
 @app.get("/api/v1/widgets")
 @limiter.limit(_api_rate_limit)
-async def api_widgets(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+async def api_widgets(
+    request: Request, user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
     full = {
         "gate": _gate_status(),
         "wallet": _wallet_status(),
@@ -1784,7 +1878,10 @@ async def api_tradingview_alerts(
     if not url or url == "not configured":
         return {"alerts": [], "total": 0, "source": "not_configured"}
 
-    alerts_url = url.rstrip("/") + f"/alerts?limit={max(1, min(limit, 100))}&persisted={str(persisted).lower()}"
+    alerts_url = (
+        url.rstrip("/")
+        + f"/alerts?limit={max(1, min(limit, 100))}&persisted={str(persisted).lower()}"
+    )
     try:
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
             r = await client.get(alerts_url)
@@ -1795,7 +1892,12 @@ async def api_tradingview_alerts(
                 "total": data.get("total", 0),
                 "source": data.get("source", "webhook"),
             }
-        return {"alerts": [], "total": 0, "source": "webhook", "error": f"HTTP {r.status_code}"}
+        return {
+            "alerts": [],
+            "total": 0,
+            "source": "webhook",
+            "error": f"HTTP {r.status_code}",
+        }
     except Exception as exc:
         log.warning("failed to fetch TradingView alerts: %s", exc)
         return {"alerts": [], "total": 0, "source": "webhook", "error": str(exc)}
@@ -1933,7 +2035,9 @@ def _fleet_age_seconds(
 
 @app.get("/api/fleet")
 @limiter.limit(_api_rate_limit)
-async def api_fleet(request: Request, user: str = Depends(auth_or_public)) -> dict[str, Any]:
+async def api_fleet(
+    request: Request, user: str = Depends(auth_or_public)
+) -> dict[str, Any]:
     """Fleet presence (leases) + human-approval inbox (gates) with staleness."""
     snapshot = _whitelist_fleet(
         _runtime_document(
@@ -1964,7 +2068,9 @@ async def api_public_vault_map(
 
 @app.get("/vault/rag-map", response_class=FileResponse)
 @limiter.limit("30/minute")
-async def vault_rag_map(request: Request, user: str = Depends(require_auth)) -> Response:
+async def vault_rag_map(
+    request: Request, user: str = Depends(require_auth)
+) -> Response:
     """Privacy-safe Knowledge-vault RAG map (titles only, no chunk text)."""
     path = _FRONTEND_DIST_DIR / "rag-map.html"
     if not path.exists() or not path.is_file():
@@ -1974,7 +2080,9 @@ async def vault_rag_map(request: Request, user: str = Depends(require_auth)) -> 
 
 @app.get("/assets/{filename}", response_class=FileResponse)
 @limiter.limit("120/minute")
-async def frontend_assets(filename: str, request: Request, user: str = Depends(auth_or_public)) -> Response:
+async def frontend_assets(
+    filename: str, request: Request, user: str = Depends(auth_or_public)
+) -> Response:
     base = _FRONTEND_DIST_DIR / "assets"
     try:
         path = (base / filename).resolve(strict=False)
@@ -2026,13 +2134,17 @@ def _dashboard_index() -> Response:
 
 @app.get("/dashboard", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def dashboard_root(request: Request, user: str = Depends(auth_or_public)) -> Response:
+async def dashboard_root(
+    request: Request, user: str = Depends(auth_or_public)
+) -> Response:
     return _dashboard_index()
 
 
 @app.get("/dashboard/{path:path}", response_class=FileResponse)
 @limiter.limit("60/minute")
-async def dashboard_spa(path: str, request: Request, user: str = Depends(auth_or_public)) -> Response:
+async def dashboard_spa(
+    path: str, request: Request, user: str = Depends(auth_or_public)
+) -> Response:
     return _dashboard_index()
 
 

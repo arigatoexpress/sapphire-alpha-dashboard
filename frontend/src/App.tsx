@@ -581,7 +581,7 @@ function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
     <details>
       <summary>
         <span>Research record</span>
-        <strong>{clips.length ? `${clips.length} reviewed` : NOT_OBSERVED}</strong>
+        <strong>{clips.length ? `${clips.length} unverified` : NOT_OBSERVED}</strong>
       </summary>
       <div className="disclosure-body">
         {clips.length ? (
@@ -594,12 +594,14 @@ function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
             ))}
           </ol>
         ) : (
-          <p>No reviewed evidence has been published in this observation.</p>
+          <p>No analyst input has been published in this observation.</p>
         )}
         <p className="disclosure-note">
-          Minimum checks: {formatCount(widgets?.research.policy.minimum_independent_checks)} ·
+          Unverified advisory input · distinct-input floor:{' '}
+          {formatCount(widgets?.research.policy.minimum_distinct_inputs)} ·
           single-input cap:{' '}
-          {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}
+          {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}{' '}
+          · review status: {widgets ? words(widgets.research.policy.review_status) : NOT_OBSERVED}
         </p>
       </div>
     </details>
@@ -806,16 +808,16 @@ export function buildEvidenceSegments({
       id: 'research',
       label: 'Research',
       value: researchObservedAt
-        ? `${formatCount(widgets.research.clips.length)} reviewed`
+        ? `${formatCount(widgets.research.clips.length)} unverified`
         : NOT_OBSERVED,
       source: '/api/v1/widgets · research',
       observedAt: observedTime(researchObservedAt),
       freshness: researchObservedAt ? formatAge(researchAge) : NOT_OBSERVED,
-      authority: 'decision input',
+      authority: 'unverified advisory input',
       uncertainty: errors.widgets
         ? 'poll failed; value is from the last report'
         : researchObservedAt
-          ? 'bounded reviewed clips admitted within the declared 24h TTL'
+          ? 'bounded timestamped analyst text; review and primary-source provenance are not attested'
           : 'no persisted research observation',
       tone: errors.widgets ? 'degraded' : 'unknown',
     },

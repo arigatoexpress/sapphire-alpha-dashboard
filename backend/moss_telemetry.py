@@ -68,7 +68,9 @@ def _exact_keys(value: Any, allowed: set[str]) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise MossTelemetryValidationError("MOSS telemetry must be an object")
     if set(value) != allowed:
-        raise MossTelemetryValidationError("MOSS telemetry has unsupported or missing fields")
+        raise MossTelemetryValidationError(
+            "MOSS telemetry has unsupported or missing fields"
+        )
     return value
 
 
@@ -80,19 +82,29 @@ def _timestamp(value: Any) -> str:
     except ValueError as exc:
         raise MossTelemetryValidationError("observed_at must be ISO-8601") from exc
     if parsed.tzinfo is None or parsed.timestamp() > time.time() + 60:
-        raise MossTelemetryValidationError("observed_at must be a current zoned timestamp")
+        raise MossTelemetryValidationError(
+            "observed_at must be a current zoned timestamp"
+        )
     return parsed.astimezone(UTC).isoformat()
 
 
 def _units(value: Any, field: str) -> str:
-    if not isinstance(value, str) or len(value) > 80 or not _DECIMAL_RE.fullmatch(value):
-        raise MossTelemetryValidationError(f"{field} must be non-negative decimal units")
+    if (
+        not isinstance(value, str)
+        or len(value) > 80
+        or not _DECIMAL_RE.fullmatch(value)
+    ):
+        raise MossTelemetryValidationError(
+            f"{field} must be non-negative decimal units"
+        )
     try:
         parsed = Decimal(value)
     except InvalidOperation as exc:
         raise MossTelemetryValidationError(f"{field} must be decimal units") from exc
     if not parsed.is_finite() or parsed < 0:
-        raise MossTelemetryValidationError(f"{field} must be non-negative decimal units")
+        raise MossTelemetryValidationError(
+            f"{field} must be non-negative decimal units"
+        )
     return value
 
 
@@ -112,13 +124,23 @@ def validate_moss_snapshot(raw: Any) -> dict[str, Any]:
         raise MossTelemetryValidationError("full addresses are forbidden")
     if obj["version"] != 1:
         raise MossTelemetryValidationError("unsupported MOSS telemetry version")
-    if not isinstance(obj["sequence"], int) or isinstance(obj["sequence"], bool) or obj["sequence"] < 0:
+    if (
+        not isinstance(obj["sequence"], int)
+        or isinstance(obj["sequence"], bool)
+        or obj["sequence"] < 0
+    ):
         raise MossTelemetryValidationError("sequence must be a non-negative integer")
     if obj["chain"] != "MegaETH Mainnet":
         raise MossTelemetryValidationError("MOSS telemetry chain mismatch")
-    if not isinstance(obj["identity_masked"], str) or not _MASKED_ID_RE.fullmatch(obj["identity_masked"]):
+    if not isinstance(obj["identity_masked"], str) or not _MASKED_ID_RE.fullmatch(
+        obj["identity_masked"]
+    ):
         raise MossTelemetryValidationError("identity must be masked")
-    if not isinstance(obj["block"], str) or len(obj["block"]) > 32 or not _BLOCK_RE.fullmatch(obj["block"]):
+    if (
+        not isinstance(obj["block"], str)
+        or len(obj["block"]) > 32
+        or not _BLOCK_RE.fullmatch(obj["block"])
+    ):
         raise MossTelemetryValidationError("block must be a decimal string")
     return {
         "version": 1,
@@ -237,7 +259,9 @@ class MossTelemetryStore:
         self._persistence.accept(snapshot, nonce=nonce, received_at=now)
         return snapshot
 
-    def get(self, *, public: bool, delay_seconds: float = 0, now: float | None = None) -> dict[str, Any]:
+    def get(
+        self, *, public: bool, delay_seconds: float = 0, now: float | None = None
+    ) -> dict[str, Any]:
         now = time.time() if now is None else now
         target = now - max(0.0, delay_seconds if public else 0.0)
         selected = self._persistence.select(received_before=target)
@@ -257,7 +281,7 @@ class MossTelemetryStore:
             observed = datetime.fromisoformat(candidate["observed_at"]).timestamp()
         except Exception:
             return _empty(public=public, now=now)
-        if observed > now:
+        if not observed <= received_at <= target <= now:
             return _empty(public=public, now=now)
 
         freshness_s = round(now - observed, 1)
@@ -297,7 +321,9 @@ def _build_persistence() -> TelemetryPersistence:
     backend = os.getenv("TELEMETRY_STORE", "memory").strip().lower()
     if backend == "firestore":
         return FirestoreTelemetryPersistence(
-            collection=os.getenv("MOSS_TELEMETRY_FIRESTORE_COLLECTION", "sapphire_moss_v1"),
+            collection=os.getenv(
+                "MOSS_TELEMETRY_FIRESTORE_COLLECTION", "sapphire_moss_v1"
+            ),
             database=os.getenv("TELEMETRY_FIRESTORE_DATABASE") or None,
         )
     if backend != "memory":

@@ -101,9 +101,7 @@ def _build_live_snapshot(
     projected.update(
         {
             "status": (
-                "live"
-                if freshness_s <= DEFAULT_STALE_AFTER_SECONDS
-                else "stale"
+                "live" if freshness_s <= DEFAULT_STALE_AFTER_SECONDS else "stale"
             ),
             "freshness_s": freshness_s,
             "served_at": datetime.fromtimestamp(now, UTC).isoformat(),
@@ -160,9 +158,11 @@ def _empty_widgets() -> dict[str, Any]:
             "clips": [],
             "live": False,
             "policy": {
-                "research_role": "evidence_not_authority",
+                "research_role": "unverified_advisory_input",
                 "single_input_cap": 0.25,
-                "minimum_independent_checks": 2,
+                "minimum_distinct_inputs": 4,
+                "review_status": "unverified",
+                "primary_source_provenance": "not_attested",
                 "can_set_conviction": False,
                 "can_authorize_execution": False,
             },
@@ -279,13 +279,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Local Sapphire Alpha dashboard fallback")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="port to listen on")
+    parser = argparse.ArgumentParser(
+        description="Local Sapphire Alpha dashboard fallback"
+    )
+    parser.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help="port to listen on"
+    )
     parser.add_argument("--host", default="127.0.0.1", help="interface to bind")
     args = parser.parse_args()
 
     if not FRONTEND_DIST.is_dir():
-        print(f"frontend/dist not found at {FRONTEND_DIST}; run 'npm run build' first", file=sys.stderr)
+        print(
+            f"frontend/dist not found at {FRONTEND_DIST}; run 'npm run build' first",
+            file=sys.stderr,
+        )
         return 1
 
     server = HTTPServer((args.host, args.port), DashboardHandler)

@@ -120,7 +120,9 @@ export interface PublicWidgets {
     policy: {
       research_role: string
       single_input_cap: number
-      minimum_independent_checks: number
+      minimum_distinct_inputs: number
+      review_status: 'unverified'
+      primary_source_provenance: 'not_attested'
       can_set_conviction: boolean
       can_authorize_execution: boolean
     }

@@ -220,6 +220,7 @@ def test_current_research_exposes_source_age(
     feed = main._research_feed(now=NOW + timedelta(seconds=5))
     public = main._public_research(feed)
 
-    assert feed["live"] is True
+    assert feed["live"] is False
+    assert public["live"] is False
     assert {clip["age_s"] for clip in feed["clips"]} == {5.0}
     assert {clip["age_s"] for clip in public["clips"]} == {5.0}

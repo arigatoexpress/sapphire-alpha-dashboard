@@ -42,9 +42,11 @@ def test_offline_fallback_covers_the_dashboard_watchboard_contract():
     assert widgets["research"]["clips"] == []
     assert widgets["research"]["live"] is False
     assert widgets["research"]["policy"] == {
-        "research_role": "evidence_not_authority",
+        "research_role": "unverified_advisory_input",
         "single_input_cap": 0.25,
-        "minimum_independent_checks": 2,
+        "minimum_distinct_inputs": 4,
+        "review_status": "unverified",
+        "primary_source_provenance": "not_attested",
         "can_set_conviction": False,
         "can_authorize_execution": False,
     }

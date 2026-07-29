@@ -47,13 +47,9 @@ def public_mode(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setenv("PUBLIC_READ_ONLY", "1")
-    monkeypatch.setenv(
-        "WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678"
-    )
+    monkeypatch.setenv("WALLET_ADDRESS", "0x1234567890abcdef1234567890abcdef12345678")
     # Realistic-looking sensitive state that sanitization must strip.
-    monkeypatch.setenv(
-        "TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090"
-    )
+    monkeypatch.setenv("TV_WEBHOOK_URL", "http://private-node.example.ts.net:9090")
     (rh / "skin-book.json").write_text(
         json.dumps(
             {
@@ -140,7 +136,9 @@ def test_anonymous_widgets_sanitized(public_mode):
     body = json.dumps(data)
 
     for needle in FORBIDDEN_SUBSTRINGS:
-        assert needle not in body, f"forbidden string {needle!r} leaked into public payload"
+        assert needle not in body, (
+            f"forbidden string {needle!r} leaked into public payload"
+        )
 
     assert data["public_view"] is True
     # Gate: state booleans kept, caps/wallet dropped.
@@ -161,9 +159,11 @@ def test_anonymous_widgets_sanitized(public_mode):
     assert data["research"]["clips"][0]["title"] == "Cycle evidence"
     assert "sources_observed" not in data["research"]
     assert data["research"]["policy"] == {
-        "research_role": "evidence_not_authority",
+        "research_role": "unverified_advisory_input",
         "single_input_cap": 0.25,
-        "minimum_independent_checks": 2,
+        "minimum_distinct_inputs": 4,
+        "review_status": "unverified",
+        "primary_source_provenance": "not_attested",
         "can_set_conviction": False,
         "can_authorize_execution": False,
     }
@@ -182,7 +182,9 @@ def test_anonymous_widgets_sanitized(public_mode):
         "Michael Nadeau",
         "0x1234",
     ):
-        assert needle not in body, f"private identity {needle!r} leaked into public payload"
+        assert needle not in body, (
+            f"private identity {needle!r} leaked into public payload"
+        )
     # TradingView: no endpoint URL, no log tail.
     assert "endpoint" not in data["tradingview"]
     assert "recent_log" not in data["tradingview"]
