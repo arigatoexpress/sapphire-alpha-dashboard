@@ -74,7 +74,7 @@ describe('system atlas motion and responsive contracts', () => {
   })
 
   it('includes a narrow-screen atlas layout', () => {
-    expect(css).toMatch(/@media\s*\(max-width:\s*760px\)/)
+    expect(css).toMatch(/@media\s*\(max-width:\s*840px\)/)
     expect(css).toMatch(/\.system-atlas__map/)
     expect(css).toMatch(/\.system-atlas__path/)
   })

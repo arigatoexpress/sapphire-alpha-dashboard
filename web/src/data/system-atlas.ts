@@ -36,7 +36,7 @@ export const SYSTEM_ATLAS_STAGES: readonly AtlasStage[] = [
       'Research artifacts separate event probability, path scenarios, falsifiers, and later scoring.',
     source: '/research · timestamped artifact contract',
     authority: 'none',
-    position: { x: 31, y: 23 },
+    position: { x: 27, y: 23 },
   },
   {
     id: 'agents',
@@ -47,7 +47,7 @@ export const SYSTEM_ATLAS_STAGES: readonly AtlasStage[] = [
       'Researcher, forecaster, and critic are proposal-only roles. Runtime status is not asserted.',
     source: 'static role contract · no worker heartbeat',
     authority: 'none',
-    position: { x: 52, y: 56 },
+    position: { x: 50, y: 56 },
   },
   {
     id: 'policy',

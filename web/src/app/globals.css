@@ -632,7 +632,7 @@ body {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 840px) {
   .system-atlas {
     width: min(100% - 2rem, 36rem);
     margin: 5rem auto;
@@ -640,6 +640,7 @@ body {
 
   .system-atlas__map {
     min-height: 0;
+    overflow: visible;
     padding: 2.5rem 1rem 1rem;
     background: linear-gradient(
       90deg,
