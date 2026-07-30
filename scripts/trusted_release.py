@@ -57,19 +57,25 @@ def _validated_provider_diagnostic(error: Exception) -> dict[str, Any] | None:
             "schema",
             "category",
             "http_status",
-            "response_body",
-            "response_body_truncated",
+            "capture_sha256",
+            "capture_bytes",
+            "capture_truncated",
         }:
             return None
         status = diagnostic.get("http_status")
-        body = diagnostic.get("response_body")
-        truncated = diagnostic.get("response_body_truncated")
+        capture_sha256 = diagnostic.get("capture_sha256")
+        capture_bytes = diagnostic.get("capture_bytes")
+        truncated = diagnostic.get("capture_truncated")
         if (
             isinstance(status, bool)
             or not isinstance(status, int)
             or not 100 <= status <= 599
-            or not isinstance(body, str)
-            or len(body) > 1024
+            or not isinstance(capture_sha256, str)
+            or len(capture_sha256) != 64
+            or any(character not in HEX64 for character in capture_sha256)
+            or isinstance(capture_bytes, bool)
+            or not isinstance(capture_bytes, int)
+            or not 0 <= capture_bytes <= 4096
             or not isinstance(truncated, bool)
         ):
             return None
@@ -85,7 +91,14 @@ def _validated_provider_diagnostic(error: Exception) -> dict[str, Any] | None:
         ):
             return None
     elif category == "provider_response_invalid":
-        if set(diagnostic) != {"schema", "category"}:
+        if set(diagnostic) != {"schema", "category", "reason"}:
+            return None
+        if diagnostic.get("reason") not in {
+            "invalid_json",
+            "non_object",
+            "response_too_large",
+            "response_type_invalid",
+        }:
             return None
     else:
         return None
