@@ -4,18 +4,39 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { LiveSnapshot } from '@shared/telemetry'
+import liveFixture from '../../../shared/__tests__/fixtures/live-snapshot.json'
 import SystemAtlas from './SystemAtlas'
 
 type LayoutResult = {
   clientWidth: number
   scrollWidth: number
   contained: boolean
+  emptyBeforeTechnical: boolean
   intersections: string[]
   rectangles: Array<{ name: string; left: number; right: number; top: number; bottom: number }>
   map: { left: number; right: number; top: number; bottom: number }
 }
 
 const temp = mkdtempSync(join(tmpdir(), 'sapphire-atlas-layout-'))
+const live = liveFixture as LiveSnapshot
+const maxNodes = Array.from({ length: 24 }, (_value, index) => {
+  const source = live.nodes[index % live.nodes.length]
+  return {
+    ...source,
+    id: `node-${String(index + 1).padStart(2, '0')}`,
+    label: `Runtime node ${index + 1}`,
+  }
+})
+const maxSnapshot: LiveSnapshot = {
+  ...structuredClone(live),
+  nodes: maxNodes,
+  links: maxNodes.slice(1).map((node, index) => ({
+    ...live.links[index % live.links.length],
+    source: maxNodes[index].id,
+    target: node.id,
+  })),
+}
 
 afterAll(() => rmSync(temp, { recursive: true, force: true }))
 
@@ -33,9 +54,14 @@ function chromePath() {
   return found
 }
 
-function renderAt(width: number): LayoutResult {
+function renderAt(
+  width: number,
+  snapshot: LiveSnapshot | null = live,
+  openTechnical = false,
+): LayoutResult {
   const css = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf8')
-  const markup = renderToStaticMarkup(<SystemAtlas />)
+  let markup = renderToStaticMarkup(<SystemAtlas snapshot={snapshot} />)
+  if (openTechnical) markup = markup.replace('<details ', '<details open="" ')
   const fixture = join(temp, `atlas-${width}.html`)
   writeFileSync(
     fixture,
@@ -62,15 +88,23 @@ function renderAt(width: number): LayoutResult {
       *, ::before, ::after { box-sizing: border-box; }
       body, h1, h2, h3, p, figure, ol, ul, dl, dd { margin: 0; }
       ol, ul { padding: 0; }
-      body { margin: 0; font-family: var(--font-body); }
+      html { overflow-x: hidden; }
+      body {
+        width: ${width}px;
+        min-width: 0;
+        margin: 0;
+        overflow-x: hidden;
+        font-family: var(--font-body);
+      }
       ${css}
+      *, *::before, *::after { animation: none !important; transition: none !important; }
     </style>
   </head>
   <body>
     ${markup}
     <script>
       const map = document.querySelector('.system-atlas__map').getBoundingClientRect();
-      const cards = [...document.querySelectorAll('.system-atlas__stage')].map((node) => ({
+      const cards = [...document.querySelectorAll('.system-atlas__node')].map((node) => ({
         name: node.querySelector('h3').textContent,
         rect: node.getBoundingClientRect(),
       }));
@@ -90,10 +124,13 @@ function renderAt(width: number): LayoutResult {
         rect.top >= map.top - 0.5 &&
         rect.bottom <= map.bottom + 0.5
       );
+      const empty = document.querySelector('.system-atlas__empty')?.getBoundingClientRect();
+      const technical = document.querySelector('.system-atlas__technical')?.getBoundingClientRect();
       const result = {
-        clientWidth: document.documentElement.clientWidth,
-        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.body.clientWidth,
+        scrollWidth: document.body.scrollWidth,
         contained,
+        emptyBeforeTechnical: !empty || !technical || empty.bottom <= technical.top + 0.5,
         intersections,
         map: { left: map.left, right: map.right, top: map.top, bottom: map.bottom },
         rectangles: cards.map(({ name, rect }) => ({
@@ -120,7 +157,9 @@ function renderAt(width: number): LayoutResult {
       '--no-first-run',
       '--hide-scrollbars',
       '--no-sandbox',
-      `--window-size=${width},1100`,
+      '--run-all-compositor-stages-before-draw',
+      '--virtual-time-budget=1000',
+      `--window-size=${Math.max(width, 500)},1100`,
       '--dump-dom',
       `file://${fixture}`,
     ],
@@ -131,9 +170,9 @@ function renderAt(width: number): LayoutResult {
   return JSON.parse(decodeURIComponent(encoded)) as LayoutResult
 }
 
-describe('system atlas rendered tablet geometry', () => {
-  it.each([761, 768, 820, 840, 841, 1025])(
-    'contains five non-overlapping cards at %ipx',
+describe('system atlas rendered responsive geometry', () => {
+  it.each([320, 375, 500, 768, 1024, 1025, 1280, 1440])(
+    'contains every admitted node without overlap at %ipx',
     (width) => {
       const layout = renderAt(width)
       expect(layout.clientWidth).toBe(width)
@@ -142,6 +181,42 @@ describe('system atlas rendered tablet geometry', () => {
         layout.contained,
         JSON.stringify({ map: layout.map, cards: layout.rectangles }),
       ).toBe(true)
+      expect(layout.intersections, JSON.stringify(layout.rectangles)).toEqual([])
+    },
+    65_000,
+  )
+
+  it.each([320, 375])(
+    'keeps the opened technical ledger inside a %ipx viewport',
+    (width) => {
+      const layout = renderAt(width, live, true)
+      expect(layout.clientWidth).toBe(width)
+      expect(layout.scrollWidth).toBe(width)
+      expect(layout.contained).toBe(true)
+      expect(layout.intersections).toEqual([])
+    },
+    65_000,
+  )
+
+  it.each([320, 375])(
+    'keeps the no-runtime contract above the technical ledger at %ipx',
+    (width) => {
+      const layout = renderAt(width, null)
+      expect(layout.clientWidth).toBe(width)
+      expect(layout.scrollWidth).toBe(width)
+      expect(layout.contained).toBe(true)
+      expect(layout.emptyBeforeTechnical).toBe(true)
+    },
+    65_000,
+  )
+
+  it.each([1280, 1440])(
+    'fits all 24 schema-admitted nodes without overlap at %ipx',
+    (width) => {
+      const layout = renderAt(width, maxSnapshot)
+      expect(layout.clientWidth).toBe(width)
+      expect(layout.scrollWidth).toBe(width)
+      expect(layout.contained).toBe(true)
       expect(layout.intersections, JSON.stringify(layout.rectangles)).toEqual([])
     },
     65_000,

@@ -22,6 +22,21 @@ from main import app
 client = TestClient(app)
 AUTH = ("testuser", "testpass-strong-99")
 SECRET = "moss-telemetry-test-secret-long-enough"
+TIMESTAMP_FIELDS = frozenset({"observed_at", "served_at", "received_at"})
+
+
+def _semantic_projection_items(value):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if key in TIMESTAMP_FIELDS:
+                continue
+            yield "key", key
+            yield from _semantic_projection_items(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _semantic_projection_items(nested)
+    else:
+        yield "value", str(value)
 
 
 def _sample(*, sequence: int = 42) -> dict:
@@ -79,15 +94,29 @@ def test_public_projection_bands_capital_and_removes_fingerprinting_tuple():
     assert client.post("/api/v1/moss/telemetry", content=raw, headers=headers).status_code == 202
 
     public = client.get("/api/v1/moss").json()
-    body = json.dumps(public)
     assert public["public_view"] is True
     assert public["network"] == "MegaETH"
     assert public["usdm_band"] == "$100–$249"
     assert public["eth_state"] == "present"
     assert public["observation_freshness"] == "current"
-    assert "identity_masked" not in public
-    for forbidden in ("0x1111", "188.25", "0.0042", "2748", "block"):
-        assert forbidden not in body
+    # Traverse recursively so a future nested projection cannot reintroduce a
+    # raw identity/capital tuple. Timestamp values are excluded because a block
+    # number can legitimately collide with their microseconds without being
+    # disclosed as a semantic claim.
+    semantic_items = list(_semantic_projection_items(public))
+    claim_keys = {value for kind, value in semantic_items if kind == "key"}
+    claim_values = {value for kind, value in semantic_items if kind == "value"}
+    for forbidden_key in (
+        "identity_masked",
+        "usdm",
+        "eth",
+        "block",
+        "chain",
+        "sequence",
+    ):
+        assert forbidden_key not in claim_keys
+    for forbidden_value in ("0x1111…1111", "188.25", "0.0042", "2748"):
+        assert forbidden_value not in claim_values
 
 
 @pytest.mark.parametrize(

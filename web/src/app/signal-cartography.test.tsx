@@ -101,8 +101,8 @@ describe('token parity and motion contracts (source)', () => {
     ['atlas-blue', '#174A67'],
     ['glacier', '#F3F8F7'],
     ['skywash', '#D8EBEE'],
-    ['signal-coral', '#E86F51'],
-    ['caution-gold', '#E3AF35'],
+    ['signal-coral', '#B54632'],
+    ['caution-gold', '#8A6100'],
   ] as const)('defines --color-%s as %s', (name, hex) => {
     expect(theme).toMatch(
       new RegExp(`--color-${name}\\s*:\\s*${hex}`, 'i'),
