@@ -38,6 +38,27 @@ STAGING_BUCKET = "sapphire-479610_cloudbuild"
 SCHEMA = "sapphire/deploy-action/v1"
 SOURCE_MANIFEST_NAME = ".sapphire-source-manifest.json"
 MAX_SUBSTITUTION_BYTES = 4000
+MAX_PROVIDER_ERROR_BODY_BYTES = 4096
+MAX_PROVIDER_ERROR_PREVIEW_CHARS = 1024
+PROVIDER_DIAGNOSTIC_SCHEMA = "sapphire/provider-diagnostic/v1"
+REDACTED = "[REDACTED]"
+_SENSITIVE_PROVIDER_KEY = re.compile(
+    r"(?:authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|"
+    r"(?:access[-_]?)?token|refresh[-_]?token|secret|password|credential|"
+    r"owner[-_]?phrase)",
+    re.IGNORECASE,
+)
+_SENSITIVE_PROVIDER_HEADER = re.compile(
+    r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie)"
+    r"\s*[:=]\s*).*$"
+)
+_SENSITIVE_PROVIDER_ASSIGNMENT = re.compile(
+    r"""(?ix)
+    (["']?(?:access[-_]?token|refresh[-_]?token|token|secret|password|
+    credential|owner[-_]?phrase)["']?\s*[:=]\s*)
+    (?:"[^"]*"|'[^']*'|[^\s,;&]+)
+    """
+)
 PUBLIC_ENVIRONMENT = {
     "AUTH_USERNAME": "sapphire",
     "PUBLIC_READ_ONLY": "1",
@@ -68,6 +89,70 @@ ReadBytes = Callable[[Sequence[str]], bytes]
 
 class ContractViolation(ValueError):
     """A closed release precondition did not match."""
+
+
+class ProviderRequestFailure(ContractViolation):
+    """A provider mutation failed with a bounded public diagnostic."""
+
+    def __init__(self, diagnostic: Mapping[str, Any]):
+        super().__init__("provider compare-and-swap rejected")
+        self.diagnostic = dict(diagnostic)
+
+
+def _redact_provider_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): (
+                REDACTED
+                if _SENSITIVE_PROVIDER_KEY.search(str(key))
+                else _redact_provider_json(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_provider_json(item) for item in value]
+    return value
+
+
+def _sanitized_provider_body(raw: bytes, token: str) -> tuple[str, bool]:
+    bounded = raw[:MAX_PROVIDER_ERROR_BODY_BYTES]
+    truncated = len(raw) > len(bounded)
+    text = bounded.decode("utf-8", errors="replace")
+    if token:
+        text = text.replace(token, REDACTED)
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        preview = _SENSITIVE_PROVIDER_HEADER.sub(r"\1[REDACTED]", text)
+        preview = _SENSITIVE_PROVIDER_ASSIGNMENT.sub(r"\1[REDACTED]", preview)
+    else:
+        preview = json.dumps(
+            _redact_provider_json(parsed),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+    if len(preview) > MAX_PROVIDER_ERROR_PREVIEW_CHARS:
+        preview = preview[:MAX_PROVIDER_ERROR_PREVIEW_CHARS]
+        truncated = True
+    return preview, truncated
+
+
+def _provider_http_diagnostic(error: HTTPError, token: str) -> dict[str, Any]:
+    try:
+        raw = error.read(MAX_PROVIDER_ERROR_BODY_BYTES + 1)
+    except Exception:
+        raw = b""
+    if not isinstance(raw, bytes):
+        raw = str(raw).encode("utf-8", errors="replace")
+    body, truncated = _sanitized_provider_body(raw, token)
+    return {
+        "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+        "category": "provider_http_error",
+        "http_status": int(error.code),
+        "response_body": body,
+        "response_body_truncated": truncated,
+    }
 
 
 def canonical(value: Any) -> bytes:
@@ -1100,10 +1185,28 @@ def _replace_service_http(
     )
     try:
         with urlopen(request, timeout=60) as response:  # noqa: S310 - fixed provider API
-            payload = json.loads(response.read())
+            raw = response.read()
     except HTTPError as error:
-        error.read()
-        raise ContractViolation("provider compare-and-swap rejected") from None
+        raise ProviderRequestFailure(
+            _provider_http_diagnostic(error, token)
+        ) from error
+    except Exception as error:
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_transport_error",
+                "exception_type": type(error).__name__,
+            }
+        ) from error
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as error:
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_response_invalid",
+            }
+        ) from error
     if not isinstance(payload, dict):
         raise ContractViolation("provider compare-and-swap rejected")
     return payload

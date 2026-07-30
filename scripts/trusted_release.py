@@ -45,6 +45,53 @@ class TrustFailure(ValueError):
     """The external or descriptor trust root did not match."""
 
 
+def _validated_provider_diagnostic(error: Exception) -> dict[str, Any] | None:
+    diagnostic = getattr(error, "diagnostic", None)
+    if not isinstance(diagnostic, dict):
+        return None
+    if diagnostic.get("schema") != "sapphire/provider-diagnostic/v1":
+        return None
+    category = diagnostic.get("category")
+    if category == "provider_http_error":
+        if set(diagnostic) != {
+            "schema",
+            "category",
+            "http_status",
+            "response_body",
+            "response_body_truncated",
+        }:
+            return None
+        status = diagnostic.get("http_status")
+        body = diagnostic.get("response_body")
+        truncated = diagnostic.get("response_body_truncated")
+        if (
+            isinstance(status, bool)
+            or not isinstance(status, int)
+            or not 100 <= status <= 599
+            or not isinstance(body, str)
+            or len(body) > 1024
+            or not isinstance(truncated, bool)
+        ):
+            return None
+    elif category == "provider_transport_error":
+        if set(diagnostic) != {"schema", "category", "exception_type"}:
+            return None
+        exception_type = diagnostic.get("exception_type")
+        if (
+            not isinstance(exception_type, str)
+            or not exception_type
+            or len(exception_type) > 128
+            or not all(part.isidentifier() for part in exception_type.split("."))
+        ):
+            return None
+    elif category == "provider_response_invalid":
+        if set(diagnostic) != {"schema", "category"}:
+            return None
+    else:
+        return None
+    return dict(diagnostic)
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -298,12 +345,15 @@ def main() -> int:
             result = seal(args.output)
         else:
             result = draft_action(args.object, args.generation, args.output)
-    except Exception:
+    except Exception as error:
         result = {
             "schema": "sapphire/trusted-release-error/v1",
             "ok": False,
             "error": "release contract mismatch",
         }
+        diagnostic = _validated_provider_diagnostic(error)
+        if diagnostic is not None:
+            result["diagnostic"] = diagnostic
     print(json.dumps(result, sort_keys=True))
     return 0 if result["ok"] else 1
 
