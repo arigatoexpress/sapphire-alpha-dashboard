@@ -1137,7 +1137,7 @@ def _replace_service_http(
             {
                 "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
                 "category": "provider_transport_error",
-                "exception_type": type(error).__name__,
+                "reason": "transport_error",
             }
         ) from error
     if not isinstance(raw, bytes):
@@ -1158,7 +1158,7 @@ def _replace_service_http(
         )
     try:
         payload = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as error:
+    except (ValueError, UnicodeError, TypeError, RecursionError) as error:
         raise ProviderRequestFailure(
             {
                 "schema": PROVIDER_DIAGNOSTIC_SCHEMA,

@@ -77,18 +77,17 @@ def _validated_provider_diagnostic(error: Exception) -> dict[str, Any] | None:
             or not isinstance(capture_bytes, int)
             or not 0 <= capture_bytes <= 4096
             or not isinstance(truncated, bool)
+            or (
+                capture_bytes == 0
+                and capture_sha256 != hashlib.sha256(b"").hexdigest()
+            )
+            or (truncated and capture_bytes != 4096)
         ):
             return None
     elif category == "provider_transport_error":
-        if set(diagnostic) != {"schema", "category", "exception_type"}:
+        if set(diagnostic) != {"schema", "category", "reason"}:
             return None
-        exception_type = diagnostic.get("exception_type")
-        if (
-            not isinstance(exception_type, str)
-            or not exception_type
-            or len(exception_type) > 128
-            or not all(part.isidentifier() for part in exception_type.split("."))
-        ):
+        if diagnostic.get("reason") != "transport_error":
             return None
     elif category == "provider_response_invalid":
         if set(diagnostic) != {"schema", "category", "reason"}:
