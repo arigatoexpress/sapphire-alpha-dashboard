@@ -735,17 +735,19 @@ def test_provider_replacement_carries_resource_version_and_digest_only():
         )
 
 
-def test_provider_http_error_preserves_bounded_sanitized_diagnostic_and_cause(
+def test_provider_http_error_preserves_bounded_noncontent_diagnostic_and_cause(
     monkeypatch,
 ):
     provider_token = "provider-token-that-must-not-escape"
     owner_phrase = "owner-phrase-that-must-not-escape"
     body = json.dumps(
         {
-            "message": "rate limited",
-            "access_token": provider_token,
-            "owner_phrase": owner_phrase,
-            "nested": {"cookie": SENTINEL},
+            "error": {
+                "status": "RESOURCE_EXHAUSTED",
+                "message": f"rate limited {owner_phrase}",
+                "access_token": provider_token,
+                "nested": {"cookie": SENTINEL},
+            }
         }
     ).encode()
     provider_error = HTTPError(
@@ -772,21 +774,21 @@ def test_provider_http_error_preserves_bounded_sanitized_diagnostic_and_cause(
         "schema": "sapphire/provider-diagnostic/v1",
         "category": "provider_http_error",
         "http_status": 429,
-        "response_body": (
-            '{"access_token":"[REDACTED]","message":"rate limited",'
-            '"nested":{"cookie":"[REDACTED]"},"owner_phrase":"[REDACTED]"}'
-        ),
-        "response_body_truncated": False,
+        "capture_sha256": hashlib.sha256(body).hexdigest(),
+        "capture_bytes": len(body),
+        "capture_truncated": False,
     }
     assert raised.value.__cause__ is provider_error
     serialized = json.dumps(diagnostic, sort_keys=True).lower()
     assert provider_token not in serialized
     assert owner_phrase not in serialized
     assert SENTINEL not in serialized
-    assert len(diagnostic["response_body"]) <= 1024
+    assert "response_body" not in diagnostic
+    assert "message" not in diagnostic
+    assert "provider_status" not in diagnostic
 
 
-def test_provider_http_diagnostic_bounds_and_redacts_plain_text(monkeypatch):
+def test_provider_http_diagnostic_hashes_only_a_bounded_capture(monkeypatch):
     provider_token = "plain-token-that-must-not-escape"
     body = (
         "Authorization: Bearer " + provider_token + "\n"
@@ -812,8 +814,10 @@ def test_provider_http_diagnostic_bounds_and_redacts_plain_text(monkeypatch):
     diagnostic = raised.value.diagnostic
     serialized = json.dumps(diagnostic, sort_keys=True)
     assert diagnostic["http_status"] == 503
-    assert diagnostic["response_body_truncated"] is True
-    assert len(diagnostic["response_body"]) <= 1024
+    assert diagnostic["capture_truncated"] is True
+    assert diagnostic["capture_bytes"] == 4096
+    assert diagnostic["capture_sha256"] == hashlib.sha256(body[:4096]).hexdigest()
+    assert "response_body" not in diagnostic
     assert provider_token not in serialized
     assert SENTINEL not in serialized
     assert raised.value.__cause__ is provider_error
@@ -849,8 +853,9 @@ def test_trusted_launcher_carries_only_valid_structured_provider_diagnostic(
         "schema": "sapphire/provider-diagnostic/v1",
         "category": "provider_http_error",
         "http_status": 429,
-        "response_body": '{"message":"rate limited"}',
-        "response_body_truncated": False,
+        "capture_sha256": "a" * 64,
+        "capture_bytes": 128,
+        "capture_truncated": False,
     }
     monkeypatch.setattr(
         launcher,
@@ -905,6 +910,155 @@ def test_trusted_launcher_never_emits_unstructured_exception_text(monkeypatch, c
         "error": "release contract mismatch",
     }
     assert SENTINEL not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"message":"provider-secret-in-an-ordinary-value"}',
+        b'{"message":"provider-secret-in-truncated-json',
+        b"prefix Authorization: Bearer provider-secret-inline suffix",
+        b"prefix owner phrase provider-secret-whitespace suffix",
+        "prefix \u202e provider-secret-bidi suffix".encode(),
+    ],
+)
+def test_actual_provider_failure_through_launcher_never_emits_body_text(
+    body, monkeypatch, capsys
+):
+    provider_error = HTTPError(
+        "https://provider.example.test",
+        403,
+        "forbidden",
+        {},
+        BytesIO(body),
+    )
+    monkeypatch.setattr(
+        guard,
+        "urlopen",
+        lambda _request, timeout: (_ for _ in ()).throw(provider_error),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: guard._replace_service_http(
+            {}, run=lambda _argv: "provider-token-not-in-body"
+        ),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result["diagnostic"]["http_status"] == 403
+    assert result["diagnostic"]["capture_sha256"] == hashlib.sha256(body).hexdigest()
+    assert b"provider-secret" not in output.encode()
+    assert "response_body" not in output
+
+
+def test_trusted_launcher_rejects_content_bearing_diagnostic(monkeypatch, capsys):
+    failure = guard.ContractViolation("provider compare-and-swap rejected")
+    failure.diagnostic = {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_http_error",
+        "http_status": 403,
+        "response_body": '{"message":"provider-secret"}',
+        "response_body_truncated": False,
+    }
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    result = json.loads(capsys.readouterr().out)
+    assert "diagnostic" not in result
+    assert "provider-secret" not in json.dumps(result)
+
+
+class _ProviderResponse:
+    def __init__(self, payload):
+        self.payload = payload
+        self.read_amount = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def read(self, amount=None):
+        self.read_amount = amount
+        return self.payload if amount is None else self.payload[:amount]
+
+
+def test_provider_success_response_is_bounded_before_json_decode(monkeypatch):
+    payload = b'{"payload":"' + (b"x" * (1024 * 1024)) + b'"}'
+    response = _ProviderResponse(payload)
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "response_too_large",
+    }
+    assert response.read_amount == 1024 * 1024 + 1
+
+
+@pytest.mark.parametrize("payload", [b"[]", b'"scalar"', b"null"])
+def test_provider_valid_json_non_object_has_structured_diagnostic(
+    payload, monkeypatch
+):
+    response = _ProviderResponse(payload)
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "non_object",
+    }
+
+
+def test_provider_invalid_json_has_structured_diagnostic_and_cause(monkeypatch):
+    response = _ProviderResponse(b"{not-json")
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "invalid_json",
+    }
+    assert isinstance(raised.value.__cause__, json.JSONDecodeError)
 
 
 @pytest.mark.parametrize(
