@@ -40,12 +40,17 @@ describe('the published Machine Room measurement audit', () => {
 })
 
 describe('retired public-delay story', () => {
+  // The single-page rewrite (2026-07-29) folded the old sub-pages into one
+  // dashboard, so this bundle now scans the sections that would surface the
+  // retired copy — plus the standing research index — instead of the removed
+  // /architecture, /trading, /onchain, /research page files.
   const publicCopy = [
     '../app/page.tsx',
-    '../app/architecture/page.tsx',
-    '../app/trading/page.tsx',
-    '../app/onchain/page.tsx',
-    '../app/research/page.tsx',
+    '../components/SystemTopology.tsx',
+    '../components/LiveIntelligence.tsx',
+    '../components/ResearchSection.tsx',
+    '../components/PortfolioProof.tsx',
+    '../components/AboutSection.tsx',
     '../data/metrics.ts',
     '../../content/research/how-research-is-published.md',
   ].map((relative) =>
@@ -61,6 +66,10 @@ describe('retired public-delay story', () => {
 
   it('states the surviving capital boundary as omission or banding', () => {
     expect(publicCopy).toContain('capital surface remains banded')
-    expect(publicCopy).toContain('Current holdings and sizes are absent')
+    // Match either capitalization — the surviving copy in
+    // how-research-is-published.md and any future section may phrase this as
+    // "Current holdings and sizes are absent" or "current holdings and sizes
+    // are simply absent". Either satisfies the load-bearing promise.
+    expect(publicCopy).toMatch(/current holdings and sizes are (?:simply )?absent/i)
   })
 })
