@@ -41,11 +41,10 @@ GPU_GATEWAY_HEALTH_URL = "http://127.0.0.1:8800/healthz"
 DEFAULT_SOURCE_STALE_AFTER_SECONDS = 900
 # Task presence is a much tighter contract than service health. A role whose
 # last semantic event is older than the projector's own three-minute window is
-# no longer active. Keep recently inactive rows for one hour so transitions are
-# readable, then remove them from the live agent surface; durable history stays
-# in the append-only local event log.
+# no longer active and does not belong in the live roster; transitions remain
+# readable in the bounded event stream and durable append-only local event log.
 AGENT_ACTIVITY_STALE_AFTER_SECONDS = 180
-AGENT_DISPLAY_RETENTION_SECONDS = 3_600
+AGENT_DISPLAY_RETENTION_SECONDS = AGENT_ACTIVITY_STALE_AFTER_SECONDS
 # The desk cycle is a batch job, not a heartbeat: `com.ari.deskos-cycle` runs on
 # StartInterval 21600. Judging it against the 900 s ceiling above marked it
 # "down" for 5 h 45 m of every 6 h cycle — red 95.8% of the time, on a source
@@ -202,8 +201,6 @@ def _presence_agents(
         valid_rows += 1
         if agent_age > AGENT_DISPLAY_RETENTION_SECONDS:
             continue
-        if agent_age > AGENT_ACTIVITY_STALE_AFTER_SECONDS:
-            state = "offline"
         activity = {
             "working": "Capability route active",
             "verifying": "Capability result under verification",
@@ -301,7 +298,7 @@ def _presence_health(agents: list[dict[str, Any]], *, source_errors: int | None 
     since a task last ran.
     """
     if not agents:
-        return "unknown"
+        return "healthy" if source_errors == 0 else "unknown"
     states = {agent["state"] for agent in agents}
     if (source_errors is not None and source_errors > 0) or "blocked" in states:
         return "degraded"
@@ -429,7 +426,14 @@ def build_snapshot(
         else None
     )
     rh_service_status = _health(rh_health.get("overall"), age_s=rh_age)
-    if presence_agents:
+    presence_observation_age = _age(now, presence.get("observed_at"))
+    presence_current = (
+        raw_presence_agents is not None
+        and presence_contract_complete
+        and source_errors == 0
+        and presence_observation_age <= DEFAULT_SOURCE_STALE_AFTER_SECONDS
+    )
+    if presence_current:
         presence_status = _presence_health(
             presence_agents,
             source_errors=source_errors,
@@ -443,23 +447,19 @@ def build_snapshot(
         )
     else:
         rh_status = rh_service_status
-    presence_age = (
-        _age(
-            now,
-            presence.get("observed_at"),
-            *(agent["updated_at"] for agent in presence_agents),
-        )
-        if presence_agents
-        else 86_400.0
+    presence_age = _age(
+        now,
+        presence.get("observed_at"),
+        *(agent["updated_at"] for agent in presence_agents),
     )
-    if presence_agents and rh_health:
+    if presence_current and rh_health:
         if rh_service_status != presence_status and rh_status == rh_service_status:
             intelligence_age = rh_age
         elif rh_service_status != presence_status and rh_status == presence_status:
             intelligence_age = presence_age
         else:
             intelligence_age = min(presence_age, rh_age)
-    elif presence_agents:
+    elif presence_current:
         intelligence_age = presence_age
     else:
         intelligence_age = rh_age

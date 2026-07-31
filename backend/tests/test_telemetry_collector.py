@@ -202,7 +202,7 @@ def test_presence_rewrite_ages_stale_blocked_work_out_of_current_state(tmp_path)
     # forever because a blocked run existed in the past.
     assert intelligence["status"] == "healthy"
     assert intelligence["freshness_s"] == 0
-    assert snapshot["agents"][0]["state"] == "offline"
+    assert snapshot["agents"] == []
     assert snapshot["summary"]["active_agents"] == 0
     # A blocked component is not evidence that a human decision is queued.
     assert snapshot["summary"]["attention"] is None
