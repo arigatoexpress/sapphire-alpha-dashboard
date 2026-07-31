@@ -16,6 +16,7 @@ import zlib
 import pytest
 
 from scripts import deploy_contract as guard
+from scripts import trusted_release as launcher
 
 
 SENTINEL = "never-emit-runtime-canary"
@@ -732,6 +733,439 @@ def test_provider_replacement_carries_resource_version_and_digest_only():
             descriptor,
             f"{guard.IMAGE_REPOSITORY}:mutable",
         )
+
+
+def test_provider_http_error_preserves_bounded_noncontent_diagnostic_and_cause(
+    monkeypatch,
+):
+    provider_token = "provider-token-that-must-not-escape"
+    owner_phrase = "owner-phrase-that-must-not-escape"
+    body = json.dumps(
+        {
+            "error": {
+                "status": "RESOURCE_EXHAUSTED",
+                "message": f"rate limited {owner_phrase}",
+                "access_token": provider_token,
+                "nested": {"cookie": SENTINEL},
+            }
+        }
+    ).encode()
+    provider_error = HTTPError(
+        "https://provider.example.test",
+        429,
+        "rejected",
+        {},
+        BytesIO(body),
+    )
+
+    def reject(_request, timeout):
+        assert timeout == 60
+        raise provider_error
+
+    monkeypatch.setattr(guard, "urlopen", reject)
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http(
+            {"metadata": {"resourceVersion": "AAXY-example"}},
+            run=lambda _argv: provider_token,
+        )
+
+    diagnostic = raised.value.diagnostic
+    assert diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_http_error",
+        "http_status": 429,
+        "capture_sha256": hashlib.sha256(body).hexdigest(),
+        "capture_bytes": len(body),
+        "capture_truncated": False,
+    }
+    assert raised.value.__cause__ is provider_error
+    serialized = json.dumps(diagnostic, sort_keys=True).lower()
+    assert provider_token not in serialized
+    assert owner_phrase not in serialized
+    assert SENTINEL not in serialized
+    assert "response_body" not in diagnostic
+    assert "message" not in diagnostic
+    assert "provider_status" not in diagnostic
+
+
+def test_provider_http_diagnostic_hashes_only_a_bounded_capture(monkeypatch):
+    provider_token = "plain-token-that-must-not-escape"
+    body = (
+        "Authorization: Bearer " + provider_token + "\n"
+        "Cookie: session=" + SENTINEL + "\n"
+        "message=" + ("x" * 5000)
+    ).encode()
+    provider_error = HTTPError(
+        "https://provider.example.test",
+        503,
+        "unavailable",
+        {},
+        BytesIO(body),
+    )
+    monkeypatch.setattr(
+        guard,
+        "urlopen",
+        lambda _request, timeout: (_ for _ in ()).throw(provider_error),
+    )
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: provider_token)
+
+    diagnostic = raised.value.diagnostic
+    serialized = json.dumps(diagnostic, sort_keys=True)
+    assert diagnostic["http_status"] == 503
+    assert diagnostic["capture_truncated"] is True
+    assert diagnostic["capture_bytes"] == 4096
+    assert diagnostic["capture_sha256"] == hashlib.sha256(body[:4096]).hexdigest()
+    assert "response_body" not in diagnostic
+    assert provider_token not in serialized
+    assert SENTINEL not in serialized
+    assert raised.value.__cause__ is provider_error
+
+
+def test_provider_transport_error_is_distinguishable_without_exception_text(
+    monkeypatch,
+):
+    provider_error = OSError(SENTINEL)
+    monkeypatch.setattr(
+        guard,
+        "urlopen",
+        lambda _request, timeout: (_ for _ in ()).throw(provider_error),
+    )
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_transport_error",
+        "reason": "transport_error",
+    }
+    assert SENTINEL not in json.dumps(raised.value.diagnostic)
+    assert raised.value.__cause__ is provider_error
+
+
+def test_trusted_launcher_carries_only_valid_structured_provider_diagnostic(
+    monkeypatch, capsys
+):
+    failure = guard.ContractViolation("provider compare-and-swap rejected")
+    failure.diagnostic = {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_http_error",
+        "http_status": 429,
+        "capture_sha256": "a" * 64,
+        "capture_bytes": 128,
+        "capture_truncated": False,
+    }
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "schema": "sapphire/trusted-release-error/v1",
+        "ok": False,
+        "error": "release contract mismatch",
+        "diagnostic": failure.diagnostic,
+    }
+
+
+def test_trusted_launcher_never_emits_unstructured_exception_text(monkeypatch, capsys):
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(ValueError(SENTINEL)),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "schema": "sapphire/trusted-release-error/v1",
+        "ok": False,
+        "error": "release contract mismatch",
+    }
+    assert SENTINEL not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"message":"provider-secret-in-an-ordinary-value"}',
+        b'{"message":"provider-secret-in-truncated-json',
+        b"prefix Authorization: Bearer provider-secret-inline suffix",
+        b"prefix owner phrase provider-secret-whitespace suffix",
+        "prefix \u202e provider-secret-bidi suffix".encode(),
+    ],
+)
+def test_actual_provider_failure_through_launcher_never_emits_body_text(
+    body, monkeypatch, capsys
+):
+    provider_error = HTTPError(
+        "https://provider.example.test",
+        403,
+        "forbidden",
+        {},
+        BytesIO(body),
+    )
+    monkeypatch.setattr(
+        guard,
+        "urlopen",
+        lambda _request, timeout: (_ for _ in ()).throw(provider_error),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: guard._replace_service_http(
+            {}, run=lambda _argv: "provider-token-not-in-body"
+        ),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result["diagnostic"]["http_status"] == 403
+    assert result["diagnostic"]["capture_sha256"] == hashlib.sha256(body).hexdigest()
+    assert b"provider-secret" not in output.encode()
+    assert "response_body" not in output
+
+
+def test_trusted_launcher_rejects_content_bearing_diagnostic(monkeypatch, capsys):
+    failure = guard.ContractViolation("provider compare-and-swap rejected")
+    failure.diagnostic = {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_http_error",
+        "http_status": 403,
+        "response_body": '{"message":"provider-secret"}',
+        "response_body_truncated": False,
+    }
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    result = json.loads(capsys.readouterr().out)
+    assert "diagnostic" not in result
+    assert "provider-secret" not in json.dumps(result)
+
+
+class _ProviderResponse:
+    def __init__(self, payload):
+        self.payload = payload
+        self.read_amount = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def read(self, amount=None):
+        self.read_amount = amount
+        return self.payload if amount is None else self.payload[:amount]
+
+
+def test_provider_success_response_is_bounded_before_json_decode(monkeypatch):
+    payload = b'{"payload":"' + (b"x" * (1024 * 1024)) + b'"}'
+    response = _ProviderResponse(payload)
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "response_too_large",
+    }
+    assert response.read_amount == 1024 * 1024 + 1
+
+
+@pytest.mark.parametrize("payload", [b"[]", b'"scalar"', b"null"])
+def test_provider_valid_json_non_object_has_structured_diagnostic(
+    payload, monkeypatch
+):
+    response = _ProviderResponse(payload)
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "non_object",
+    }
+
+
+def test_provider_invalid_json_has_structured_diagnostic_and_cause(monkeypatch):
+    response = _ProviderResponse(b"{not-json")
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "invalid_json",
+    }
+    assert isinstance(raised.value.__cause__, json.JSONDecodeError)
+
+
+@pytest.mark.parametrize(
+    "payload, exception_type",
+    [
+        (b'{"x":' + (b"9" * 5000) + b"}", ValueError),
+        ((b"[" * 10000) + (b"]" * 10000), RecursionError),
+    ],
+)
+def test_provider_json_parser_limits_remain_structured(
+    payload, exception_type, monkeypatch
+):
+    response = _ProviderResponse(payload)
+    monkeypatch.setattr(guard, "urlopen", lambda _request, timeout: response)
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard._replace_service_http({}, run=lambda _argv: "bounded-token")
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_response_invalid",
+        "reason": "invalid_json",
+    }
+    assert isinstance(raised.value.__cause__, exception_type)
+
+
+@pytest.mark.parametrize(
+    "capture_sha256,capture_bytes,capture_truncated",
+    [
+        ("a" * 64, 0, False),
+        (hashlib.sha256(b"").hexdigest(), 0, True),
+        ("a" * 64, 1, True),
+        ("a" * 64, 4095, True),
+    ],
+)
+def test_trusted_launcher_rejects_impossible_capture_semantics(
+    capture_sha256,
+    capture_bytes,
+    capture_truncated,
+    monkeypatch,
+    capsys,
+):
+    failure = guard.ContractViolation("provider compare-and-swap rejected")
+    failure.diagnostic = {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_http_error",
+        "http_status": 403,
+        "capture_sha256": capture_sha256,
+        "capture_bytes": capture_bytes,
+        "capture_truncated": capture_truncated,
+    }
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    assert "diagnostic" not in json.loads(capsys.readouterr().out)
+
+
+def test_transport_exception_class_name_never_reaches_launcher(monkeypatch, capsys):
+    secret_type = type("ProviderSecretCredential", (OSError,), {})
+    provider_error = secret_type("opaque")
+    monkeypatch.setattr(
+        guard,
+        "urlopen",
+        lambda _request, timeout: (_ for _ in ()).throw(provider_error),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: guard._replace_service_http(
+            {}, run=lambda _argv: "bounded-token"
+        ),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    output = capsys.readouterr().out
+    assert "ProviderSecretCredential" not in output
+    assert json.loads(output)["diagnostic"] == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_transport_error",
+        "reason": "transport_error",
+    }
 
 
 @pytest.mark.parametrize(

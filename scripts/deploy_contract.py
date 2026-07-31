@@ -38,6 +38,9 @@ STAGING_BUCKET = "sapphire-479610_cloudbuild"
 SCHEMA = "sapphire/deploy-action/v1"
 SOURCE_MANIFEST_NAME = ".sapphire-source-manifest.json"
 MAX_SUBSTITUTION_BYTES = 4000
+MAX_PROVIDER_ERROR_CAPTURE_BYTES = 4096
+MAX_PROVIDER_SUCCESS_BODY_BYTES = 1024 * 1024
+PROVIDER_DIAGNOSTIC_SCHEMA = "sapphire/provider-diagnostic/v1"
 PUBLIC_ENVIRONMENT = {
     "AUTH_USERNAME": "sapphire",
     "PUBLIC_READ_ONLY": "1",
@@ -68,6 +71,32 @@ ReadBytes = Callable[[Sequence[str]], bytes]
 
 class ContractViolation(ValueError):
     """A closed release precondition did not match."""
+
+
+class ProviderRequestFailure(ContractViolation):
+    """A provider mutation failed with a bounded public diagnostic."""
+
+    def __init__(self, diagnostic: Mapping[str, Any]):
+        super().__init__("provider compare-and-swap rejected")
+        self.diagnostic = dict(diagnostic)
+
+
+def _provider_http_diagnostic(error: HTTPError) -> dict[str, Any]:
+    try:
+        raw = error.read(MAX_PROVIDER_ERROR_CAPTURE_BYTES + 1)
+    except Exception:
+        raw = b""
+    if not isinstance(raw, bytes):
+        raw = str(raw).encode("utf-8", errors="replace")
+    capture = raw[:MAX_PROVIDER_ERROR_CAPTURE_BYTES]
+    return {
+        "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+        "category": "provider_http_error",
+        "http_status": int(error.code),
+        "capture_sha256": hashlib.sha256(capture).hexdigest(),
+        "capture_bytes": len(capture),
+        "capture_truncated": len(raw) > len(capture),
+    }
 
 
 def canonical(value: Any) -> bytes:
@@ -1100,12 +1129,51 @@ def _replace_service_http(
     )
     try:
         with urlopen(request, timeout=60) as response:  # noqa: S310 - fixed provider API
-            payload = json.loads(response.read())
+            raw = response.read(MAX_PROVIDER_SUCCESS_BODY_BYTES + 1)
     except HTTPError as error:
-        error.read()
-        raise ContractViolation("provider compare-and-swap rejected") from None
+        raise ProviderRequestFailure(_provider_http_diagnostic(error)) from error
+    except Exception as error:
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_transport_error",
+                "reason": "transport_error",
+            }
+        ) from error
+    if not isinstance(raw, bytes):
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_response_invalid",
+                "reason": "response_type_invalid",
+            }
+        )
+    if len(raw) > MAX_PROVIDER_SUCCESS_BODY_BYTES:
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_response_invalid",
+                "reason": "response_too_large",
+            }
+        )
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeError, TypeError, RecursionError) as error:
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_response_invalid",
+                "reason": "invalid_json",
+            }
+        ) from error
     if not isinstance(payload, dict):
-        raise ContractViolation("provider compare-and-swap rejected")
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_response_invalid",
+                "reason": "non_object",
+            }
+        )
     return payload
 
 

@@ -45,6 +45,65 @@ class TrustFailure(ValueError):
     """The external or descriptor trust root did not match."""
 
 
+def _validated_provider_diagnostic(error: Exception) -> dict[str, Any] | None:
+    diagnostic = getattr(error, "diagnostic", None)
+    if not isinstance(diagnostic, dict):
+        return None
+    if diagnostic.get("schema") != "sapphire/provider-diagnostic/v1":
+        return None
+    category = diagnostic.get("category")
+    if category == "provider_http_error":
+        if set(diagnostic) != {
+            "schema",
+            "category",
+            "http_status",
+            "capture_sha256",
+            "capture_bytes",
+            "capture_truncated",
+        }:
+            return None
+        status = diagnostic.get("http_status")
+        capture_sha256 = diagnostic.get("capture_sha256")
+        capture_bytes = diagnostic.get("capture_bytes")
+        truncated = diagnostic.get("capture_truncated")
+        if (
+            isinstance(status, bool)
+            or not isinstance(status, int)
+            or not 100 <= status <= 599
+            or not isinstance(capture_sha256, str)
+            or len(capture_sha256) != 64
+            or any(character not in HEX64 for character in capture_sha256)
+            or isinstance(capture_bytes, bool)
+            or not isinstance(capture_bytes, int)
+            or not 0 <= capture_bytes <= 4096
+            or not isinstance(truncated, bool)
+            or (
+                capture_bytes == 0
+                and capture_sha256 != hashlib.sha256(b"").hexdigest()
+            )
+            or (truncated and capture_bytes != 4096)
+        ):
+            return None
+    elif category == "provider_transport_error":
+        if set(diagnostic) != {"schema", "category", "reason"}:
+            return None
+        if diagnostic.get("reason") != "transport_error":
+            return None
+    elif category == "provider_response_invalid":
+        if set(diagnostic) != {"schema", "category", "reason"}:
+            return None
+        if diagnostic.get("reason") not in {
+            "invalid_json",
+            "non_object",
+            "response_too_large",
+            "response_type_invalid",
+        }:
+            return None
+    else:
+        return None
+    return dict(diagnostic)
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -298,12 +357,15 @@ def main() -> int:
             result = seal(args.output)
         else:
             result = draft_action(args.object, args.generation, args.output)
-    except Exception:
+    except Exception as error:
         result = {
             "schema": "sapphire/trusted-release-error/v1",
             "ok": False,
             "error": "release contract mismatch",
         }
+        diagnostic = _validated_provider_diagnostic(error)
+        if diagnostic is not None:
+            result["diagnostic"] = diagnostic
     print(json.dumps(result, sort_keys=True))
     return 0 if result["ok"] else 1
 
