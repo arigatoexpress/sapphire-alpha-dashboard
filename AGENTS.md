@@ -98,7 +98,8 @@ Custom domain: `sapphirealpha.xyz` is mapped to the `sapphire-alpha-dashboard` C
 - Public: `GET /healthz`, `GET /api/health`
 - Public build provenance: `GET /api/build` (source SHA, build ID, Cloud Run revision,
   and SHA-256 of both shipped HTML entrypoints; no private paths or host metadata)
-- Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`
+- Signed ingest: `POST /api/v1/telemetry`, `POST /api/v1/moss/telemetry`,
+  `POST /api/v1/fleet/telemetry`
 - Public compute projection: `GET /api/v1/live` (one undelayed numeric view for every reader)
 - Public source/dependency posture: `GET /api/v1/readiness` (inert source identity;
   unavailable runtime dependencies; never authority)
@@ -139,7 +140,8 @@ coarse USD bands. It is not a control or approval source.
 - `GPU_GATEWAY_HEALTH_URL`, `REMOTE_GPU_GATEWAY_HEALTH_URL`, `OPS_SERVER_HEALTH_URL`
 - `DASHBOARD_RESEARCH_CLIPS_JSON`
 - `TELEMETRY_STORE`, `TELEMETRY_INGEST_SECRET`, `MOSS_TELEMETRY_INGEST_SECRET`
-- `TELEMETRY_FIRESTORE_DATABASE`, `MOSS_TELEMETRY_FIRESTORE_COLLECTION`
+- `TELEMETRY_FIRESTORE_DATABASE`, `TELEMETRY_FIRESTORE_COLLECTION`,
+  `MOSS_TELEMETRY_FIRESTORE_COLLECTION`, `FLEET_TELEMETRY_FIRESTORE_COLLECTION`
 
 ## Stable TradingView webhook hostname
 The Mac Cloudflare Quick Tunnel URL rotates when the tunnel process restarts. For a persistent hostname:

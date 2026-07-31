@@ -7,8 +7,11 @@ counts are returned. The backend never trusts the file: fields are
 whitelisted so a poisoned snapshot cannot leak paths or extra keys.
 """
 
+import hashlib
+import hmac
 import json
 import os
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -23,6 +26,7 @@ from main import app
 client = TestClient(app)
 
 AUTH = ("testuser", "testpass-strong-99")
+INGEST_SECRET = "fleet-telemetry-test-secret-that-is-long-enough"
 
 
 def _snapshot(generated_at: str | None = None) -> dict:
@@ -43,11 +47,27 @@ def _snapshot(generated_at: str | None = None) -> dict:
     }
 
 
+def _signed_headers(raw: bytes, *, nonce: str = "fleetnonce0001") -> dict[str, str]:
+    timestamp = str(int(time.time()))
+    message = timestamp.encode() + b"." + nonce.encode() + b"." + raw
+    signature = hmac.new(
+        INGEST_SECRET.encode(), message, hashlib.sha256
+    ).hexdigest()
+    return {
+        "Content-Type": "application/json",
+        "X-Sapphire-Timestamp": timestamp,
+        "X-Sapphire-Nonce": nonce,
+        "X-Sapphire-Signature": signature,
+    }
+
+
 @pytest.fixture
 def fleet_file(tmp_path, monkeypatch):
+    main.fleet_telemetry_store.reset()
     path = tmp_path / "fleet.json"
     monkeypatch.setenv("FLEET_SNAPSHOT_PATH", str(path))
-    return path
+    yield path
+    main.fleet_telemetry_store.reset()
 
 
 # --- auth ---------------------------------------------------------------------
@@ -93,6 +113,78 @@ def test_fleet_invalid_json_returns_empty_shape(fleet_file):
     r = client.get("/api/fleet", auth=AUTH)
     assert r.status_code == 200
     assert r.json()["counts"] == {"leases": None, "gates_open": None}
+
+
+def test_signed_fleet_ingest_persists_without_a_local_snapshot(monkeypatch, fleet_file):
+    monkeypatch.setenv("TELEMETRY_INGEST_SECRET", INGEST_SECRET)
+    main.fleet_telemetry_store.reset()
+    payload = dict(_snapshot(), version=1, sequence=time.time_ns())
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+
+    accepted = client.post(
+        "/api/v1/fleet/telemetry",
+        content=raw,
+        headers=_signed_headers(raw),
+    )
+    assert accepted.status_code == 202
+    assert accepted.json() == {
+        "accepted": True,
+        "sequence": payload["sequence"],
+    }
+
+    public = client.get("/api/fleet")
+    assert public.status_code == 200
+    assert public.json()["leases"] == 1
+    assert public.json()["gates_open"] == 1
+    assert public.json()["snapshot_age_s"] is not None
+
+
+def test_fleet_ingest_rejects_invalid_signature_and_replay(monkeypatch, fleet_file):
+    monkeypatch.setenv("TELEMETRY_INGEST_SECRET", INGEST_SECRET)
+    main.fleet_telemetry_store.reset()
+    payload = dict(_snapshot(), version=1, sequence=time.time_ns())
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    headers = _signed_headers(raw, nonce="fleetnonce0002")
+
+    invalid = dict(headers, **{"X-Sapphire-Signature": "0" * 64})
+    assert client.post(
+        "/api/v1/fleet/telemetry", content=raw, headers=invalid
+    ).status_code == 401
+
+    assert client.post(
+        "/api/v1/fleet/telemetry", content=raw, headers=headers
+    ).status_code == 202
+    assert client.post(
+        "/api/v1/fleet/telemetry", content=raw, headers=headers
+    ).status_code == 409
+
+
+def test_fleet_ingest_rejects_extra_fields_and_false_counts(monkeypatch, fleet_file):
+    monkeypatch.setenv("TELEMETRY_INGEST_SECRET", INGEST_SECRET)
+    main.fleet_telemetry_store.reset()
+    payload = dict(
+        _snapshot(),
+        version=1,
+        sequence=time.time_ns(),
+        internal_path="/private/fleet-lease.db",
+    )
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    rejected = client.post(
+        "/api/v1/fleet/telemetry",
+        content=raw,
+        headers=_signed_headers(raw, nonce="fleetnonce0003"),
+    )
+    assert rejected.status_code == 422
+
+    payload.pop("internal_path")
+    payload["counts"] = {"leases": 99, "gates_open": 1}
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    rejected = client.post(
+        "/api/v1/fleet/telemetry",
+        content=raw,
+        headers=_signed_headers(raw, nonce="fleetnonce0004"),
+    )
+    assert rejected.status_code == 422
 
 
 # --- authed happy path -----------------------------------------------------------
@@ -162,6 +254,8 @@ def test_fleet_anonymous_counts_only(monkeypatch, fleet_file):
     assert data["gates_open"] == 1
     assert isinstance(data["snapshot_age_s"], (int, float))
     assert set(data) == {"public_view", "leases", "gates_open", "snapshot_age_s"}
+    assert "prod cutover" not in json.dumps(data)
+    assert "claude-ops-pane" not in json.dumps(data)
 
 
 def test_fleet_anonymous_payload_has_no_path_like_strings(monkeypatch, fleet_file):

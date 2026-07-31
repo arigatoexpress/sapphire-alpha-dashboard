@@ -48,6 +48,10 @@ PUBLIC_ENVIRONMENT = {
     "TELEMETRY_STORE": "firestore",
     "TELEMETRY_FIRESTORE_COLLECTION": "sapphire_live_v1",
 }
+REQUIRED_TELEMETRY_SECRET_ENVIRONMENT = {
+    "TELEMETRY_INGEST_SECRET",
+    "MOSS_TELEMETRY_INGEST_SECRET",
+}
 REQUIRED_ARTIFACTS = {
     "Dockerfile",
     "cloudbuild.yaml",
@@ -250,6 +254,27 @@ def projected_environment(items: Any) -> list[dict[str, Any]]:
         projected[item["name"]] = copy.deepcopy(dict(item))
     for name, value in PUBLIC_ENVIRONMENT.items():
         projected[name] = {"name": name, "value": value}
+    for name in REQUIRED_TELEMETRY_SECRET_ENVIRONMENT:
+        item = projected.get(name)
+        value_from = item.get("valueFrom") if isinstance(item, Mapping) else None
+        secret_ref = (
+            value_from.get("secretKeyRef")
+            if isinstance(value_from, Mapping)
+            else None
+        )
+        if (
+            not isinstance(item, Mapping)
+            or set(item) != {"name", "valueFrom"}
+            or not isinstance(value_from, Mapping)
+            or set(value_from) != {"secretKeyRef"}
+            or not isinstance(secret_ref, Mapping)
+            or set(secret_ref) != {"name", "key"}
+            or not all(
+                isinstance(secret_ref.get(field), str) and secret_ref[field]
+                for field in ("name", "key")
+            )
+        ):
+            raise ContractViolation("required telemetry secret reference missing")
     return [projected[name] for name in sorted(projected)]
 
 
