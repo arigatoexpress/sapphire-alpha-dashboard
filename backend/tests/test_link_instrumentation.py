@@ -539,7 +539,8 @@ def test_the_intelligence_check_can_still_fire():
     red is the same failure as a red one that never turns green."""
     assert _presence_health([{"state": "blocked"}], source_errors=0) == "degraded"
     assert _presence_health([{"state": "idle"}], source_errors=2) == "degraded"
-    assert _presence_health([], source_errors=0) == "unknown"
+    assert _presence_health([], source_errors=0) == "healthy"
+    assert _presence_health([], source_errors=None) == "unknown"
 
 
 # ------------------------------------------------------------------ the wire
