@@ -1223,14 +1223,24 @@ def deploy_with_provider_cas(
     new_resource_version = (
         metadata.get("resourceVersion") if isinstance(metadata, Mapping) else None
     )
-    if (
-        not isinstance(metadata, Mapping)
-        or metadata.get("name") != SERVICE
-        or not isinstance(new_resource_version, str)
-        or not new_resource_version
-        or new_resource_version == descriptor["precondition"]["resource_version"]
-    ):
-        raise ContractViolation("provider compare-and-swap rejected")
+    if not isinstance(metadata, Mapping):
+        rejection_reason = "metadata_invalid"
+    elif metadata.get("name") != SERVICE:
+        rejection_reason = "service_name_mismatch"
+    elif not isinstance(new_resource_version, str) or not new_resource_version:
+        rejection_reason = "resource_version_invalid"
+    elif new_resource_version == descriptor["precondition"]["resource_version"]:
+        rejection_reason = "resource_version_unchanged"
+    else:
+        rejection_reason = None
+    if rejection_reason is not None:
+        raise ProviderRequestFailure(
+            {
+                "schema": PROVIDER_DIAGNOSTIC_SCHEMA,
+                "category": "provider_cas_response_rejected",
+                "reason": rejection_reason,
+            }
+        )
     return {
         "schema": "sapphire/provider-cas/v1",
         "ok": True,

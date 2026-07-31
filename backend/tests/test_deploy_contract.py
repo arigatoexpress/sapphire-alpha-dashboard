@@ -1263,6 +1263,129 @@ def test_provider_cas_requires_an_exact_new_resource_version(monkeypatch):
     assert result["ok"] is True
 
 
+@pytest.mark.parametrize(
+    "response,reason",
+    [
+        ({}, "metadata_invalid"),
+        ({"metadata": []}, "metadata_invalid"),
+        (
+            {"metadata": {"name": guard.SERVICE}},
+            "resource_version_invalid",
+        ),
+        (
+            {
+                "metadata": {
+                    "name": guard.SERVICE,
+                    "resourceVersion": "AAXY-example",
+                }
+            },
+            "resource_version_unchanged",
+        ),
+        (
+            {
+                "metadata": {
+                    "name": "other-service",
+                    "resourceVersion": "new-version",
+                }
+            },
+            "service_name_mismatch",
+        ),
+    ],
+)
+def test_provider_cas_response_failure_has_bounded_noncontent_diagnostic(
+    response, reason, monkeypatch
+):
+    descriptor = _descriptor()
+    service = _service()
+    image = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
+    monkeypatch.setattr(
+        guard,
+        "verify_predeploy_cas",
+        lambda *_args, **_kwargs: {"ok": True},
+    )
+
+    with pytest.raises(guard.ContractViolation) as raised:
+        guard.deploy_with_provider_cas(
+            descriptor,
+            image,
+            run=_runner(service=service),
+            fetch=_fetch,
+            replace=lambda _replacement: response,
+        )
+
+    assert raised.value.diagnostic == {
+        "schema": "sapphire/provider-diagnostic/v1",
+        "category": "provider_cas_response_rejected",
+        "reason": reason,
+    }
+    assert SENTINEL not in json.dumps(raised.value.diagnostic)
+
+
+def test_trusted_launcher_carries_bounded_provider_cas_response_diagnostic(
+    monkeypatch, capsys
+):
+    failure = guard.ProviderRequestFailure(
+        {
+            "schema": "sapphire/provider-diagnostic/v1",
+            "category": "provider_cas_response_rejected",
+            "reason": "resource_version_unchanged",
+        }
+    )
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    assert json.loads(capsys.readouterr().out)["diagnostic"] == failure.diagnostic
+
+
+@pytest.mark.parametrize("reason", [SENTINEL, "", None])
+def test_trusted_launcher_rejects_unknown_provider_cas_response_reason(
+    reason, monkeypatch, capsys
+):
+    failure = guard.ProviderRequestFailure(
+        {
+            "schema": "sapphire/provider-diagnostic/v1",
+            "category": "provider_cas_response_rejected",
+            "reason": reason,
+        }
+    )
+    monkeypatch.setattr(
+        launcher,
+        "release",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "trusted_release.py",
+            "run",
+            "--descriptor",
+            "descriptor.json",
+            "--descriptor-sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert launcher.main() == 1
+    result = json.loads(capsys.readouterr().out)
+    assert "diagnostic" not in result
+    assert SENTINEL not in json.dumps(result)
+
+
 def test_extracted_workspace_must_equal_the_sealed_manifest(tmp_path, monkeypatch):
     source_root = tmp_path / "source"
     extracted = tmp_path / "extracted"
