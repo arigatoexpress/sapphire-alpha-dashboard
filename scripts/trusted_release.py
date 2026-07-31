@@ -99,6 +99,16 @@ def _validated_provider_diagnostic(error: Exception) -> dict[str, Any] | None:
             "response_type_invalid",
         }:
             return None
+    elif category == "provider_cas_response_rejected":
+        if set(diagnostic) != {"schema", "category", "reason"}:
+            return None
+        if diagnostic.get("reason") not in {
+            "metadata_invalid",
+            "resource_version_invalid",
+            "resource_version_unchanged",
+            "service_name_mismatch",
+        }:
+            return None
     else:
         return None
     return dict(diagnostic)
