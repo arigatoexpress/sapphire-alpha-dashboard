@@ -991,7 +991,7 @@ def test_merged_collector_sanitizes_remote_personal_text(tmp_path):
     assert "owner@example.com" not in body
     assert "303-555-0199" not in body
     assert "@private_handle" not in body
-    assert "windows-agent-1" in body
+    assert "personal-role" not in body
 
 
 # --------------------------------------------------------- merged degradation

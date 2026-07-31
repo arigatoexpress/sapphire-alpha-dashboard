@@ -73,12 +73,12 @@ def _sample_snapshot(agent_id: str, node_id: str, sequence: int) -> dict:
     }
 
 
-def test_merge_unions_agents_nodes_and_links():
+def test_merge_keeps_mac_task_agents_and_unions_nodes_and_links():
     mac = _sample_snapshot("mac-agent", "mac-node", 100)
     win = _sample_snapshot("win-agent", "win-node", 200)
     merged = _merge_snapshots(mac, win)
 
-    assert {a["id"] for a in merged["agents"]} == {"mac-agent", "win-agent"}
+    assert {a["id"] for a in merged["agents"]} == {"mac-agent"}
     assert {n["id"] for n in merged["nodes"]} == {"mac-node", "win-node"}
     assert merged["sequence"] == 201
     assert merged["summary"]["active_agents"] == 1
@@ -101,7 +101,7 @@ def test_merge_respects_bounds():
     win["agents"] = [dict(agent, id=f"agent-{i}") for i, agent in enumerate(win["agents"] * 40)]
     win["nodes"] = [dict(node, id=f"node-{i}") for i, node in enumerate(win["nodes"] * 30)]
     merged = _merge_snapshots(mac, win)
-    assert len(merged["agents"]) <= 32
+    assert {agent["id"] for agent in merged["agents"]} == {"mac-agent"}
     assert len(merged["nodes"]) <= 24
 
 
@@ -144,6 +144,7 @@ def test_merge_does_not_count_windows_services_as_active_agents():
     win["agents"][0]["state"] = "working"
     merged = _merge_snapshots(mac, win)
     assert merged["summary"]["active_agents"] == 0
+    assert all(agent["id"] != "telegram-service" for agent in merged["agents"])
 
 
 def test_merge_omits_unobserved_windows_desk_instead_of_publishing_null_counts():

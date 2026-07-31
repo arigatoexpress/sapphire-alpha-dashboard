@@ -40,7 +40,8 @@ def test_projector_is_schema_valid_real_and_strips_raw_identifiers(tmp_path):
         assert forbidden not in encoded
     assert snapshot["markets"]["events_per_min"] == 88
     assert snapshot["markets"]["execution"] == "unknown"
-    assert snapshot["agents"][0]["role"] == "Orderflow"
+    assert snapshot["agents"] == []
+    assert any(event["label"] == "Orderflow status observed" for event in snapshot["events"])
     assert snapshot["links"][3]["event_rate"] == 88
     assert snapshot["links"][3]["latency_ms"] is None
     assert snapshot["links"][1]["latency_ms"] == 7.25
@@ -113,9 +114,9 @@ def test_projector_uses_reduced_agent_presence_as_live_activity(tmp_path):
     assert snapshot["agents"][0]["activity"] == "Capability result under verification"
     assert snapshot["events"][0]["label"] == "Agent result verified"
     assert snapshot["events"][0]["status"] == "verified"
-    # The observed presence list contains one active role, but the other fleet
-    # sources are absent, so this cannot claim to be a complete fleet count.
-    assert snapshot["summary"]["active_agents"] is None
+    # Presence is the only source that classifies task-executing agents. The
+    # unrelated service-health files are not prerequisites for this count.
+    assert snapshot["summary"]["active_agents"] == 1
     intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
     assert intelligence["status"] == "healthy"
     assert intelligence["activity_rate"] > 0
@@ -163,9 +164,11 @@ def test_current_service_health_keeps_idle_intelligence_fresh(tmp_path):
     assert intelligence["status"] == "healthy"
     assert intelligence["freshness_s"] == 4
     assert intelligence["activity_rate"] == 0.0
+    assert snapshot["agents"] == []
+    assert snapshot["summary"]["active_agents"] == 0
 
 
-def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
+def test_presence_rewrite_ages_stale_blocked_work_out_of_current_state(tmp_path):
     missing = tmp_path / "missing.json"
     fresh_snapshot_time = datetime.fromtimestamp(NOW, UTC).isoformat()
     stale_agent_time = datetime.fromtimestamp(NOW - 1_000, UTC).isoformat()
@@ -194,14 +197,13 @@ def test_presence_rewrite_cannot_make_blocked_or_stale_agents_healthy(tmp_path):
         build_snapshot(Sources(missing, missing, missing, missing, missing, missing, presence), now=NOW)
     )
     intelligence = next(node for node in snapshot["nodes"] if node["id"] == "intelligence")
-    assert intelligence["status"] == "degraded"
-    # The projector observed the blocked state now. The old behavior reported
-    # time since the blocked task ran, which made freshness describe activity
-    # in one case and health sampling in another.
+    # A fresh projection with an old task timestamp is a current observation
+    # that no task is still active. It cannot leave the live system degraded
+    # forever because a blocked run existed in the past.
+    assert intelligence["status"] == "healthy"
     assert intelligence["freshness_s"] == 0
-    # Only the presence source exists in this fixture; a fleet-wide count is
-    # unknown even though the one observed agent is blocked.
-    assert snapshot["summary"]["active_agents"] is None
+    assert snapshot["agents"][0]["state"] == "offline"
+    assert snapshot["summary"]["active_agents"] == 0
     # A blocked component is not evidence that a human decision is queued.
     assert snapshot["summary"]["attention"] is None
 
@@ -286,11 +288,10 @@ def test_service_daemons_do_not_count_as_active_agents_and_degradation_propagate
     assert snapshot["summary"]["active_agents"] == 0
     assert intelligence["status"] == "degraded"
     assert snapshot["summary"]["state"] == "degraded"
-    projected = {agent["role"]: agent for agent in snapshot["agents"]}
-    for role in ("Chain Poll", "Orderflow"):
-        assert projected[role]["state"] == "working"
-        assert projected[role]["activity"] == "Reporting with source errors"
-        assert projected[role]["verification"] == "pending"
+    assert snapshot["agents"][0]["role"] == "Local build agent"
+    assert all(agent["role"] not in {"Chain Poll", "Orderflow"} for agent in snapshot["agents"])
+    event_labels = {event["label"] for event in snapshot["events"]}
+    assert {"Chain Poll status observed", "Orderflow status observed"} <= event_labels
 
 
 def test_default_edge_probe_targets_the_public_api_health_route(monkeypatch):

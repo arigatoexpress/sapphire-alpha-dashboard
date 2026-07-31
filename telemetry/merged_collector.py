@@ -116,6 +116,12 @@ def _sanitize_windows_snapshot(snapshot: dict) -> dict:
             else None
         )
 
+    # The deployed Windows schema does not distinguish task agents from
+    # services (worker process, model host, GPU observer). Those components are
+    # already represented by nodes, links, and events. Until a discriminator is
+    # present, none of these rows belongs in the live agent roster.
+    sanitized["agents"] = []
+
     markets = sanitized.get("markets")
     if isinstance(markets, dict):
         markets["feed_age_s"] = None
@@ -152,7 +158,7 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
     merged = copy.deepcopy(mac)
     win = _sanitize_windows_snapshot(win)
 
-    # Merge agents by id
+    # Mac presence is the only current source that classifies task agents.
     agent_by_id = {agent["id"]: agent for agent in mac.get("agents", [])}
     for agent in win.get("agents", []):
         agent_by_id[agent["id"]] = agent
