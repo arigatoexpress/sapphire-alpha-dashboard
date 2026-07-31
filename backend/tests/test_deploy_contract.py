@@ -38,6 +38,15 @@ def _environment() -> list[dict]:
         {"name": "AUTH_USERNAME", "value": "sapphire"},
         {"name": "PUBLIC_READ_ONLY", "value": "1"},
         {
+            "name": "MOSS_TELEMETRY_INGEST_SECRET",
+            "valueFrom": {
+                "secretKeyRef": {
+                    "name": "sapphire-moss-telemetry-ingest",
+                    "key": "1",
+                }
+            },
+        },
+        {
             "name": "TELEMETRY_INGEST_SECRET",
             "valueFrom": {"secretKeyRef": {"name": "secret", "key": "latest"}},
         },
@@ -168,8 +177,10 @@ def test_live_snapshot_rejects_ambiguous_or_open_traffic(provider_traffic):
         guard.live_snapshot(_runner(service=service), _fetch)
 
 
-def _descriptor() -> dict:
-    precondition = guard.live_snapshot(_runner(), _fetch)
+def _descriptor(environment: list[dict] | None = None) -> dict:
+    precondition = guard.live_snapshot(
+        _runner(service=_service(environment)), _fetch
+    )
     return {
         "schema": guard.SCHEMA,
         "target": {
@@ -732,6 +743,22 @@ def test_provider_replacement_carries_resource_version_and_digest_only():
             service,
             descriptor,
             f"{guard.IMAGE_REPOSITORY}:mutable",
+        )
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["TELEMETRY_INGEST_SECRET", "MOSS_TELEMETRY_INGEST_SECRET"],
+)
+def test_provider_replacement_requires_durable_telemetry_secret_refs(missing):
+    environment = [item for item in _environment() if item["name"] != missing]
+    service = _service(environment)
+
+    with pytest.raises(guard.ContractViolation, match="telemetry secret"):
+        guard.prepare_service_replacement(
+            service,
+            _descriptor(environment=environment),
+            f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}",
         )
 
 

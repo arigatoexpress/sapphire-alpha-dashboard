@@ -50,6 +50,10 @@ from slowapi.util import get_remote_address
 
 try:
     from . import public_vault_map, transparency
+    from .fleet_telemetry import (
+        FleetTelemetryValidationError,
+        store as fleet_telemetry_store,
+    )
     from .live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from .moss_telemetry import (
         MossTelemetryValidationError,
@@ -58,6 +62,10 @@ try:
 except ImportError:  # Tests import `main` directly from backend/.
     import public_vault_map
     import transparency
+    from fleet_telemetry import (
+        FleetTelemetryValidationError,
+        store as fleet_telemetry_store,
+    )
     from live_telemetry import TelemetryValidationError, store as live_telemetry_store
     from moss_telemetry import (
         MossTelemetryValidationError,
@@ -501,6 +509,11 @@ def _reset_moss_telemetry_for_tests() -> None:
     moss_telemetry_store.reset()
 
 
+def _reset_fleet_telemetry_for_tests() -> None:
+    """Reset the in-memory fleet test backend; production persistence never deletes."""
+    fleet_telemetry_store.reset()
+
+
 @app.post("/api/v1/telemetry", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("120/minute")
 async def ingest_live_telemetry(request: Request) -> dict[str, Any]:
@@ -631,6 +644,53 @@ async def api_moss(
     except ValueError:
         delay_seconds = 0.0
     return moss_telemetry_store.get(public=public, delay_seconds=delay_seconds)
+
+
+@app.post("/api/v1/fleet/telemetry", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("120/minute")
+async def ingest_fleet_telemetry(request: Request) -> dict[str, Any]:
+    """Accept one signed snapshot from `fleet-lease export --sanitized`."""
+    body = await request.body()
+    if len(body) > 64 * 1024:
+        raise HTTPException(status_code=413, detail="fleet telemetry body too large")
+    try:
+        payload = _decode_bounded_json(body, max_bytes=64 * 1024)
+    except (
+        _UnverifiablePersistedDocument,
+        RecursionError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        raise HTTPException(
+            status_code=422, detail="invalid fleet telemetry JSON"
+        ) from None
+    try:
+        snapshot = fleet_telemetry_store.accept(
+            body=body,
+            headers={key.lower(): value for key, value in request.headers.items()},
+            secret=_env("TELEMETRY_INGEST_SECRET", ""),
+            parsed_json=payload,
+        )
+    except OverflowError:
+        raise HTTPException(
+            status_code=413, detail="fleet telemetry body too large"
+        ) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=401, detail="invalid fleet telemetry signature"
+        ) from None
+    except FileExistsError:
+        raise HTTPException(
+            status_code=409, detail="fleet telemetry replay rejected"
+        ) from None
+    except RuntimeError:
+        raise HTTPException(
+            status_code=503, detail="fleet telemetry ingest unavailable"
+        ) from None
+    except (FleetTelemetryValidationError, TelemetryValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return {"accepted": True, "sequence": snapshot["sequence"]}
 
 
 @app.get("/api/v1/transparency")
@@ -1922,9 +1982,10 @@ async def api_tradingview_alerts(
 
 # ---------------------------------------------------------------------------
 # Fleet snapshot (/api/fleet) — sanitized output of `fleet-lease export
-# --sanitized`, pushed to FLEET_SNAPSHOT_PATH. The backend never trusts the
-# file: lease/gate fields are whitelisted so a poisoned snapshot cannot leak
-# paths, hints, or extra keys. Anonymous public read-only gets counts only.
+# --sanitized`, accepted into the durable telemetry store. FLEET_SNAPSHOT_PATH
+# remains a local/offline fallback. The backend never trusts either source:
+# lease/gate fields are whitelisted so a poisoned snapshot cannot leak paths,
+# hints, or extra keys. Anonymous public read-only gets counts only.
 # ---------------------------------------------------------------------------
 
 _EMPTY_FLEET = {
@@ -2056,8 +2117,14 @@ async def api_fleet(
     request: Request, user: str = Depends(auth_or_public)
 ) -> dict[str, Any]:
     """Fleet presence (leases) + human-approval inbox (gates) with staleness."""
+    try:
+        persisted = fleet_telemetry_store.get()
+    except RuntimeError:
+        persisted = None
     snapshot = _whitelist_fleet(
-        _runtime_document(
+        persisted
+        if persisted is not None
+        else _runtime_document(
             _fleet_snapshot_path(),
             expected_type=dict,
             max_bytes=_MAX_FLEET_DOCUMENT_BYTES,
