@@ -39,6 +39,13 @@ GPU_GATEWAY_HEALTH_URL = "http://127.0.0.1:8800/healthz"
 # Most sources on this host are refreshed every minute or two, so a quarter hour
 # without an update means something stopped.
 DEFAULT_SOURCE_STALE_AFTER_SECONDS = 900
+# Task presence is a much tighter contract than service health. A role whose
+# last semantic event is older than the projector's own three-minute window is
+# no longer active. Keep recently inactive rows for one hour so transitions are
+# readable, then remove them from the live agent surface; durable history stays
+# in the append-only local event log.
+AGENT_ACTIVITY_STALE_AFTER_SECONDS = 180
+AGENT_DISPLAY_RETENTION_SECONDS = 3_600
 # The desk cycle is a batch job, not a heartbeat: `com.ari.deskos-cycle` runs on
 # StartInterval 21600. Judging it against the 900 s ceiling above marked it
 # "down" for 5 h 45 m of every 6 h cycle — red 95.8% of the time, on a source
@@ -162,12 +169,17 @@ def public_semantic_text(value: Any, *, fallback: str, limit: int) -> str:
     return candidate
 
 
-def _presence_agents(value: dict[str, Any]) -> list[dict[str, Any]]:
+def _presence_agents(
+    value: dict[str, Any],
+    *,
+    now: float,
+) -> tuple[list[dict[str, Any]], bool]:
     raw_agents = value.get("agents") if isinstance(value.get("agents"), list) else []
     allowed_states = {"working", "verifying", "idle", "blocked", "offline"}
     allowed_verification = {"verified", "pending", "failed", "not_applicable"}
     allowed_providers = {"local GPU", "local CPU", "cloud reasoning", "hybrid", "rule-only", "unassigned"}
     agents: list[dict[str, Any]] = []
+    valid_rows = 0
     for index, raw in enumerate(raw_agents[:24]):
         if not isinstance(raw, dict):
             continue
@@ -184,6 +196,14 @@ def _presence_agents(value: dict[str, Any]) -> list[dict[str, Any]]:
             or updated_epoch is None
         ):
             continue
+        agent_age = now - updated_epoch
+        if agent_age < -60:
+            continue
+        valid_rows += 1
+        if agent_age > AGENT_DISPLAY_RETENTION_SECONDS:
+            continue
+        if agent_age > AGENT_ACTIVITY_STALE_AFTER_SECONDS:
+            state = "offline"
         activity = {
             "working": "Capability route active",
             "verifying": "Capability result under verification",
@@ -202,7 +222,8 @@ def _presence_agents(value: dict[str, Any]) -> list[dict[str, Any]]:
                 "updated_at": datetime.fromtimestamp(updated_epoch, UTC).isoformat(),
             }
         )
-    return agents
+    complete = len(raw_agents) <= 24 and valid_rows == len(raw_agents)
+    return agents, complete
 
 
 def _presence_events(value: dict[str, Any], *, now: float) -> tuple[list[dict[str, Any]], float | None]:
@@ -344,13 +365,17 @@ def build_snapshot(
     feed_age = _age(now, feed.get("updated"))
     gpu_age = _age(now, gpu.get("updated"), gpu.get("last_check"))
     desk_age = _age(now, desk.get("finished_at"), desk.get("started_at"))
-    presence_agents = _presence_agents(presence)
+    presence_agents, presence_contract_complete = _presence_agents(
+        presence,
+        now=now,
+    )
     presence_events, presence_event_rate = _presence_events(presence, now=now)
     raw_presence_agents = (
         presence.get("agents") if isinstance(presence.get("agents"), list) else None
     )
     raw_agents = rh_health.get("agents") if isinstance(rh_health.get("agents"), list) else []
     agents: list[dict[str, Any]] = list(presence_agents)
+    service_observers: list[dict[str, Any]] = []
     for index, raw in enumerate(raw_agents[:12]):
         if not isinstance(raw, dict):
             continue
@@ -358,7 +383,7 @@ def build_snapshot(
         status = _health(raw.get("status"), age_s=rh_age)
         if any(agent["role"] == label for agent in agents):
             continue
-        agents.append(
+        service_observers.append(
             {
                 "id": _agent_id(label, index),
                 "role": label,
@@ -383,7 +408,7 @@ def build_snapshot(
     service_count = sum(1 for value in (gpu.get("services") or {}).values() if bool(value)) if isinstance(gpu.get("services"), dict) else 0
     gpu_status = _health(gpu.get("status"), age_s=gpu_age)
     if gpu:
-        agents.append(
+        service_observers.append(
             {
                 "id": "gpu-workhorse",
                 "role": "GPU workhorse",
@@ -442,7 +467,7 @@ def build_snapshot(
     # `len(agents) * 4` — an agent head-count multiplied by a magic number and
     # published as events per minute. That is the kind of number this whole
     # module now exists to refuse.
-    agent_rate = presence_event_rate if presence_agents else None
+    agent_rate = presence_event_rate
     desk_status = _health(desk.get("status"), age_s=desk_age, stale_after_s=DESK_CYCLE_STALE_AFTER_SECONDS)
 
     # feed_lag_s is source timestamp lag, not a request/response round trip.
@@ -499,8 +524,7 @@ def build_snapshot(
             "label": f"{agent['role']} status observed",
             "status": "verified" if agent["verification"] == "verified" else "degraded",
         }
-        for agent in agents[:8]
-        if not presence_agents or agent not in presence_agents
+        for agent in service_observers[:8]
     ]
     if markets_rate:
         events.append({"id": f"market-{int(now)}", "observed_at": observed_at, "event_class": "market", "source": "markets", "target": "intelligence", "label": "Market activity observed", "status": "observed"})
@@ -511,16 +535,14 @@ def build_snapshot(
     # Only the presence source describes task-executing agents. RH's historical
     # `agents` field contains monitored daemons and GPU services are processes;
     # both remain useful diagnostics above, but neither is active agent work.
-    # The fleet count remains unknown unless every expected inventory source
-    # arrived complete and the presence projection itself is error-free.
+    # The presence contract is independently complete. RH daemons and GPU
+    # services remain useful diagnostics, but making them prerequisites here
+    # turned a measured task-agent count into a permanent null whenever an
+    # unrelated health file was absent.
     active_agents_complete = (
         raw_presence_agents is not None
-        and len(raw_presence_agents) <= 24
-        and isinstance(rh_health.get("agents"), list)
-        and len(raw_agents) <= 12
-        and bool(gpu)
+        and presence_contract_complete
         and source_errors == 0
-        and len(agents) <= 32
     )
     active_agents = (
         sum(
@@ -531,7 +553,7 @@ def build_snapshot(
         if active_agents_complete
         else None
     )
-    agents = agents[:32]
+    agents = agents[:24]
     return {
         "version": 1,
         "observed_at": observed_at,
