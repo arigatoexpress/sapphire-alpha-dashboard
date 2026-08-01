@@ -67,7 +67,10 @@ def _load_research_projection(path: Path, *, now: float | None = None) -> dict |
         top = opinions[0]
         if not isinstance(top, dict):
             return None
-        public_claim = PUBLIC_RESEARCH_CLAIM_BY_ID.get(top.get("id"))
+        source_id = top.get("id")
+        if not isinstance(source_id, str):
+            return None
+        public_claim = PUBLIC_RESEARCH_CLAIM_BY_ID.get(source_id)
         if public_claim is None:
             return None
         projection = validate_research_projection({
