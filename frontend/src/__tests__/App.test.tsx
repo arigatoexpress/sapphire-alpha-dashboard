@@ -57,6 +57,31 @@ describe('anonymous decision observatory', () => {
       liveMarkup.indexOf('CURRENT DECISION'),
     )
   })
+
+  it('renders the current allowlisted sovereign thesis without private research fields', () => {
+    const snapshot = liveSnapshot()
+    snapshot.desk.epistemics.fresh = false
+    snapshot.desk.epistemics.thesis = null
+    snapshot.research = {
+      observed_at: '2026-07-31T18:58:47+00:00',
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this corrective phase.',
+        stance: 'uncertain',
+        probability: 0.524,
+        horizon_days: 90,
+      },
+    }
+
+    const researchMarkup = renderToStaticMarkup(<App initialSnapshot={snapshot} />)
+
+    expect(researchMarkup).toContain('Bitcoin has put in the cycle low for this corrective phase.')
+    expect(researchMarkup).toContain('52%')
+    expect(researchMarkup).toContain('uncertain')
+    expect(researchMarkup).toContain('90 days')
+    expect(researchMarkup).toContain('/api/v1/live · research')
+    expect(researchMarkup).not.toContain('No thesis observed.')
+    expect(researchMarkup).not.toMatch(/position|account|raw prompt/i)
+  })
 })
 
 describe('evidence contract', () => {

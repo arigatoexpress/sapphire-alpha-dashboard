@@ -304,6 +304,56 @@ def test_signed_ingest_and_operator_projection():
     assert live["desk"]["safety_floor"]["pause_clear"] is False
 
 
+def test_public_research_projection_expires_independently_after_one_day():
+    observed = datetime(2026, 7, 31, 18, 0, tzinfo=UTC)
+    payload = _sample(observed_at=observed.isoformat())
+    payload["research"] = {
+        "observed_at": observed.isoformat(),
+        "thesis": {
+            "claim": "Bitcoin has put in the corrective-phase low.",
+            "stance": "uncertain",
+            "probability": 0.524,
+            "horizon_days": 90,
+        },
+    }
+    normalized = live_telemetry.validate_snapshot(payload)
+    store = LiveTelemetryStore(MemoryTelemetryPersistence())
+    store._persistence.accept(
+        normalized,
+        nonce="nonce-research-ttl",
+        received_at=observed.timestamp(),
+    )
+
+    current = store.get(
+        now=(observed + timedelta(hours=23, minutes=59)).timestamp(),
+        stale_after_seconds=48 * 60 * 60,
+    )
+    expired = store.get(
+        now=(observed + timedelta(hours=24, seconds=1)).timestamp(),
+        stale_after_seconds=48 * 60 * 60,
+    )
+
+    assert current["research"] == payload["research"]
+    assert "research" not in expired
+
+
+def test_research_projection_rejects_fields_outside_the_public_allowlist():
+    payload = _sample()
+    payload["research"] = {
+        "observed_at": payload["observed_at"],
+        "thesis": {
+            "claim": "A bounded public thesis.",
+            "stance": "uncertain",
+            "probability": 0.524,
+            "horizon_days": 90,
+            "position": "private",
+        },
+    }
+
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
+
+
 def test_legacy_producer_without_desk_gets_honest_unknown_projection():
     payload = _sample()
     payload.pop("desk")
