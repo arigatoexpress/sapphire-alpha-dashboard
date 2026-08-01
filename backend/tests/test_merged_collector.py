@@ -7,6 +7,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from live_telemetry import validate_snapshot
 from telemetry.merged_collector import _load_research_projection, _merge_snapshots
 
@@ -270,6 +272,20 @@ def test_research_projection_omits_unknown_id_and_freeform_stance(tmp_path: Path
     document["opinions"][0]["id"] = "btc_bear_bottomed"
     document["opinions"][0]["stance"] = "Ari holds this view privately"
     candidate.write_text(json.dumps(document), encoding="utf-8")
+    assert _load_research_projection(candidate, now=now.timestamp()) is None
+
+
+@pytest.mark.parametrize("malformed_id", [[], {}])
+def test_research_projection_omits_non_string_id_without_crashing(
+    tmp_path: Path, malformed_id: object
+):
+    now = datetime(2026, 7, 31, 19, 0, tzinfo=UTC)
+    candidate = tmp_path / "latest.json"
+    _write_conjecture(candidate, observed_at=now - timedelta(minutes=1))
+    document = json.loads(candidate.read_text(encoding="utf-8"))
+    document["opinions"][0]["id"] = malformed_id
+    candidate.write_text(json.dumps(document), encoding="utf-8")
+
     assert _load_research_projection(candidate, now=now.timestamp()) is None
 
 
