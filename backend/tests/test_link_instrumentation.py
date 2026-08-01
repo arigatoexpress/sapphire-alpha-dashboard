@@ -306,6 +306,7 @@ def test_presence_events_give_a_measured_rate_including_zero(tmp_path):
     quiet = _write(
         tmp_path / "presence.json",
         {
+            "observed_at": _iso(NOW),
             "agents": [
                 {
                     "role": "code",
@@ -328,6 +329,7 @@ def test_presence_events_give_a_measured_rate_including_zero(tmp_path):
     busy = _write(
         tmp_path / "busy.json",
         {
+            "observed_at": _iso(NOW),
             "agents": [
                 {
                     "role": "code",
@@ -348,6 +350,27 @@ def test_presence_events_give_a_measured_rate_including_zero(tmp_path):
     assert _links(snapshot)[("gpu-compute", "intelligence")]["event_rate"] == 0.4
 
 
+def test_stale_presence_does_not_publish_a_known_zero_event_rate(tmp_path):
+    stale = _write(
+        tmp_path / "stale-presence.json",
+        {
+            "observed_at": _iso(NOW - 901),
+            "agents": [],
+            "events": [],
+            "source_errors": 0,
+        },
+    )
+
+    snapshot = build_snapshot(_sources(tmp_path, agent_presence=stale), now=NOW)
+
+    assert _links(snapshot)[("gpu-compute", "intelligence")]["event_rate"] is None
+    intelligence = next(
+        node for node in snapshot["nodes"] if node["id"] == "intelligence"
+    )
+    assert intelligence["activity_rate"] is None
+    assert snapshot["summary"]["active_agents"] is None
+
+
 def test_saturated_presence_window_withdraws_the_rate(tmp_path):
     """The presence projector caps its list at 24. At saturation, events earlier
     in the same five-minute window may have been evicted, so 24/5 is only a lower
@@ -355,6 +378,7 @@ def test_saturated_presence_window_withdraws_the_rate(tmp_path):
     saturated = _write(
         tmp_path / "saturated.json",
         {
+            "observed_at": _iso(NOW),
             "agents": [
                 {
                     "role": "code",
@@ -383,6 +407,7 @@ def test_explicit_complete_presence_window_can_report_at_the_cap(tmp_path):
     complete = _write(
         tmp_path / "complete.json",
         {
+            "observed_at": _iso(NOW),
             "agents": [
                 {
                     "role": "code",
@@ -412,6 +437,7 @@ def test_presence_projector_does_not_forward_arbitrary_personal_prose(tmp_path):
     presence = _write(
         tmp_path / "personal.json",
         {
+            "observed_at": _iso(NOW),
             "agents": [
                 {
                     "role": "owner@example.com",

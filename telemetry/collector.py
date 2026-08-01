@@ -447,6 +447,12 @@ def build_snapshot(
         )
     else:
         rh_status = rh_service_status
+        # A materialized presence view older than its contract cannot prove
+        # that the current task-agent window is empty.  Preserve fresh service
+        # health independently, but withdraw task events and their measured
+        # zero until the presence projector supplies a current observation.
+        presence_events = []
+        presence_event_rate = None
     presence_age = _age(
         now,
         presence.get("observed_at"),
@@ -518,7 +524,7 @@ def build_snapshot(
         {
             "id": f"agent-{agent['id']}",
             "observed_at": agent["updated_at"],
-            "event_class": "agent",
+            "event_class": "reliability",
             "source": "intelligence",
             "target": "archive",
             "label": f"{agent['role']} status observed",
@@ -539,11 +545,7 @@ def build_snapshot(
     # services remain useful diagnostics, but making them prerequisites here
     # turned a measured task-agent count into a permanent null whenever an
     # unrelated health file was absent.
-    active_agents_complete = (
-        raw_presence_agents is not None
-        and presence_contract_complete
-        and source_errors == 0
-    )
+    active_agents_complete = presence_current
     active_agents = (
         sum(
             1
