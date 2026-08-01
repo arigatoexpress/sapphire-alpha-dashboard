@@ -146,6 +146,21 @@ export interface LiveEvent {
   status: EventStatus
 }
 
+/**
+ * Daily, read-only research projection. This is the entire public allowlist:
+ * no source ids, positions, instruments, accounts, prompts, evidence, private
+ * provenance, or execution authority exist in this shape.
+ */
+export interface PublicResearchProjection {
+  observed_at: string
+  thesis: {
+    claim: string
+    stance: string
+    probability: number
+    horizon_days: number
+  }
+}
+
 export type DeskPosture =
   | 'capital_preservation'
   | 'selective_risk'
@@ -303,6 +318,8 @@ export interface LiveSnapshot {
   markets: LiveMarkets
   events: LiveEvent[]
   desk: LiveDesk
+  /** Absent when the daily source is missing, invalid, future, or older than 24 hours. */
+  research?: PublicResearchProjection
 
   /* Serving fields, added by LiveStore.get(). */
   status: ServingStatus

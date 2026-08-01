@@ -78,7 +78,16 @@ describe('anonymous decision observatory', () => {
     expect(researchMarkup).toContain('52%')
     expect(researchMarkup).toContain('uncertain')
     expect(researchMarkup).toContain('90 days')
-    expect(researchMarkup).toContain('/api/v1/live · research')
+    const researchEvidence = buildEvidenceSegments({
+      snapshot,
+      widgets: null,
+      moss: null,
+      fleet: null,
+      execution: snapshot.desk.execution,
+      errors: { live: '', widgets: '', fleet: '', moss: '' },
+    }).find((segment) => segment.id === 'research')
+    expect(researchEvidence?.source).toBe('/api/v1/live · research')
+    expect(researchEvidence?.tone).toBe('current')
     expect(researchMarkup).not.toContain('No thesis observed.')
     expect(researchMarkup).not.toMatch(/position|account|raw prompt/i)
   })

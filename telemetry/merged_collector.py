@@ -13,6 +13,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +26,77 @@ from collector import Sources as MacSources  # noqa: E402
 from collector import configured_latencies as mac_configured_latencies  # noqa: E402
 from collector import public_semantic_text  # noqa: E402
 from collector import push  # noqa: E402
-from live_telemetry import validate_snapshot  # noqa: E402
+from live_telemetry import (  # noqa: E402
+    PUBLIC_RESEARCH_TTL_SECONDS,
+    TelemetryValidationError,
+    validate_research_projection,
+    validate_snapshot,
+)
+
+
+MAX_RESEARCH_SOURCE_BYTES = 256 * 1024
+
+
+def _research_source_path() -> Path:
+    configured = os.environ.get("SAPPHIRE_RESEARCH_SOURCE", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / "ops-state/sovereign-desk/state/conjecture/latest.json"
+
+
+def _load_research_projection(path: Path, *, now: float | None = None) -> dict | None:
+    """Read one daily conjecture and return only the public research allowlist.
+
+    The source document is intentionally treated as private.  Unknown fields
+    are ignored at extraction time, while the four-field output is passed back
+    through the telemetry validator.  Any missing, malformed, future, stale, or
+    sensitive value withdraws research without interrupting the rest of the
+    live snapshot.
+    """
+    now = time.time() if now is None else now
+    try:
+        if not path.is_file() or path.stat().st_size > MAX_RESEARCH_SOURCE_BYTES:
+            return None
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict) or document.get("version") != 1:
+            return None
+        opinions = document.get("opinions")
+        if not isinstance(opinions, list) or not opinions or len(opinions) > 64:
+            return None
+        top = opinions[0]
+        if not isinstance(top, dict):
+            return None
+        projection = validate_research_projection({
+            "observed_at": document.get("utc"),
+            "thesis": {
+                "claim": top.get("claim"),
+                "stance": top.get("stance"),
+                "probability": top.get("p"),
+                "horizon_days": top.get("resolution_days"),
+            },
+        })
+        observed_epoch = datetime.fromisoformat(
+            projection["observed_at"].replace("Z", "+00:00")
+        ).timestamp()
+        age = now - observed_epoch
+        if age < 0 or age > PUBLIC_RESEARCH_TTL_SECONDS:
+            return None
+        return projection
+    except (OSError, UnicodeError, json.JSONDecodeError, TelemetryValidationError, ValueError):
+        return None
+
+
+def _attach_research_projection(snapshot: dict, research: dict | None) -> None:
+    """Attach research only when its source time fits inside the parent report."""
+    if research is None:
+        return
+    try:
+        research_epoch = datetime.fromisoformat(research["observed_at"]).timestamp()
+        snapshot_epoch = datetime.fromisoformat(snapshot["observed_at"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return
+    if research_epoch <= snapshot_epoch + 0.001:
+        snapshot["research"] = copy.deepcopy(research)
 
 
 def _ssh_win_snapshot(win_home: str = "C:\\Users\\aribs") -> dict:
@@ -153,7 +225,7 @@ def _sequence(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
-def _merge_snapshots(mac: dict, win: dict) -> dict:
+def _merge_snapshots(mac: dict, win: dict, *, research: dict | None = None) -> dict:
     """Merge two schema-v1 snapshots. Mac is authoritative for markets/summary base."""
     merged = copy.deepcopy(mac)
     win = _sanitize_windows_snapshot(win)
@@ -232,6 +304,7 @@ def _merge_snapshots(mac: dict, win: dict) -> dict:
     merged["observed_at"] = max(observations) if observations else mac.get("observed_at")
     if isinstance(win_desk, dict):
         merged["desk"] = copy.deepcopy(win_desk)
+    _attach_research_projection(merged, research)
     return merged
 
 
@@ -256,7 +329,14 @@ def main() -> int:
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         print(f"WARN windows telemetry leg unavailable, publishing Mac-only: {exc}", file=sys.stderr)
         win_snapshot = None
-    snapshot = _merge_snapshots(mac_snapshot, win_snapshot) if win_snapshot else mac_snapshot
+    research = _load_research_projection(_research_source_path())
+    snapshot = (
+        _merge_snapshots(mac_snapshot, win_snapshot, research=research)
+        if win_snapshot
+        else copy.deepcopy(mac_snapshot)
+    )
+    if win_snapshot is None:
+        _attach_research_projection(snapshot, research)
     # Validate locally before an outbound push. Keep the original raw shape:
     # validate_snapshot intentionally projects an absent desk as honest
     # unknown state, while omitting the raw desk is what remains compatible

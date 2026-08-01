@@ -120,7 +120,10 @@ export default function App(
     snapshot?.status === 'live' && snapshot.desk?.epistemics?.fresh
       ? snapshot.desk.epistemics
       : null
-  const thesis = epistemics?.thesis
+  const thesis =
+    snapshot?.status === 'live'
+      ? snapshot.research?.thesis ?? epistemics?.thesis
+      : null
 
   const segments = useMemo(
     () =>
@@ -329,7 +332,7 @@ export default function App(
           </div>
 
           <div className="evidence-disclosures">
-            <ResearchDisclosure widgets={widgets} />
+            <ResearchDisclosure snapshot={snapshot} widgets={widgets} />
             <SystemDisclosure snapshot={snapshot} leaseCount={leaseCount} />
             <AssetDisclosure
               status={moss?.status}
@@ -450,7 +453,9 @@ function ThesisPulse({
     runtimeCurrent && snapshot.desk?.epistemics?.fresh
       ? snapshot.desk.epistemics
       : null
-  const thesis = epistemics?.thesis
+  const projectedThesis = runtimeCurrent ? snapshot.research?.thesis : null
+  const legacyThesis = epistemics?.thesis
+  const thesis = projectedThesis ?? legacyThesis
   const regime = epistemics?.regime
   const learning = epistemics?.learning
   const falsifier = epistemics?.falsifiers?.[0]
@@ -468,9 +473,11 @@ function ThesisPulse({
       title: 'Thesis now',
       value: thesis?.claim ?? 'No thesis observed.',
       meta: thesis
-        ? `${percent(thesis.probability)} probability · ${words(thesis.confidence)} confidence`
+        ? legacyThesis && thesis === legacyThesis
+          ? `${percent(thesis.probability)} probability · ${words(legacyThesis.confidence)} confidence`
+          : `${percent(thesis.probability)} probability · ${words(thesis.stance)} · ${thesis.horizon_days} days`
         : 'Waiting for a versioned claim.',
-      tone: thesis ? (epistemics?.fresh ? 'current' : 'degraded') : 'unknown',
+      tone: thesis ? 'current' : 'unknown',
     },
     {
       id: 'regime',
@@ -486,7 +493,7 @@ function ThesisPulse({
       id: 'falsifier',
       eyebrow: 'Revision trigger',
       title: 'What would change the view',
-      value: falsifier?.condition ?? thesis?.falsifier ?? NOT_OBSERVED,
+      value: falsifier?.condition ?? legacyThesis?.falsifier ?? NOT_OBSERVED,
       meta: falsifier ? `Status: ${words(falsifier.status)}` : 'No falsifier observed.',
       tone: falsifier?.status === 'triggered'
         ? 'degraded'
@@ -694,16 +701,32 @@ function EventTimeline({
   )
 }
 
-function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
+function ResearchDisclosure({
+  snapshot,
+  widgets,
+}: {
+  snapshot: LiveSnapshot | null
+  widgets: PublicWidgets | null
+}) {
+  const projection = snapshot?.status === 'live' ? snapshot.research : null
   const clips = widgets?.research.clips ?? []
   return (
     <details>
       <summary>
         <span>Research record</span>
-        <strong>{clips.length ? `${clips.length} unverified` : NOT_OBSERVED}</strong>
+        <strong>
+          {projection ? '1 current thesis' : clips.length ? `${clips.length} unverified` : NOT_OBSERVED}
+        </strong>
       </summary>
       <div className="disclosure-body">
-        {clips.length ? (
+        {projection ? (
+          <ol className="plain-ledger">
+            <li>
+              <time>{observedTime(projection.observed_at)}</time>
+              <strong>{projection.thesis.claim}</strong>
+            </li>
+          </ol>
+        ) : clips.length ? (
           <ol className="plain-ledger">
             {clips.slice(0, 6).map((clip) => (
               <li key={clip.id}>
@@ -716,11 +739,13 @@ function ResearchDisclosure({ widgets }: { widgets: PublicWidgets | null }) {
           <p>No analyst input has been published in this observation.</p>
         )}
         <p className="disclosure-note">
-          Unverified advisory input · distinct-input floor:{' '}
-          {formatCount(widgets?.research.policy.minimum_distinct_inputs)} ·
-          single-input cap:{' '}
-          {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}{' '}
-          · review status: {widgets ? words(widgets.research.policy.review_status) : NOT_OBSERVED}
+          {projection
+            ? 'Read-only daily projection · one ordered thesis · no execution authority'
+            : <>Unverified advisory input · distinct-input floor:{' '}
+                {formatCount(widgets?.research.policy.minimum_distinct_inputs)} ·
+                single-input cap:{' '}
+                {widgets ? `${Math.round(widgets.research.policy.single_input_cap * 100)}%` : NOT_OBSERVED}{' '}
+                · review status: {widgets ? words(widgets.research.policy.review_status) : NOT_OBSERVED}</>}
         </p>
       </div>
     </details>
@@ -938,11 +963,12 @@ export function buildEvidenceSegments({
     fleet?.snapshot_age_s != null && fleet.snapshot_age_s <= RUNTIME_TTL_SECONDS
   const leaseCount = fleetCount(fleet, 'leases')
   const gateCount = fleetCount(fleet, 'gates')
-  const researchObservedAt = widgets?.research.clips
+  const projectedResearch = parentCurrent ? snapshot?.research : undefined
+  const widgetResearchObservedAt = widgets?.research.clips
     .map((clip) => clip.observed_at)
     .filter((value) => !Number.isNaN(Date.parse(value)))
     .sort((left, right) => Date.parse(right) - Date.parse(left))[0]
-  const researchAge = widgets?.research.clips
+  const widgetResearchAge = widgets?.research.clips
     .map((clip) => clip.age_s)
     .filter((value) => Number.isFinite(value) && value >= 0)
     .sort((left, right) => left - right)[0]
@@ -1021,19 +1047,29 @@ export function buildEvidenceSegments({
     {
       id: 'research',
       label: 'Research',
-      value: researchObservedAt
-        ? `${formatCount(widgets.research.clips.length)} unverified`
+      value: projectedResearch
+        ? '1 current thesis'
+        : widgetResearchObservedAt
+          ? `${formatCount(widgets.research.clips.length)} unverified`
         : NOT_OBSERVED,
-      source: '/api/v1/widgets · research',
-      observedAt: observedTime(researchObservedAt),
-      freshness: researchObservedAt ? formatAge(researchAge) : NOT_OBSERVED,
+      source: projectedResearch ? '/api/v1/live · research' : '/api/v1/widgets · research',
+      observedAt: observedTime(projectedResearch?.observed_at ?? widgetResearchObservedAt),
+      freshness: projectedResearch
+        ? formatAge(
+            Math.max(0, Date.now() - Date.parse(projectedResearch.observed_at)) / 1000,
+          )
+        : widgetResearchObservedAt
+          ? formatAge(widgetResearchAge)
+          : NOT_OBSERVED,
       authority: 'unverified advisory input',
-      uncertainty: errors.widgets
+      uncertainty: projectedResearch
+        ? 'allowlisted thesis fields only; no execution authority'
+        : errors.widgets
         ? 'poll failed; value is from the last report'
-        : researchObservedAt
+        : widgetResearchObservedAt
           ? 'bounded timestamped analyst text; review and primary-source provenance are not attested'
           : 'no persisted research observation',
-      tone: errors.widgets ? 'degraded' : 'unknown',
+      tone: projectedResearch ? 'current' : errors.widgets ? 'degraded' : 'unknown',
     },
     {
       id: 'fleet',
