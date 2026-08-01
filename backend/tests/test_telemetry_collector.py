@@ -203,6 +203,41 @@ def test_fresh_complete_empty_presence_is_a_measured_zero(tmp_path):
     assert agent_link["event_rate"] == 0.0
 
 
+def test_fresh_unavailable_presence_projection_withholds_all_agent_metrics(tmp_path):
+    """A projector read error stays unknown even when its envelope is fresh."""
+    missing = tmp_path / "missing.json"
+    presence = _write(
+        tmp_path / "agent-presence.json",
+        {
+            "version": 1,
+            "observed_at": datetime.fromtimestamp(NOW - 2, UTC).isoformat(),
+            "summary": {"active": 0, "blocked": 0, "verified": 0},
+            "agents": [],
+            "events": [],
+            "source_errors": 1,
+        },
+    )
+
+    snapshot = validate_snapshot(
+        build_snapshot(
+            Sources(missing, missing, missing, missing, missing, missing, presence),
+            now=NOW,
+        )
+    )
+    intelligence = next(
+        node for node in snapshot["nodes"] if node["id"] == "intelligence"
+    )
+    agent_link = next(
+        link
+        for link in snapshot["links"]
+        if (link["source"], link["target"]) == ("gpu-compute", "intelligence")
+    )
+
+    assert snapshot["summary"]["active_agents"] is None
+    assert intelligence["activity_rate"] is None
+    assert agent_link["event_rate"] is None
+
+
 def test_presence_rewrite_ages_stale_blocked_work_out_of_current_state(tmp_path):
     missing = tmp_path / "missing.json"
     fresh_snapshot_time = datetime.fromtimestamp(NOW, UTC).isoformat()
