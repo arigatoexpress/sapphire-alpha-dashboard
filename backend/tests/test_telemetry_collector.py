@@ -122,8 +122,8 @@ def test_projector_uses_reduced_agent_presence_as_live_activity(tmp_path):
     assert intelligence["activity_rate"] > 0
 
 
-def test_current_service_health_keeps_idle_intelligence_fresh(tmp_path):
-    """Freshness is the latest health observation, not time since last task."""
+def test_current_service_health_does_not_turn_stale_presence_into_known_zero(tmp_path):
+    """Fresh service health cannot attest that an old task roster is empty."""
     missing = tmp_path / "missing.json"
     stale_time = datetime.fromtimestamp(NOW - 86_400, UTC).isoformat()
     presence = _write(
@@ -163,9 +163,79 @@ def test_current_service_health_keeps_idle_intelligence_fresh(tmp_path):
 
     assert intelligence["status"] == "healthy"
     assert intelligence["freshness_s"] == 4
-    assert intelligence["activity_rate"] == 0.0
+    assert intelligence["activity_rate"] is None
     assert snapshot["agents"] == []
+    assert snapshot["summary"]["active_agents"] is None
+
+
+def test_fresh_complete_empty_presence_is_a_measured_zero(tmp_path):
+    missing = tmp_path / "missing.json"
+    presence = _write(
+        tmp_path / "agent-presence.json",
+        {
+            "version": 1,
+            "observed_at": datetime.fromtimestamp(NOW - 2, UTC).isoformat(),
+            "summary": {"active": 0, "blocked": 0, "verified": 0},
+            "agents": [],
+            "events": [],
+            "source_errors": 0,
+        },
+    )
+
+    snapshot = validate_snapshot(
+        build_snapshot(
+            Sources(missing, missing, missing, missing, missing, missing, presence),
+            now=NOW,
+        )
+    )
+    intelligence = next(
+        node for node in snapshot["nodes"] if node["id"] == "intelligence"
+    )
+    agent_link = next(
+        link
+        for link in snapshot["links"]
+        if (link["source"], link["target"]) == ("gpu-compute", "intelligence")
+    )
+
     assert snapshot["summary"]["active_agents"] == 0
+    assert snapshot["agents"] == []
+    assert intelligence["activity_rate"] == 0.0
+    assert agent_link["event_rate"] == 0.0
+
+
+def test_fresh_unavailable_presence_projection_withholds_all_agent_metrics(tmp_path):
+    """A projector read error stays unknown even when its envelope is fresh."""
+    missing = tmp_path / "missing.json"
+    presence = _write(
+        tmp_path / "agent-presence.json",
+        {
+            "version": 1,
+            "observed_at": datetime.fromtimestamp(NOW - 2, UTC).isoformat(),
+            "summary": {"active": 0, "blocked": 0, "verified": 0},
+            "agents": [],
+            "events": [],
+            "source_errors": 1,
+        },
+    )
+
+    snapshot = validate_snapshot(
+        build_snapshot(
+            Sources(missing, missing, missing, missing, missing, missing, presence),
+            now=NOW,
+        )
+    )
+    intelligence = next(
+        node for node in snapshot["nodes"] if node["id"] == "intelligence"
+    )
+    agent_link = next(
+        link
+        for link in snapshot["links"]
+        if (link["source"], link["target"]) == ("gpu-compute", "intelligence")
+    )
+
+    assert snapshot["summary"]["active_agents"] is None
+    assert intelligence["activity_rate"] is None
+    assert agent_link["event_rate"] is None
 
 
 def test_presence_rewrite_ages_stale_blocked_work_out_of_current_state(tmp_path):
@@ -292,6 +362,13 @@ def test_service_daemons_do_not_count_as_active_agents_and_degradation_propagate
     assert all(agent["role"] not in {"Chain Poll", "Orderflow"} for agent in snapshot["agents"])
     event_labels = {event["label"] for event in snapshot["events"]}
     assert {"Chain Poll status observed", "Orderflow status observed"} <= event_labels
+    service_events = [
+        event
+        for event in snapshot["events"]
+        if event["label"] in {"Chain Poll status observed", "Orderflow status observed"}
+    ]
+    assert service_events
+    assert all(event["event_class"] == "reliability" for event in service_events)
 
 
 def test_default_edge_probe_targets_the_public_api_health_route(monkeypatch):
