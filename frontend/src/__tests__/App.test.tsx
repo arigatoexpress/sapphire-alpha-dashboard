@@ -38,6 +38,134 @@ describe('anonymous decision observatory', () => {
     expect(markup).toContain('href="/"')
     expect(markup).not.toContain('aria-label="Sapphire Alpha home"')
   })
+
+  it('puts current operational evidence above the missing-thesis state', () => {
+    const liveMarkup = renderToStaticMarkup(
+      <App initialSnapshot={liveSnapshot()} />,
+    )
+
+    expect(liveMarkup).toContain('SYSTEM NOW')
+    expect(liveMarkup).toContain('Snapshot')
+    expect(liveMarkup).toContain('live · 4s ago')
+    expect(liveMarkup).toContain('Market activity')
+    expect(liveMarkup).toContain('599 / min')
+    expect(liveMarkup).toContain('Current components')
+    expect(liveMarkup).toContain('7 / 10')
+    expect(liveMarkup).toContain('Home compute')
+    expect(liveMarkup).toContain('healthy · 0s ago')
+    expect(liveMarkup.indexOf('SYSTEM NOW')).toBeLessThan(
+      liveMarkup.indexOf('CURRENT DECISION'),
+    )
+  })
+
+  it('renders the current allowlisted sovereign thesis without private research fields', () => {
+    const snapshot = liveSnapshot()
+    snapshot.desk.epistemics.fresh = false
+    snapshot.desk.epistemics.thesis = null
+    snapshot.research = {
+      observed_at: '2026-07-31T18:58:47+00:00',
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this corrective phase.',
+        stance: 'uncertain',
+        probability: 0.524,
+        horizon_days: 90,
+      },
+    }
+
+    const researchMarkup = renderToStaticMarkup(<App initialSnapshot={snapshot} />)
+
+    expect(researchMarkup).toContain('Bitcoin has put in the cycle low for this corrective phase.')
+    expect(researchMarkup).toContain('52%')
+    expect(researchMarkup).toContain('uncertain')
+    expect(researchMarkup).toContain('90 days')
+    const researchEvidence = buildEvidenceSegments({
+      snapshot,
+      widgets: null,
+      moss: null,
+      fleet: null,
+      execution: snapshot.desk.execution,
+      errors: { live: '', widgets: '', fleet: '', moss: '' },
+    }).find((segment) => segment.id === 'research')
+    expect(researchEvidence?.source).toBe('/api/v1/live · research')
+    expect(researchEvidence?.tone).toBe('current')
+    expect(researchMarkup).not.toContain('No thesis observed.')
+    expect(researchMarkup).not.toMatch(/position|account|raw prompt/i)
+  })
+
+  it('withdraws retained research everywhere when the live poll later fails', () => {
+    const snapshot = liveSnapshot()
+    snapshot.research = {
+      observed_at: new Date().toISOString(),
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this bear/corrective phase',
+        stance: 'uncertain',
+        probability: 0.525,
+        horizon_days: 90,
+      },
+    }
+
+    const failedMarkup = renderToStaticMarkup(
+      <App initialSnapshot={snapshot} initialLiveError="Telemetry unavailable (429)" />,
+    )
+    const researchEvidence = buildEvidenceSegments({
+      snapshot,
+      widgets: null,
+      moss: null,
+      fleet: null,
+      execution: snapshot.desk.execution,
+      errors: { live: 'Telemetry unavailable (429)', widgets: '', fleet: '', moss: '' },
+    }).find((segment) => segment.id === 'research')
+
+    expect(failedMarkup).not.toContain(
+      'Bitcoin has put in the cycle low for this bear/corrective phase',
+    )
+    expect(failedMarkup).not.toContain('1 current thesis')
+    expect(failedMarkup).toContain('No thesis observed.')
+    expect(researchEvidence?.value).not.toBe('1 current thesis')
+    expect(researchEvidence?.tone).not.toBe('current')
+  })
+
+  it('withdraws a research projection after its independent 24-hour TTL', () => {
+    const snapshot = liveSnapshot()
+    snapshot.research = {
+      observed_at: new Date(Date.now() - 24 * 60 * 60 * 1000 - 1).toISOString(),
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this bear/corrective phase',
+        stance: 'uncertain',
+        probability: 0.525,
+        horizon_days: 90,
+      },
+    }
+
+    const expiredMarkup = renderToStaticMarkup(<App initialSnapshot={snapshot} />)
+
+    expect(expiredMarkup).not.toContain(
+      'Bitcoin has put in the cycle low for this bear/corrective phase',
+    )
+    expect(expiredMarkup).not.toContain('1 current thesis')
+  })
+
+  it('withdraws research when the retained parent freshness exceeds runtime TTL', () => {
+    const snapshot = liveSnapshot()
+    snapshot.status = 'live'
+    snapshot.freshness_s = 181
+    snapshot.research = {
+      observed_at: new Date().toISOString(),
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this bear/corrective phase',
+        stance: 'uncertain',
+        probability: 0.525,
+        horizon_days: 90,
+      },
+    }
+
+    const staleMarkup = renderToStaticMarkup(<App initialSnapshot={snapshot} />)
+
+    expect(staleMarkup).not.toContain(
+      'Bitcoin has put in the cycle low for this bear/corrective phase',
+    )
+    expect(staleMarkup).not.toContain('1 current thesis')
+  })
 })
 
 describe('evidence contract', () => {

@@ -28,6 +28,19 @@ MAX_REQUEST_SKEW_SECONDS = 300
 # is the forbidden fix — a threshold that never fires reads green while checking
 # nothing. Shorten the cadence instead. Enforced by test_machine_room_public.py.
 DEFAULT_STALE_AFTER_SECONDS = 180
+# The sovereign desk writes one explicitly versioned conjecture cycle per day.
+# This TTL belongs to that source observation, not to the one-minute runtime
+# heartbeat.  It is still re-evaluated on every read and withdrawn at expiry.
+PUBLIC_RESEARCH_TTL_SECONDS = 24 * 60 * 60
+# Public prose is code-owned, never copied from the private conjecture file or
+# accepted as arbitrary signed producer text.  The internal opinion id is used
+# only by the collector to select one fixed sentence and never enters the wire.
+PUBLIC_RESEARCH_CLAIM_BY_ID = {
+    "btc_bear_bottomed": (
+        "Bitcoin has put in the cycle low for this bear/corrective phase"
+    ),
+}
+PUBLIC_RESEARCH_STANCES = {"lean_no", "uncertain", "lean_yes"}
 MAX_JSON_DEPTH = 64
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
@@ -218,6 +231,50 @@ def _timestamp(value: Any, *, where: str, future_slack_s: int = 60) -> str:
     if parsed.timestamp() > time.time() + future_slack_s:
         raise TelemetryValidationError(f"{where} is in the future")
     return parsed.isoformat()
+
+
+def validate_research_projection(value: Any) -> dict[str, Any]:
+    """Validate the complete public research allowlist.
+
+    This intentionally is not a general conjecture schema.  It accepts one
+    timestamp and four thesis fields; source ids, positions, instruments,
+    accounts, prompts, evidence, falsifiers, and local provenance have no wire
+    representation and therefore cannot leak through this boundary.
+    """
+    raw = _keys(
+        value,
+        allowed={"observed_at", "thesis"},
+        required={"observed_at", "thesis"},
+        where="research",
+    )
+    thesis = _keys(
+        raw["thesis"],
+        allowed={"claim", "stance", "probability", "horizon_days"},
+        required={"claim", "stance", "probability", "horizon_days"},
+        where="research.thesis",
+    )
+    claim = _text(thesis["claim"], where="research.thesis.claim", limit=280)
+    if claim not in PUBLIC_RESEARCH_CLAIM_BY_ID.values():
+        raise TelemetryValidationError("research.thesis.claim is not approved public copy")
+    return {
+        "observed_at": _timestamp(raw["observed_at"], where="research.observed_at"),
+        "thesis": {
+            "claim": claim,
+            "stance": _enum(
+                thesis["stance"],
+                PUBLIC_RESEARCH_STANCES,
+                where="research.thesis.stance",
+            ),
+            "probability": _number(
+                thesis["probability"], where="research.thesis.probability", high=1),
+            "horizon_days": _integer(
+                thesis["horizon_days"],
+                where="research.thesis.horizon_days",
+                low=1,
+                high=3650,
+            ),
+        },
+    }
 
 
 def _epistemics(value: Any) -> dict[str, Any]:
@@ -437,6 +494,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             "markets",
             "events",
             "desk",
+            "research",
         },
         required={
             "version",
@@ -455,6 +513,17 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
         raise TelemetryValidationError("unsupported telemetry version")
     observed_at = _timestamp(obj["observed_at"], where="observed_at")
     sequence = _integer(obj["sequence"], where="sequence", high=2**63 - 1)
+    research = (
+        validate_research_projection(obj["research"])
+        if obj.get("research") is not None
+        else None
+    )
+    if (
+        research is not None
+        and datetime.fromisoformat(research["observed_at"]).timestamp()
+        > datetime.fromisoformat(observed_at).timestamp() + 0.001
+    ):
+        raise TelemetryValidationError("research observation is newer than its parent snapshot")
 
     desk_raw = obj.get("desk")
     if desk_raw is None or desk_raw == _empty_desk():
@@ -1077,7 +1146,7 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
             }
         )
 
-    return {
+    normalized = {
         "version": 1,
         "observed_at": observed_at,
         "sequence": sequence,
@@ -1089,6 +1158,9 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
         "events": events,
         "desk": desk,
     }
+    if research is not None:
+        normalized["research"] = research
+    return normalized
 
 
 def _empty_desk() -> dict[str, Any]:
@@ -1397,6 +1469,19 @@ def _age_runtime_projection(
                 or learning_age > stale_after_seconds
             ):
                 desk["epistemics"] = _epistemics(None)
+
+    research = snapshot.get("research")
+    if isinstance(research, dict):
+        research_epoch = _timestamp_epoch(research.get("observed_at"))
+        research_age = _age_seconds(now, research.get("observed_at"))
+        if (
+            not parent_current
+            or research_epoch is None
+            or research_epoch > snapshot_observed_at + 0.001
+            or research_age is None
+            or research_age > PUBLIC_RESEARCH_TTL_SECONDS
+        ):
+            snapshot.pop("research", None)
 
     summary = snapshot.get("summary")
     if isinstance(summary, dict):

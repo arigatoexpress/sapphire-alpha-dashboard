@@ -28,9 +28,25 @@ export function useLiveTelemetry() {
   }, [])
 
   useEffect(() => {
-    refresh()
-    const timer = window.setInterval(refresh, 5_000)
-    return () => window.clearInterval(timer)
+    let timer: number | undefined
+
+    const stopPolling = () => {
+      if (timer !== undefined) window.clearInterval(timer)
+      timer = undefined
+    }
+    const syncPolling = () => {
+      stopPolling()
+      if (document.visibilityState !== 'visible') return
+      void refresh()
+      timer = window.setInterval(refresh, 15_000)
+    }
+
+    syncPolling()
+    document.addEventListener('visibilitychange', syncPolling)
+    return () => {
+      stopPolling()
+      document.removeEventListener('visibilitychange', syncPolling)
+    }
   }, [refresh])
 
   return { snapshot, error, loading, refresh }

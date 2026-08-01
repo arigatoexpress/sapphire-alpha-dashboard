@@ -304,6 +304,103 @@ def test_signed_ingest_and_operator_projection():
     assert live["desk"]["safety_floor"]["pause_clear"] is False
 
 
+def test_public_research_projection_expires_independently_after_one_day():
+    observed = datetime(2026, 7, 31, 18, 0, tzinfo=UTC)
+    payload = _sample(observed_at=observed.isoformat())
+    payload["research"] = {
+        "observed_at": observed.isoformat(),
+        "thesis": {
+            "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
+            "stance": "uncertain",
+            "probability": 0.524,
+            "horizon_days": 90,
+        },
+    }
+    normalized = live_telemetry.validate_snapshot(payload)
+    store = LiveTelemetryStore(MemoryTelemetryPersistence())
+    store._persistence.accept(
+        normalized,
+        nonce="nonce-research-ttl",
+        received_at=observed.timestamp(),
+    )
+
+    current = store.get(
+        now=(observed + timedelta(hours=23, minutes=59)).timestamp(),
+        stale_after_seconds=48 * 60 * 60,
+    )
+    expired = store.get(
+        now=(observed + timedelta(hours=24, seconds=1)).timestamp(),
+        stale_after_seconds=48 * 60 * 60,
+    )
+
+    assert current["research"] == payload["research"]
+    assert "research" not in expired
+
+
+def test_research_projection_rejects_fields_outside_the_public_allowlist():
+    payload = _sample()
+    payload["research"] = {
+        "observed_at": payload["observed_at"],
+        "thesis": {
+                "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
+            "stance": "uncertain",
+            "probability": 0.524,
+            "horizon_days": 90,
+            "position": "private",
+        },
+    }
+
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Ari holds 3.25 BTC in a private Coinbase account with $41725 cash.",
+        "Portfolio balance is 41725 USD in the brokerage account.",
+        "Coinbase account allocation is currently private.",
+        "Send assets to 0x1234567890abcdef1234567890abcdef12345678.",
+        "A wallet is available at bc1qexampleprivateaddress000000000000.",
+        "The target is worth $41,725 today.",
+        "Ari's private identifier is customer-41725.",
+        "Read /Users/aribs/private/account.json for the thesis.",
+        "Read https://private.example.test/research for the thesis.",
+        "An arbitrary but otherwise harmless sentence is still not approved public copy.",
+    ],
+)
+def test_research_projection_rejects_every_noncanonical_claim(claim: str):
+    payload = _sample()
+    payload["research"] = {
+        "observed_at": payload["observed_at"],
+        "thesis": {
+            "claim": claim,
+            "stance": "uncertain",
+            "probability": 0.525,
+            "horizon_days": 90,
+        },
+    }
+
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
+
+
+def test_research_projection_rejects_freeform_stance():
+    payload = _sample()
+    payload["research"] = {
+        "observed_at": payload["observed_at"],
+        "thesis": {
+            "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
+            "stance": "Ari is bullish in a private account",
+            "probability": 0.525,
+            "horizon_days": 90,
+        },
+    }
+
+    with pytest.raises(live_telemetry.TelemetryValidationError):
+        live_telemetry.validate_snapshot(payload)
+
+
 def test_legacy_producer_without_desk_gets_honest_unknown_projection():
     payload = _sample()
     payload.pop("desk")

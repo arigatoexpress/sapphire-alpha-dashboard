@@ -274,10 +274,26 @@ def test_mutating_methods_still_denied(public_mode):
 
 
 def test_public_rate_limit_tightened(public_mode):
-    assert main._api_rate_limit() == "20/minute"
+    assert main._api_rate_limit() == "60/minute"
+
+
+def test_public_rate_limit_supports_four_live_dashboard_tabs(public_mode):
+    """Normal multi-tab use must not self-deny the read-only telemetry feed."""
+    requests_per_minute = int(main._api_rate_limit().split("/", 1)[0])
+    assert requests_per_minute >= 60
+
+
+def test_live_endpoint_admits_sixty_reads_before_rate_limiting(public_mode):
+    main.limiter.reset()
+    try:
+        statuses = [client.get("/api/v1/live").status_code for _ in range(61)]
+        assert statuses[:60] == [200] * 60
+        assert statuses[60] == 429
+    finally:
+        main.limiter.reset()
 
 
 def test_rate_limit_is_unconditional(monkeypatch):
     """There is no private mode left in which the looser limit would apply."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    assert main._api_rate_limit() == "20/minute"
+    assert main._api_rate_limit() == "60/minute"
