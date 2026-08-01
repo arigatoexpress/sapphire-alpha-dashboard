@@ -91,6 +91,59 @@ describe('anonymous decision observatory', () => {
     expect(researchMarkup).not.toContain('No thesis observed.')
     expect(researchMarkup).not.toMatch(/position|account|raw prompt/i)
   })
+
+  it('withdraws retained research everywhere when the live poll later fails', () => {
+    const snapshot = liveSnapshot()
+    snapshot.research = {
+      observed_at: new Date().toISOString(),
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this bear/corrective phase',
+        stance: 'uncertain',
+        probability: 0.525,
+        horizon_days: 90,
+      },
+    }
+
+    const failedMarkup = renderToStaticMarkup(
+      <App initialSnapshot={snapshot} initialLiveError="Telemetry unavailable (429)" />,
+    )
+    const researchEvidence = buildEvidenceSegments({
+      snapshot,
+      widgets: null,
+      moss: null,
+      fleet: null,
+      execution: snapshot.desk.execution,
+      errors: { live: 'Telemetry unavailable (429)', widgets: '', fleet: '', moss: '' },
+    }).find((segment) => segment.id === 'research')
+
+    expect(failedMarkup).not.toContain(
+      'Bitcoin has put in the cycle low for this bear/corrective phase',
+    )
+    expect(failedMarkup).not.toContain('1 current thesis')
+    expect(failedMarkup).toContain('No thesis observed.')
+    expect(researchEvidence?.value).not.toBe('1 current thesis')
+    expect(researchEvidence?.tone).not.toBe('current')
+  })
+
+  it('withdraws a research projection after its independent 24-hour TTL', () => {
+    const snapshot = liveSnapshot()
+    snapshot.research = {
+      observed_at: new Date(Date.now() - 24 * 60 * 60 * 1000 - 1).toISOString(),
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this bear/corrective phase',
+        stance: 'uncertain',
+        probability: 0.525,
+        horizon_days: 90,
+      },
+    }
+
+    const expiredMarkup = renderToStaticMarkup(<App initialSnapshot={snapshot} />)
+
+    expect(expiredMarkup).not.toContain(
+      'Bitcoin has put in the cycle low for this bear/corrective phase',
+    )
+    expect(expiredMarkup).not.toContain('1 current thesis')
+  })
 })
 
 describe('evidence contract', () => {

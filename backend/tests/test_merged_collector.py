@@ -247,7 +247,30 @@ def test_research_projection_fails_closed_when_stale_or_sensitive(tmp_path: Path
     document = json.loads(sensitive.read_text(encoding="utf-8"))
     document["opinions"][0]["claim"] = "Read /Users/aribs/private/account.json"
     sensitive.write_text(json.dumps(document), encoding="utf-8")
-    assert _load_research_projection(sensitive, now=now.timestamp()) is None
+    assert _load_research_projection(sensitive, now=now.timestamp()) == {
+        "observed_at": "2026-07-31T18:59:00+00:00",
+        "thesis": {
+            "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
+            "stance": "uncertain",
+            "probability": 0.524,
+            "horizon_days": 90,
+        },
+    }
+
+
+def test_research_projection_omits_unknown_id_and_freeform_stance(tmp_path: Path):
+    now = datetime(2026, 7, 31, 19, 0, tzinfo=UTC)
+    candidate = tmp_path / "latest.json"
+    _write_conjecture(candidate, observed_at=now - timedelta(minutes=1))
+    document = json.loads(candidate.read_text(encoding="utf-8"))
+    document["opinions"][0]["id"] = "private_freeform_opinion"
+    candidate.write_text(json.dumps(document), encoding="utf-8")
+    assert _load_research_projection(candidate, now=now.timestamp()) is None
+
+    document["opinions"][0]["id"] = "btc_bear_bottomed"
+    document["opinions"][0]["stance"] = "Ari holds this view privately"
+    candidate.write_text(json.dumps(document), encoding="utf-8")
+    assert _load_research_projection(candidate, now=now.timestamp()) is None
 
 
 def test_merge_carries_the_allowlisted_research_projection():
