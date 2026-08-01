@@ -63,7 +63,7 @@ describe('anonymous decision observatory', () => {
     snapshot.desk.epistemics.fresh = false
     snapshot.desk.epistemics.thesis = null
     snapshot.research = {
-      observed_at: '2026-07-31T18:58:47+00:00',
+      observed_at: new Date().toISOString(),
       thesis: {
         claim: 'Bitcoin has put in the cycle low for this corrective phase.',
         stance: 'uncertain',
