@@ -274,7 +274,7 @@ def test_mutating_methods_still_denied(public_mode):
 
 
 def test_public_rate_limit_tightened(public_mode):
-    assert main._api_rate_limit() == "20/minute"
+    assert main._api_rate_limit() == "60/minute"
 
 
 def test_public_rate_limit_supports_four_live_dashboard_tabs(public_mode):
@@ -286,4 +286,4 @@ def test_public_rate_limit_supports_four_live_dashboard_tabs(public_mode):
 def test_rate_limit_is_unconditional(monkeypatch):
     """There is no private mode left in which the looser limit would apply."""
     monkeypatch.delenv("PUBLIC_READ_ONLY", raising=False)
-    assert main._api_rate_limit() == "20/minute"
+    assert main._api_rate_limit() == "60/minute"

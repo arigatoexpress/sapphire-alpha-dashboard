@@ -52,7 +52,7 @@ describe('anonymous decision observatory', () => {
     expect(liveMarkup).toContain('Current components')
     expect(liveMarkup).toContain('7 / 10')
     expect(liveMarkup).toContain('Home compute')
-    expect(liveMarkup).toContain('healthy · now')
+    expect(liveMarkup).toContain('healthy · 0s ago')
     expect(liveMarkup.indexOf('SYSTEM NOW')).toBeLessThan(
       liveMarkup.indexOf('CURRENT DECISION'),
     )

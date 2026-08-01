@@ -93,11 +93,12 @@ PUBLIC_USER = "public"
 def _api_rate_limit() -> str:
     """Rate limit for API routes.
 
-    Anonymous reads are unconditional now, so the tighter of the two former
-    limits is the only one that applies; there is no operator-only mode left in
-    which the looser 60/minute would have been correct.
+    The observatory is a polling client and operators routinely keep several
+    tabs open.  Sixty reads per minute still bounds every public projection,
+    while leaving enough room for four dashboard tabs without making normal
+    read-only use deny itself.
     """
-    return "20/minute"
+    return "60/minute"
 
 
 @app.middleware("http")

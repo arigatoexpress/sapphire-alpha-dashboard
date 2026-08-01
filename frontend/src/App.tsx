@@ -92,10 +92,17 @@ function percent(value: number | null | undefined, digits = 0) {
 }
 
 export default function App(
-  { initialWidgets }: { initialWidgets?: PublicWidgets } = {},
+  {
+    initialWidgets,
+    initialSnapshot,
+  }: {
+    initialWidgets?: PublicWidgets
+    initialSnapshot?: LiveSnapshot
+  } = {},
 ) {
   const build = useBuildIdentity()
-  const { snapshot, error, loading } = useLiveTelemetry()
+  const { snapshot: polledSnapshot, error, loading } = useLiveTelemetry()
+  const snapshot = initialSnapshot ?? polledSnapshot
   const { snapshot: moss, error: mossError } = useMossSnapshot()
   const { fleet, error: fleetError } = useFleet()
   const { widgets: polledWidgets, error: widgetsError } = usePublicWidgets()
@@ -192,6 +199,8 @@ export default function App(
       </header>
 
       <main className="observatory-main">
+        <RuntimeStrip snapshot={snapshot} error={error} />
+
         <section
           className="current-decision-band"
           aria-labelledby="current-decision-title"
@@ -366,6 +375,66 @@ export default function App(
         <span>Anonymous · read-only view · controls isolated</span>
       </footer>
     </div>
+  )
+}
+
+function RuntimeStrip({
+  snapshot,
+  error,
+}: {
+  snapshot: LiveSnapshot | null
+  error: string
+}) {
+  const reportCurrent = snapshot?.status === 'live' && !error
+  const currentComponents = reportCurrent
+    ? snapshot.nodes.filter(
+        (node) => node.status === 'healthy' && node.freshness_s <= RUNTIME_TTL_SECONDS,
+      ).length
+    : null
+  const homeCompute = reportCurrent
+    ? snapshot.nodes.find((node) => node.id === 'win-workhorse')
+    : null
+
+  return (
+    <section className="runtime-strip" aria-labelledby="runtime-strip-title">
+      <p id="runtime-strip-title">SYSTEM NOW</p>
+      <div className="runtime-strip-grid">
+        <div>
+          <span>Snapshot</span>
+          <strong>
+            {snapshot
+              ? error
+                ? `poll failed · last report ${formatAge(snapshot.freshness_s)}`
+                : `${snapshot.status} · ${formatAge(snapshot.freshness_s)}`
+              : NOT_OBSERVED}
+          </strong>
+        </div>
+        <div>
+          <span>Market activity</span>
+          <strong>
+            {reportCurrent && snapshot.markets.events_per_min != null
+              ? `${formatCount(snapshot.markets.events_per_min)} / min`
+              : NOT_OBSERVED}
+          </strong>
+        </div>
+        <div>
+          <span>Current components</span>
+          <strong>
+            {currentComponents != null
+              ? `${formatCount(currentComponents)} / ${formatCount(snapshot?.nodes.length)}`
+              : NOT_OBSERVED}
+          </strong>
+        </div>
+        <div>
+          <span>Home compute</span>
+          <strong>
+            {homeCompute
+              ? `${homeCompute.status} · ${formatAge(homeCompute.freshness_s)}`
+              : NOT_OBSERVED}
+          </strong>
+        </div>
+      </div>
+    </section>
   )
 }
 
