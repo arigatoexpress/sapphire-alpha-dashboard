@@ -310,7 +310,7 @@ def test_public_research_projection_expires_independently_after_one_day():
     payload["research"] = {
         "observed_at": observed.isoformat(),
         "thesis": {
-            "claim": "Bitcoin has put in the corrective-phase low.",
+            "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
             "stance": "uncertain",
             "probability": 0.524,
             "horizon_days": 90,
@@ -342,7 +342,7 @@ def test_research_projection_rejects_fields_outside_the_public_allowlist():
     payload["research"] = {
         "observed_at": payload["observed_at"],
         "thesis": {
-            "claim": "A bounded public thesis.",
+                "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
             "stance": "uncertain",
             "probability": 0.524,
             "horizon_days": 90,

@@ -216,7 +216,7 @@ def test_research_projection_maps_only_the_first_allowlisted_thesis(tmp_path: Pa
     assert projection == {
         "observed_at": "2026-07-31T18:59:00+00:00",
         "thesis": {
-            "claim": "Bitcoin has put in the corrective-phase low.",
+            "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
             "stance": "uncertain",
             "probability": 0.524,
             "horizon_days": 90,
@@ -279,7 +279,7 @@ def test_merge_carries_the_allowlisted_research_projection():
     research = {
         "observed_at": "2026-07-23T00:00:00+00:00",
         "thesis": {
-            "claim": "A bounded public thesis.",
+            "claim": "Bitcoin has put in the cycle low for this bear/corrective phase",
             "stance": "uncertain",
             "probability": 0.524,
             "horizon_days": 90,

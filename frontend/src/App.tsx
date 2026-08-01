@@ -51,6 +51,7 @@ const SECTIONS = [
   { href: '#evidence', label: 'Evidence' },
 ]
 const RUNTIME_TTL_SECONDS = 180
+const RESEARCH_TTL_MS = 24 * 60 * 60 * 1000
 
 function words(value: string | null | undefined) {
   return value ? value.replace(/_/g, ' ') : NOT_OBSERVED
@@ -91,17 +92,36 @@ function percent(value: number | null | undefined, digits = 0) {
   return value == null ? NOT_OBSERVED : `${(value * 100).toFixed(digits)}%`
 }
 
+function currentResearch(snapshot: LiveSnapshot | null, liveError: string) {
+  if (
+    liveError ||
+    snapshot?.status !== 'live' ||
+    snapshot.freshness_s == null ||
+    snapshot.freshness_s > RUNTIME_TTL_SECONDS ||
+    !snapshot.research
+  ) {
+    return null
+  }
+  const observedAt = Date.parse(snapshot.research.observed_at)
+  const ageMs = Date.now() - observedAt
+  if (!Number.isFinite(observedAt) || ageMs < 0 || ageMs > RESEARCH_TTL_MS) return null
+  return snapshot.research
+}
+
 export default function App(
   {
     initialWidgets,
     initialSnapshot,
+    initialLiveError,
   }: {
     initialWidgets?: PublicWidgets
     initialSnapshot?: LiveSnapshot
+    initialLiveError?: string
   } = {},
 ) {
   const build = useBuildIdentity()
-  const { snapshot: polledSnapshot, error, loading } = useLiveTelemetry()
+  const { snapshot: polledSnapshot, error: polledLiveError, loading } = useLiveTelemetry()
+  const error = initialLiveError ?? polledLiveError
   const snapshot = initialSnapshot ?? polledSnapshot
   const { snapshot: moss, error: mossError } = useMossSnapshot()
   const { fleet, error: fleetError } = useFleet()
@@ -117,12 +137,13 @@ export default function App(
   const gateCount = fleetCount(fleet, 'gates')
   const leaseCount = fleetCount(fleet, 'leases')
   const epistemics =
-    snapshot?.status === 'live' && snapshot.desk?.epistemics?.fresh
+    !error && snapshot?.status === 'live' && snapshot.desk?.epistemics?.fresh
       ? snapshot.desk.epistemics
       : null
+  const research = currentResearch(snapshot, error)
   const thesis =
-    snapshot?.status === 'live'
-      ? snapshot.research?.thesis ?? epistemics?.thesis
+    snapshot?.status === 'live' && !error
+      ? research?.thesis ?? epistemics?.thesis
       : null
 
   const segments = useMemo(
@@ -268,6 +289,7 @@ export default function App(
         <ThesisPulse
           snapshot={snapshot}
           execution={execution}
+          error={error}
         />
 
         <EvidenceHorizon
@@ -332,7 +354,7 @@ export default function App(
           </div>
 
           <div className="evidence-disclosures">
-            <ResearchDisclosure snapshot={snapshot} widgets={widgets} />
+            <ResearchDisclosure snapshot={snapshot} widgets={widgets} error={error} />
             <SystemDisclosure snapshot={snapshot} leaseCount={leaseCount} />
             <AssetDisclosure
               status={moss?.status}
@@ -444,16 +466,18 @@ function RuntimeStrip({
 function ThesisPulse({
   snapshot,
   execution,
+  error,
 }: {
   snapshot: LiveSnapshot | null
   execution: string | null
+  error: string
 }) {
-  const runtimeCurrent = snapshot?.status === 'live'
+  const runtimeCurrent = snapshot?.status === 'live' && !error
   const epistemics =
     runtimeCurrent && snapshot.desk?.epistemics?.fresh
       ? snapshot.desk.epistemics
       : null
-  const projectedThesis = runtimeCurrent ? snapshot.research?.thesis : null
+  const projectedThesis = currentResearch(snapshot, error)?.thesis
   const legacyThesis = epistemics?.thesis
   const thesis = projectedThesis ?? legacyThesis
   const regime = epistemics?.regime
@@ -704,11 +728,13 @@ function EventTimeline({
 function ResearchDisclosure({
   snapshot,
   widgets,
+  error,
 }: {
   snapshot: LiveSnapshot | null
   widgets: PublicWidgets | null
+  error: string
 }) {
-  const projection = snapshot?.status === 'live' ? snapshot.research : null
+  const projection = currentResearch(snapshot, error)
   const clips = widgets?.research.clips ?? []
   return (
     <details>
@@ -963,7 +989,7 @@ export function buildEvidenceSegments({
     fleet?.snapshot_age_s != null && fleet.snapshot_age_s <= RUNTIME_TTL_SECONDS
   const leaseCount = fleetCount(fleet, 'leases')
   const gateCount = fleetCount(fleet, 'gates')
-  const projectedResearch = parentCurrent ? snapshot?.research : undefined
+  const projectedResearch = currentResearch(snapshot, errors.live)
   const widgetResearchObservedAt = widgets?.research.clips
     .map((clip) => clip.observed_at)
     .filter((value) => !Number.isNaN(Date.parse(value)))

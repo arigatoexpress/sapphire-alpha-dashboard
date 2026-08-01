@@ -144,6 +144,28 @@ describe('anonymous decision observatory', () => {
     )
     expect(expiredMarkup).not.toContain('1 current thesis')
   })
+
+  it('withdraws research when the retained parent freshness exceeds runtime TTL', () => {
+    const snapshot = liveSnapshot()
+    snapshot.status = 'live'
+    snapshot.freshness_s = 181
+    snapshot.research = {
+      observed_at: new Date().toISOString(),
+      thesis: {
+        claim: 'Bitcoin has put in the cycle low for this bear/corrective phase',
+        stance: 'uncertain',
+        probability: 0.525,
+        horizon_days: 90,
+      },
+    }
+
+    const staleMarkup = renderToStaticMarkup(<App initialSnapshot={snapshot} />)
+
+    expect(staleMarkup).not.toContain(
+      'Bitcoin has put in the cycle low for this bear/corrective phase',
+    )
+    expect(staleMarkup).not.toContain('1 current thesis')
+  })
 })
 
 describe('evidence contract', () => {

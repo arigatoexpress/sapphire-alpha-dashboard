@@ -32,6 +32,15 @@ DEFAULT_STALE_AFTER_SECONDS = 180
 # This TTL belongs to that source observation, not to the one-minute runtime
 # heartbeat.  It is still re-evaluated on every read and withdrawn at expiry.
 PUBLIC_RESEARCH_TTL_SECONDS = 24 * 60 * 60
+# Public prose is code-owned, never copied from the private conjecture file or
+# accepted as arbitrary signed producer text.  The internal opinion id is used
+# only by the collector to select one fixed sentence and never enters the wire.
+PUBLIC_RESEARCH_CLAIM_BY_ID = {
+    "btc_bear_bottomed": (
+        "Bitcoin has put in the cycle low for this bear/corrective phase"
+    ),
+}
+PUBLIC_RESEARCH_STANCES = {"lean_no", "uncertain", "lean_yes"}
 MAX_JSON_DEPTH = 64
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
@@ -244,11 +253,18 @@ def validate_research_projection(value: Any) -> dict[str, Any]:
         required={"claim", "stance", "probability", "horizon_days"},
         where="research.thesis",
     )
+    claim = _text(thesis["claim"], where="research.thesis.claim", limit=280)
+    if claim not in PUBLIC_RESEARCH_CLAIM_BY_ID.values():
+        raise TelemetryValidationError("research.thesis.claim is not approved public copy")
     return {
         "observed_at": _timestamp(raw["observed_at"], where="research.observed_at"),
         "thesis": {
-            "claim": _text(thesis["claim"], where="research.thesis.claim", limit=280),
-            "stance": _text(thesis["stance"], where="research.thesis.stance", limit=32),
+            "claim": claim,
+            "stance": _enum(
+                thesis["stance"],
+                PUBLIC_RESEARCH_STANCES,
+                where="research.thesis.stance",
+            ),
             "probability": _number(
                 thesis["probability"], where="research.thesis.probability", high=1),
             "horizon_days": _integer(

@@ -155,7 +155,7 @@ export interface PublicResearchProjection {
   observed_at: string
   thesis: {
     claim: string
-    stance: string
+    stance: 'lean_no' | 'uncertain' | 'lean_yes'
     probability: number
     horizon_days: number
   }

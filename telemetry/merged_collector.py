@@ -27,6 +27,7 @@ from collector import configured_latencies as mac_configured_latencies  # noqa: 
 from collector import public_semantic_text  # noqa: E402
 from collector import push  # noqa: E402
 from live_telemetry import (  # noqa: E402
+    PUBLIC_RESEARCH_CLAIM_BY_ID,
     PUBLIC_RESEARCH_TTL_SECONDS,
     TelemetryValidationError,
     validate_research_projection,
@@ -66,10 +67,15 @@ def _load_research_projection(path: Path, *, now: float | None = None) -> dict |
         top = opinions[0]
         if not isinstance(top, dict):
             return None
+        public_claim = PUBLIC_RESEARCH_CLAIM_BY_ID.get(top.get("id"))
+        if public_claim is None:
+            return None
         projection = validate_research_projection({
             "observed_at": document.get("utc"),
             "thesis": {
-                "claim": top.get("claim"),
+                # Never copy private prose. The source id selects fixed,
+                # reviewed public copy owned by live_telemetry.py.
+                "claim": public_claim,
                 "stance": top.get("stance"),
                 "probability": top.get("p"),
                 "horizon_days": top.get("resolution_days"),

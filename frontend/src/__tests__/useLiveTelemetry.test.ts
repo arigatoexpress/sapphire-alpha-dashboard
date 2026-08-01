@@ -82,6 +82,7 @@ describe('useLiveTelemetry', () => {
     visibilityHandler?.()
     expect(window.clearInterval).toHaveBeenCalledWith(1)
     expect(window.setInterval).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
 
     ;(document as { visibilityState: string }).visibilityState = 'visible'
     visibilityHandler?.()
