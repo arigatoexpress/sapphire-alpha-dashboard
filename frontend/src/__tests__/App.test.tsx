@@ -38,6 +38,25 @@ describe('anonymous decision observatory', () => {
     expect(markup).toContain('href="/"')
     expect(markup).not.toContain('aria-label="Sapphire Alpha home"')
   })
+
+  it('puts current operational evidence above the missing-thesis state', () => {
+    const liveMarkup = renderToStaticMarkup(
+      <App initialSnapshot={liveSnapshot()} />,
+    )
+
+    expect(liveMarkup).toContain('SYSTEM NOW')
+    expect(liveMarkup).toContain('Snapshot')
+    expect(liveMarkup).toContain('live · 4s ago')
+    expect(liveMarkup).toContain('Market activity')
+    expect(liveMarkup).toContain('599 / min')
+    expect(liveMarkup).toContain('Current components')
+    expect(liveMarkup).toContain('7 / 10')
+    expect(liveMarkup).toContain('Home compute')
+    expect(liveMarkup).toContain('healthy · now')
+    expect(liveMarkup.indexOf('SYSTEM NOW')).toBeLessThan(
+      liveMarkup.indexOf('CURRENT DECISION'),
+    )
+  })
 })
 
 describe('evidence contract', () => {
