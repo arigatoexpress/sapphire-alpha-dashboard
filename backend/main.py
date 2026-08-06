@@ -2163,22 +2163,50 @@ async def vault_rag_map(
     return FileResponse(path, media_type="text/html")
 
 
-@app.get("/assets/{filename}", response_class=FileResponse)
-@limiter.limit("120/minute")
+@app.get("/assets/{path:path}", response_class=FileResponse)
+@limiter.limit("240/minute")
 async def frontend_assets(
-    filename: str, request: Request, user: str = Depends(auth_or_public)
+    path: str, request: Request, user: str = Depends(auth_or_public)
 ) -> Response:
-    base = _FRONTEND_DIST_DIR / "assets"
-    try:
-        path = (base / filename).resolve(strict=False)
-        # Prevent directory traversal outside the assets directory.
-        if not path.is_relative_to(base.resolve()):
-            raise HTTPException(status_code=403, detail="forbidden")
-    except (ValueError, RuntimeError):
+    """Operator SPA assets under frontend/dist/assets (and legacy shapes).
+
+    Must never fall through to the marketing catch-all (HTML MIME on JS = blank UI).
+    """
+    raw = path or ""
+    # Reject any path that still contains parent-directory segments after routing.
+    if ".." in raw.split("/"):
         raise HTTPException(status_code=403, detail="forbidden")
-    if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=404, detail="not found")
-    return FileResponse(path)
+
+    cleaned = raw.lstrip("/")
+    base = (_FRONTEND_DIST_DIR / "assets").resolve()
+    candidates = [cleaned]
+    if not cleaned.startswith("assets/"):
+        candidates.append(cleaned)  # already under /assets mount
+
+    for name in candidates:
+        try:
+            candidate = (base / name).resolve(strict=False)
+        except (ValueError, RuntimeError, OSError):
+            raise HTTPException(status_code=403, detail="forbidden") from None
+        if not candidate.is_relative_to(base):
+            raise HTTPException(status_code=403, detail="forbidden")
+        if candidate.is_file():
+            return _static_file_response(candidate, _IMMUTABLE_CACHE)
+
+    # Also allow full relative paths from dist root (assets/foo.js)
+    resolved = _resolve_static(_FRONTEND_DIST_DIR, f"assets/{cleaned}")
+    if resolved is not None:
+        return _static_file_response(resolved, _IMMUTABLE_CACHE)
+
+    raise HTTPException(status_code=404, detail="not found")
+
+
+@app.head("/assets/{path:path}", response_class=FileResponse)
+@limiter.limit("240/minute")
+async def frontend_assets_head(
+    path: str, request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return await frontend_assets(path, request, user)
 
 
 # ---------------------------------------------------------------------------
@@ -2206,15 +2234,28 @@ async def web_next_assets_head(path: str, request: Request) -> Response:
 
 
 def _dashboard_index() -> Response:
-    """Serve the operator SPA shell.
-
-    Vite emits absolute asset URLs (`/assets/...`), so the bundle works unchanged
-    from this path — only the entry point moved off `/`.
-    """
+    """Serve the operator SPA shell (Vite base `/dashboard/`)."""
     index = _FRONTEND_DIST_DIR / "index.html"
     if not index.is_file():
         raise HTTPException(status_code=503, detail="frontend bundle not built")
     return _static_file_response(index, _MARKETING_CACHE)
+
+
+def _dashboard_static(path: str) -> Response | None:
+    """Serve a real file from frontend/dist when present (JS/CSS/assets).
+
+    Without this, `/dashboard/assets/*` was rewritten to index.html and the
+    browser executed HTML as a module (blank Mission Control). Root `/assets/*`
+    also 404'd into the Next marketing catch-all on some revisions.
+    """
+    cleaned = (path or "").lstrip("/")
+    if not cleaned or ".." in cleaned.split("/"):
+        return None
+    resolved = _resolve_static(_FRONTEND_DIST_DIR, cleaned)
+    if resolved is None:
+        return None
+    cache = _IMMUTABLE_CACHE if cleaned.startswith("assets/") else _MARKETING_CACHE
+    return _static_file_response(resolved, cache)
 
 
 @app.get("/dashboard", response_class=FileResponse)
@@ -2225,11 +2266,22 @@ async def dashboard_root(
     return _dashboard_index()
 
 
-@app.get("/dashboard/{path:path}", response_class=FileResponse)
+@app.get("/dashboard/", response_class=FileResponse)
 @limiter.limit("60/minute")
+async def dashboard_root_slash(
+    request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return _dashboard_index()
+
+
+@app.get("/dashboard/{path:path}", response_class=FileResponse)
+@limiter.limit("120/minute")
 async def dashboard_spa(
     path: str, request: Request, user: str = Depends(auth_or_public)
 ) -> Response:
+    static = _dashboard_static(path)
+    if static is not None:
+        return static
     return _dashboard_index()
 
 
@@ -2241,11 +2293,22 @@ async def dashboard_root_head(
     return _dashboard_index()
 
 
-@app.head("/dashboard/{path:path}", response_class=FileResponse)
+@app.head("/dashboard/", response_class=FileResponse)
 @limiter.limit("60/minute")
+async def dashboard_root_slash_head(
+    request: Request, user: str = Depends(auth_or_public)
+) -> Response:
+    return _dashboard_index()
+
+
+@app.head("/dashboard/{path:path}", response_class=FileResponse)
+@limiter.limit("120/minute")
 async def dashboard_spa_head(
     path: str, request: Request, user: str = Depends(auth_or_public)
 ) -> Response:
+    static = _dashboard_static(path)
+    if static is not None:
+        return static
     return _dashboard_index()
 
 
