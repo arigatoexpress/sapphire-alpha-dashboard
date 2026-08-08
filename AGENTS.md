@@ -38,14 +38,18 @@ AUTH_USERNAME=sapphire AUTH_PASSWORD=<12+ chars> \
 ```
 
 ## Marketing site rules (`web/`)
-- **Every figure ships with the command that reproduces it.** All numbers live in
-  `web/src/data/metrics.ts`, each with a `verify` one-liner rendered on the page.
-  Re-measure with `./web/scripts/measure.sh` and update `MEASURED_SHA` / `MEASURED_AT`
-  in the same commit. Never hand-edit a value.
+- **Every figure ships with an honest verification contract.** Repository inventory
+  figures are publicly reproducible from their pinned source commit. Privacy-safe
+  projections of owner-only evidence must instead be explicitly labeled as projections,
+  carry a content hash and integrity verifier, and state that the private source cannot
+  be reproduced publicly. All numbers live in `web/src/data/metrics.ts`; never hand-edit
+  one without rerunning its declared check. Re-measure repository inventory with
+  `./web/scripts/measure.sh` and update `MEASURED_SHA` / `MEASURED_AT` in the same commit.
 - **Green means verified, and nothing else.** The `verified` colour token is owned solely by
   the `<Verified>` component. Do not use it decoratively — a green pixel is a claim.
-- Sapphire is the only accent. Structure is hairlines; no glassmorphism, shadows, or
-  radii past 2px.
+- Sapphire is the only decorative accent. Signal coral and caution gold are semantic:
+  use them only for an observed event, boundary, warning, or falsifier. Structure is
+  hairlines; no glassmorphism, shadows, or radii past 2px.
 - Prefer zero-JS primitives (`<details>` for the verify reveal, CSS for motion). The site
   must be fully readable with JavaScript disabled.
 - All motion respects `prefers-reduced-motion`.

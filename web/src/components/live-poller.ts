@@ -21,6 +21,76 @@ function reasonMessage(reason: unknown) {
   return 'unavailable'
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isIsoInstant(value: unknown) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) &&
+    Number.isFinite(Date.parse(value))
+  )
+}
+
+function isEnumString(value: unknown, members: readonly string[]) {
+  return typeof value === 'string' && members.includes(value)
+}
+
+/**
+ * Runtime admission boundary for the public poller. This deliberately checks
+ * the complete top-level serving contract plus the nested fields consumed by
+ * public components; TypeScript casts alone are never evidence.
+ */
+export function isLiveSnapshot(value: unknown): value is LiveSnapshot {
+  if (!isRecord(value)) return false
+  if (value.version !== 1) return false
+  if (!isEnumString(value.status, ['live', 'stale', 'warming', 'offline'])) return false
+  if (!isIsoInstant(value.served_at)) return false
+  if (!isRecord(value.summary) || !isRecord(value.markets) || !isRecord(value.desk)) {
+    return false
+  }
+  if (!Array.isArray(value.nodes) || !Array.isArray(value.links)) return false
+  if (!Array.isArray(value.agents) || !Array.isArray(value.events)) return false
+
+  if (value.status === 'live' || value.status === 'stale') {
+    if (!isIsoInstant(value.observed_at)) return false
+    if (
+      typeof value.freshness_s !== 'number' ||
+      !Number.isFinite(value.freshness_s) ||
+      value.freshness_s < 0
+    ) return false
+    if (
+      typeof value.sequence !== 'number' ||
+      !Number.isFinite(value.sequence) ||
+      !Number.isInteger(value.sequence) ||
+      value.sequence < 0
+    ) return false
+  } else if (
+    value.observed_at !== null ||
+    value.freshness_s !== null ||
+    value.sequence !== null ||
+    value.nodes.length !== 0 ||
+    value.links.length !== 0 ||
+    value.agents.length !== 0 ||
+    value.events.length !== 0
+  ) {
+    return false
+  }
+
+  if (
+    !isEnumString(value.markets.status, ['current', 'delayed', 'stale', 'offline']) ||
+    !isEnumString(value.markets.decision_gate, ['manual', 'off', 'unknown']) ||
+    !isEnumString(value.markets.execution, ['off', 'paper', 'gated', 'halted', 'unknown'])
+  ) return false
+  if (
+    'execution' in value.desk &&
+    !isEnumString(value.desk.execution, ['halted', 'off', 'gated', 'unknown'])
+  ) return false
+  return true
+}
+
 function clientExpiryMs(snapshot: LiveSnapshot) {
   if (
     snapshot.status !== 'live' ||
@@ -91,7 +161,9 @@ export function startLivePoller({
           signal: controller.signal,
         })
         if (!response.ok) throw new Error(`status ${response.status}`)
-        return (await response.json()) as LiveSnapshot
+        const payload: unknown = await response.json()
+        if (!isLiveSnapshot(payload)) throw new Error('invalid live snapshot')
+        return payload
       }
       const snapshot = await Promise.race([request(), timeout])
       if (stopped || requestGeneration !== generation) return

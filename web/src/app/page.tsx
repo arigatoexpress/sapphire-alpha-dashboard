@@ -1,6 +1,6 @@
-import MissionControl from '@/components/MissionControl'
+import EvidenceStudio from '@/components/EvidenceStudio'
 
-/** Homepage is the mission-control console — not a brochure. */
+/** Homepage is an evidence-first market-intelligence studio. */
 export default function Home() {
-  return <MissionControl />
+  return <EvidenceStudio />
 }

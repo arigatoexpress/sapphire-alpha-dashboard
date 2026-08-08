@@ -19,14 +19,15 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#04070D',
+          background: '#F3F8F7',
         }}
       >
         <div
           style={{
             width: 17,
             height: 17,
-            background: '#3D78FF',
+            background: '#174A67',
+            border: '2px solid #B54632',
             transform: 'rotate(45deg)',
             display: 'flex',
           }}

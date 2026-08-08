@@ -14,7 +14,7 @@ export const ROUTES = [
 /** Primary paths for the signal-cartography header. */
 export const PRIMARY_ROUTES = [
   { href: '/research/', label: 'Research' },
-  { href: '/architecture/', label: 'Systems' },
+  { href: '/proof/', label: 'Method' },
 ] as const
 
 export default function Nav() {
@@ -32,7 +32,7 @@ export default function Nav() {
             <path d="M8 0.5 15.5 6 8 15.5 0.5 6Z" className="fill-none stroke-atlas-blue" strokeWidth="1.2" />
             <path d="M8 0.5 8 15.5M0.5 6 15.5 6" className="stroke-atlas-blue/45" strokeWidth="1" />
           </svg>
-          Sapphire<span className="text-atlas-blue"> / Research OS</span>
+          Sapphire<span className="text-atlas-blue"> / Evidence Intelligence</span>
         </Link>
 
         <div className="hidden items-center gap-6 lg:flex">
@@ -49,16 +49,16 @@ export default function Nav() {
             href="/dashboard"
             className="border border-atlas-blue/50 px-3 py-1.5 font-mono text-[12px] tracking-[0.1em] text-atlas-blue uppercase transition-colors hover:bg-atlas-blue hover:text-glacier"
           >
-            Live truth
+            Live desk
           </Link>
         </div>
 
         <Link
           href="/dashboard"
-          aria-label="Live truth"
+          aria-label="Live desk"
           className="border border-atlas-blue/50 px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] text-atlas-blue uppercase lg:hidden"
         >
-          Truth
+          Desk
         </Link>
       </nav>
     </header>

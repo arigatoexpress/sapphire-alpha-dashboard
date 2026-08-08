@@ -12,7 +12,7 @@ set -euo pipefail
 
 TARGET="${1:-${SAPPHIRE_REPO:-$HOME/Code/Sapphire}}"
 
-if [[ ! -d "$TARGET/.git" ]]; then
+if ! git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1; then
   echo "error: '$TARGET' is not a git repository." >&2
   echo "usage: $0 [path-to-sapphire-repo]" >&2
   exit 1

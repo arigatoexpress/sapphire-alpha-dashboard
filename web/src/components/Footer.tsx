@@ -9,11 +9,11 @@ export default function Footer() {
       <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.4fr_1fr_1fr]">
         <div>
           <p className="font-mono text-[13px] tracking-[0.18em] text-observatory-ink uppercase">
-            Sapphire<span className="text-atlas-blue"> / Research OS</span>
+            Sapphire<span className="text-atlas-blue"> / Evidence Intelligence</span>
           </p>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-ink-dim">
-            Self-sovereign research and trading infrastructure that shows its work —
-            observed evidence, honest ages, and explicit pause boundaries.
+            Agent-native market intelligence where every claim carries source, age,
+            falsifier, and authority.
           </p>
           <BuildStamp />
         </div>
@@ -38,7 +38,7 @@ export default function Footer() {
                 href="/dashboard"
                 className="underline-grow text-sm text-ink-dim transition-colors hover:text-observatory-ink"
               >
-                Live truth
+                Live desk
               </Link>
             </li>
           </ul>
@@ -59,7 +59,7 @@ export default function Footer() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-ink-faint">status</dt>
-              <dd className="text-verified">reproducible</dd>
+              <dd className="text-atlas-blue">declared contracts</dd>
             </div>
           </dl>
         </div>
@@ -68,10 +68,7 @@ export default function Footer() {
       <div className="border-t border-line">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-6 font-mono text-[11px] text-ink-faint sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Sapphire Alpha. All rights reserved.</p>
-          <p>
-            Figures on this site are measured, not estimated.{' '}
-            <span className="text-ink-dim">Run the commands.</span>
-          </p>
+          <p>Inventory is reproducible. Evidence projections are hash-checked and scoped.</p>
         </div>
       </div>
     </footer>

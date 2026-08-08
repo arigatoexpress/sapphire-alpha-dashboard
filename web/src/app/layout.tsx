@@ -18,19 +18,19 @@ import './globals.css'
 import { SITE_URL } from '@/lib/site'
 
 const DESCRIPTION =
-  'Sapphire is a self-sovereign research and trading operating system that shows its work: ' +
-  'timestamped evidence, falsifiers, calibration, and explicitly bounded execution authority.'
+  'Sapphire is agent-native market intelligence that makes every observation inspectable: ' +
+  'source, freshness, falsifier, confidence, and explicitly bounded authority.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Sapphire Alpha — Research OS',
+    default: 'Sapphire Alpha — Evidence Intelligence',
     template: '%s — Sapphire Alpha',
   },
   description: DESCRIPTION,
-  applicationName: 'Sapphire Alpha',
+  applicationName: 'Sapphire Alpha Evidence Intelligence',
   keywords: [
-    'research operating system',
+    'agent-native market intelligence',
     'market evidence provenance',
     'decision observatory',
     'falsifiable research',
@@ -44,14 +44,23 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'Sapphire Alpha',
-    title: 'Sapphire Alpha — Research OS',
+    title: 'Sapphire Alpha — Evidence Intelligence',
     description: DESCRIPTION,
     locale: 'en_US',
+    images: [
+      {
+        url: '/og.png',
+        width: 1200,
+        height: 630,
+        alt: 'Sapphire Alpha evidence intelligence truth rail',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sapphire Alpha — Research OS',
+    title: 'Sapphire Alpha — Evidence Intelligence',
     description: DESCRIPTION,
+    images: ['/og.png'],
   },
   robots: {
     index: true,
@@ -77,7 +86,7 @@ const jsonLd = {
       name: 'Sapphire Alpha',
       url: SITE_URL,
       description: DESCRIPTION,
-      slogan: 'A system that shows its work.',
+      slogan: 'Markets are noisy. The evidence should not be.',
     },
     {
       '@type': 'WebSite',
