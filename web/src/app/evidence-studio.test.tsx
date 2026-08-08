@@ -10,6 +10,7 @@ const markup = renderToStaticMarkup(<Home />)
 describe('evidence-first studio replacement', () => {
   it('leads with a market-intelligence product instead of an architecture brochure', () => {
     expect(markup).toContain('Markets are noisy. The evidence shouldn’t be.')
+    expect(markup).toContain('id="public-title"')
     expect(markup).toContain('Open the live desk')
     expect(markup).toContain('Inspect the method')
     expect(markup).not.toContain('What the system does')

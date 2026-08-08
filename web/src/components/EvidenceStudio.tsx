@@ -12,10 +12,10 @@ const BLOCKS = Array.from(
 export default function EvidenceStudio() {
   return (
     <div className="evidence-studio">
-      <section className="studio-hero" aria-labelledby="studio-title">
+      <section className="studio-hero" aria-labelledby="public-title">
         <div className="studio-hero__copy">
           <p className="studio-eyebrow">Sapphire Alpha · Evidence intelligence</p>
-          <h1 id="studio-title">Markets are noisy. The evidence shouldn’t be.</h1>
+          <h1 id="public-title">Markets are noisy. The evidence shouldn’t be.</h1>
           <p className="studio-lede">
             An agent-native research studio for market structure, onchain activity, and
             falsifiable decisions. Every visual identifies its source class, observation time,
