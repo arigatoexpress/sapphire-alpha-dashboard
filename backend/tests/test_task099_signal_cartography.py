@@ -75,7 +75,7 @@ def test_public_nav_primary_paths():
     assert "/architecture/" in nav
     assert "Systems" in nav or "System" in nav
     assert "/dashboard" in nav
-    assert "Live truth" in nav or "Live Truth" in nav
+    assert "Live desk" in nav or "Live Desk" in nav
 
 
 def test_route_inventory_remains_in_sitemap():

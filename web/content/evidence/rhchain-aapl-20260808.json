@@ -1,0 +1,47 @@
+{
+  "schema": "sapphire.public-observation/v1",
+  "observed_at": "2026-08-08T20:49:36.267942Z",
+  "asset_pair": "AAPL / USDG",
+  "chain": {
+    "name": "Robinhood Chain",
+    "chain_id": 4663,
+    "source_url": "https://docs.robinhood.com/chain/connecting/"
+  },
+  "range": {
+    "start_block": 31371085,
+    "end_block": 31371092
+  },
+  "observations": {
+    "validated_pools": 6,
+    "events": 1,
+    "event_types": [
+      "v3_swap"
+    ]
+  },
+  "evidence": {
+    "pool_receipt_sha256": "496c0f4d8547c5a6f35b76fbe0555a2eb0c050fe461ef68dce71dc98d7d34a98",
+    "event_receipt_sha256": "157686d3f8f731af1d7fa8ee386be422a6d89fbb7bda0d3dfebec4bca216b146",
+    "source_sha256": "b142d0304d05e467b310bcdd124db5a4aa44b410f221d239aa1e3bafef8cc3a9",
+    "header_set_sha256": "7b5b2687149c061921b09036f151369ab31374711abfbd5789964f65cdb90859",
+    "ledger_receipt_sha256": "ef0d48e9baa091af2feed3af6fdf3b61c8bed036e11db6654f62cb2234cccfdc",
+    "finality_receipt_sha256": "78959ecefc858c83af8e7bd4f38c7180f82b99eb052912266616797efecda1f4",
+    "batch_receipt_sha256": "8217cb531a8e74a548f8c2575ffafb4c253783a58ddcc94fab06e1b93c4def7e"
+  },
+  "finality": {
+    "outcome": "reconciled",
+    "depth": 32,
+    "economically_finalized": false
+  },
+  "authority": {
+    "research": "observation_only",
+    "signal": false,
+    "ranking": false,
+    "trade": false
+  },
+  "limitations": [
+    "event_counts_and_amounts_are_not_volume_or_execution_quality_metrics",
+    "the_observation_does_not_measure_price_impact_holders_routes_or_market_completeness",
+    "block_depth_is_not_economic_finality",
+    "the_observation_has_no_volume_ranking_finality_or_trading_authority"
+  ]
+}

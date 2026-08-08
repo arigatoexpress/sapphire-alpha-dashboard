@@ -16,8 +16,8 @@ const footerMarkup = renderToStaticMarkup(<Footer />)
 
 const REQUIRED_ROUTES = [
   { href: '/research', label: 'Research' },
-  { href: '/architecture', label: 'Systems' },
-  { href: '/dashboard', label: 'Live truth' },
+  { href: '/proof', label: 'Method' },
+  { href: '/dashboard', label: 'Live desk' },
 ] as const
 
 const LEGACY_ROUTES = [
@@ -28,18 +28,18 @@ const LEGACY_ROUTES = [
   '/about',
 ] as const
 
-describe('public signal-cartography composition', () => {
-  it('states the system thesis and two real paths without empty marketing CTAs', () => {
-    expect(markup).toMatch(/A system that shows its work/i)
-    expect(markup).toContain('Read research')
-    expect(markup).toContain('System map')
+describe('public evidence-studio composition', () => {
+  it('states the product thesis and two real paths without empty marketing CTAs', () => {
+    expect(markup).toMatch(/Markets are noisy/i)
+    expect(markup).toContain('Open the live desk')
+    expect(markup).toContain('Inspect the method')
     expect(markup).not.toMatch(/Get started|Book a demo|Join waitlist|Learn more today/i)
     expect(markup).not.toMatch(/\$[0-9]+[KkMmBb]?\+?\s*(AUM|TVL|volume)/i)
   })
 
-  it('renders the evidence horizon as the signature with honest evidence states', () => {
-    expect(markup).toMatch(/Evidence horizon/i)
-    for (const state of ['observed', 'stale', 'paused', 'unavailable', 'source-only']) {
+  it('renders the truth rail as the signature with honest evidence states', () => {
+    expect(markup).toMatch(/Truth rail/i)
+    for (const state of ['paused', 'source-only']) {
       expect(markup.toLowerCase()).toContain(state)
     }
     expect(markup).toMatch(/data-evidence-state=/)
@@ -56,18 +56,24 @@ describe('public signal-cartography composition', () => {
     expect(markup).toMatch(/not observed|unavailable|unknown|source-only|paused|stale/i)
   })
 
-  it('exposes research ledger and operating principles sections', () => {
-    expect(markup).toMatch(/Research ledger|Latest work/i)
-    expect(markup).toMatch(/Operating principles/i)
+  it('exposes a receipt-bound dossier and explicit method', () => {
+    expect(markup).toMatch(/Featured evidence dossier/i)
+    expect(markup).toMatch(/A chart should explain what it knows/i)
   })
 })
 
 describe('public navigation and route inventory', () => {
-  it('surfaces Research, Systems, and Live truth as primary paths', () => {
+  it('surfaces Research, Method, and Live desk as primary paths', () => {
     for (const route of REQUIRED_ROUTES) {
       expect(navMarkup).toContain(route.href)
       expect(navMarkup).toContain(route.label)
     }
+  })
+
+  it('retires the old Research OS brand from primary chrome', () => {
+    expect(navMarkup).toContain('Evidence Intelligence')
+    expect(footerMarkup).toContain('Evidence Intelligence')
+    expect(navMarkup + footerMarkup).not.toContain('Research OS')
   })
 
   it('keeps every real public route addressable from nav or footer', () => {

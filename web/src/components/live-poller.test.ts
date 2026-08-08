@@ -9,7 +9,7 @@ import {
 
 const fresh = liveFixture as LiveSnapshot
 
-function response(snapshot: LiveSnapshot) {
+function response(snapshot: unknown) {
   return {
     ok: true,
     status: 200,
@@ -80,6 +80,29 @@ describe('public live telemetry poller', () => {
 
     await vi.advanceTimersByTimeAsync(LIVE_POLL_INTERVAL_MS)
     expect(onSnapshot).toHaveBeenCalledWith(fresh)
+    stop()
+  })
+
+  it.each([
+    ['missing contract', { status: 'live' }],
+    ['wrong freshness type', { ...fresh, freshness_s: '0' }],
+    ['wrong nodes type', { ...fresh, nodes: {} }],
+    ['array status alias', { ...fresh, status: ['live'] }],
+    ['negative freshness', { ...fresh, freshness_s: -50 }],
+    ['live observation without a timestamp', { ...fresh, observed_at: null }],
+    ['live observation without a sequence', { ...fresh, sequence: null }],
+    ['timezone-less observation', { ...fresh, observed_at: '2026-07-25T22:26:16' }],
+    ['timezone-less service time', { ...fresh, served_at: '2026-07-25T22:26:16' }],
+    ['non-empty offline snapshot', { ...fresh, status: 'offline' }],
+  ])('rejects a 200 response with %s before admitting it', async (_label, payload) => {
+    const fetcher = vi.fn().mockResolvedValue(response(payload))
+    const onSnapshot = vi.fn()
+    const onUnavailable = vi.fn()
+    const stop = startLivePoller({ fetcher, onSnapshot, onUnavailable })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onSnapshot).not.toHaveBeenCalled()
+    expect(onUnavailable).toHaveBeenCalledWith('invalid live snapshot')
     stop()
   })
 

@@ -1,19 +1,54 @@
+import publicObservation from '../../content/evidence/rhchain-aapl-20260808.json'
+
 /**
  * Single source of truth for every number rendered on the marketing site.
  *
- * House rule: a figure only ships if it carries the command that reproduces it.
- * `verify` is displayed to the reader, not just kept as a comment — the site's
- * whole argument is "run it yourself." If you cannot write the one-liner, the
- * number does not belong on the page.
+ * House rule: a figure only ships with an honest declared verification contract.
+ * Repository inventory is publicly reproducible. Privacy-safe projections from
+ * owner-only evidence are integrity-checkable and must say that they are not
+ * publicly reproducible. `verify` is displayed to the reader, not only kept here.
  *
  * Re-measure with `scripts/measure.sh` and update `MEASURED_AT` / `MEASURED_SHA`
  * in the same commit. Never hand-edit a value without re-running the command.
  */
 
 /** Commit of the `Sapphire` monorepo these figures were measured against. */
-export const MEASURED_SHA = 'f27122ab'
+export const MEASURED_SHA = '620fc79b'
 /** ISO date of measurement. Rendered next to the metrics so staleness is visible. */
-export const MEASURED_AT = '2026-07-25'
+export const MEASURED_AT = '2026-08-08'
+
+/**
+ * Privacy-safe public projection of the first durable Robinhood Chain evidence batch.
+ * The complete owner-only receipts remain outside the website repository; this object
+ * exposes only source identity, bounded counts, content hashes, and explicit authority.
+ * Re-run `verify` before changing any displayed value.
+ */
+export const FEATURED_OBSERVATION = {
+  schema: publicObservation.schema,
+  observedAt: publicObservation.observed_at,
+  assetPair: publicObservation.asset_pair,
+  chain: publicObservation.chain.name,
+  chainId: String(publicObservation.chain.chain_id),
+  sourceUrl: publicObservation.chain.source_url,
+  methodUrl: '/research/research-methodology',
+  range: {
+    startBlock: String(publicObservation.range.start_block),
+    endBlock: String(publicObservation.range.end_block),
+  },
+  validatedPools: String(publicObservation.observations.validated_pools),
+  eventCount: String(publicObservation.observations.events),
+  eventType: publicObservation.observations.event_types[0]
+    .replace('_', ' ')
+    .replace(/^v3/, 'V3'),
+  receiptSha256: publicObservation.evidence.batch_receipt_sha256,
+  finality: {
+    outcome: `Reconciled at depth ${publicObservation.finality.depth}`,
+    limitation: publicObservation.finality.economically_finalized
+      ? 'Economically finalized'
+      : 'Not economically finalized',
+  },
+  verify: 'python3 web/scripts/verify_featured_observation.py',
+} as const
 
 export type Metric = {
   /** Short label, rendered in mono uppercase. */
@@ -28,14 +63,14 @@ export type Metric = {
 
 /**
  * Headline figures. Deliberately literal: "test functions defined" is a claim
- * that survives scrutiny; "7,695 tests passing" would not, because this counts
+ * that survives scrutiny; "8,137 tests passing" would not, because this counts
  * definitions rather than a green run.
  */
 export const CORE_METRICS: Metric[] = [
   {
     label: 'Test functions',
-    value: '7,695',
-    detail: 'Test functions defined across 484 test modules.',
+    value: '8,137',
+    detail: 'Test functions defined across 527 test modules.',
     verify: "git ls-files '*.py' | xargs grep -h '^\\s*\\(async \\)\\?def test_' | wc -l",
   },
   {
@@ -46,15 +81,15 @@ export const CORE_METRICS: Metric[] = [
   },
   {
     label: 'Source modules',
-    value: '900',
-    detail: 'Python modules excluding tests. 1,384 including them.',
+    value: '938',
+    detail: 'Python modules excluding tests. 1,465 including them.',
     verify: "git ls-files '*.py' | grep -vc '^tests/'",
   },
   {
     label: 'Compute nodes',
     value: '4',
-    detail: 'Mac control plane, Windows GPU executor, GCP VM, Cloud Run.',
-    verify: 'tailscale status --json | jq \'.Peer | length\'',
+    detail: 'Four declared roles: control, GPU executor, offload, and public edge.',
+    verify: 'awk \'/export const NODES/,/^]/\' web/src/data/metrics.ts | grep -c "id:"',
   },
 ]
 
@@ -62,7 +97,7 @@ export const CORE_METRICS: Metric[] = [
 export const DETAIL_METRICS: Metric[] = [
   {
     label: 'Test modules',
-    value: '484',
+    value: '527',
     detail: 'Files under tests/ holding the executable specification.',
     verify: "git ls-files '*.py' | grep -c '^tests/'",
   },
@@ -74,7 +109,7 @@ export const DETAIL_METRICS: Metric[] = [
   },
   {
     label: 'Python modules',
-    value: '1,384',
+    value: '1,465',
     detail: 'Total tracked Python files, tests included.',
     verify: "git ls-files '*.py' | wc -l",
   },

@@ -5,12 +5,12 @@ import Nav from './Nav'
 import { ROUTES } from './Nav'
 
 describe('responsive navigation', () => {
-  it('keeps the compact live-truth action through tablet widths', () => {
+  it('keeps the compact live-desk action through tablet widths', () => {
     const html = renderToStaticMarkup(<Nav />)
 
     expect(html).toContain('hidden items-center gap-6 lg:flex')
     expect(html).toContain('uppercase lg:hidden')
-    expect(html).toContain('Live truth')
+    expect(html).toContain('Live desk')
     expect(html).not.toContain('gap-7 md:flex')
   })
 
@@ -18,11 +18,11 @@ describe('responsive navigation', () => {
     expect(ROUTES).toContainEqual({ href: '/proof/', label: 'Proof' })
   })
 
-  it('surfaces Research and Systems as primary paths', () => {
+  it('surfaces Research and Method as primary paths', () => {
     const html = renderToStaticMarkup(<Nav />)
     expect(html).toMatch(/href="\/research\/?"/)
     expect(html).toContain('Research')
-    expect(html).toMatch(/href="\/architecture\/?"/)
-    expect(html).toContain('Systems')
+    expect(html).toMatch(/href="\/proof\/?"/)
+    expect(html).toContain('Method')
   })
 })

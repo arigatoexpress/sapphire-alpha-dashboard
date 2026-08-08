@@ -4,35 +4,35 @@ import Home from './page'
 
 const markup = renderToStaticMarkup(<Home />)
 
-describe('public signal-cartography home', () => {
+describe('public evidence-studio home', () => {
   it('states one clear thesis and two honest entry points', () => {
-    expect(markup).toContain('A system that shows its work.')
-    expect(markup).toContain('Read research')
-    expect(markup).toContain('System map')
+    expect(markup).toContain('Markets are noisy. The evidence shouldn’t be.')
+    expect(markup).toContain('Open the live desk')
+    expect(markup).toContain('Inspect the method')
   })
 
-  it('shows the evidence horizon without inventing state', () => {
-    expect(markup).toContain('Evidence horizon')
-    expect(markup).toContain('Source:')
-    expect(markup).toContain('authority: none')
-    expect(markup).toContain('unknown stays unknown')
+  it('shows the truth rail without inventing runtime state', () => {
+    expect(markup).toContain('Truth rail')
+    expect(markup).toContain('source /api/v1/live')
+    expect(markup).toContain('Authority')
+    expect(markup).toContain('No current runtime claim')
     expect(markup).toContain('not observed')
     expect(markup).toContain('data-evidence-state')
   })
 
   it('explains a falsifiable research method', () => {
-    for (const stage of ['Observe', 'Form', 'Falsify', 'Gate', 'Score']) {
+    for (const stage of ['Observe', 'Cross-check', 'Explain', 'Gate']) {
       expect(markup).toContain(stage)
     }
-    expect(markup).toContain('Research ledger')
-    expect(markup).toContain('Operating principles')
+    expect(markup).toContain('Featured evidence dossier')
+    expect(markup).toContain('Verify projection integrity')
   })
 
   it('states the authority and disclosure boundary', () => {
     expect(markup).toContain('cannot trade')
     expect(markup).toContain('Not investment advice')
-    expect(markup).toContain('paper backtest leaderboards')
+    expect(markup).toContain('No volume, ranking, finality, or trading authority')
     expect(markup).not.toContain('Autonomous capital')
-    expect(markup).not.toContain('Plant status')
+    expect(markup).not.toMatch(/expected return|guaranteed return/i)
   })
 })
