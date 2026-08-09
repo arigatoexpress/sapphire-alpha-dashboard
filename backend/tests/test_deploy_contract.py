@@ -746,6 +746,28 @@ def test_provider_replacement_carries_resource_version_and_digest_only():
         )
 
 
+def test_provider_replacement_lets_cloud_run_allocate_a_new_revision_name():
+    descriptor = _descriptor()
+    service = _service()
+    service["spec"]["template"]["metadata"] = {
+        "annotations": {"run.googleapis.com/startup-cpu-boost": "true"},
+        "generateName": "stale-provider-prefix-",
+        "labels": {"run.googleapis.com/startupProbeType": "Default"},
+        "name": READY,
+    }
+    image = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
+
+    replacement = guard.prepare_service_replacement(service, descriptor, image)
+
+    template_metadata = replacement["spec"]["template"]["metadata"]
+    assert "name" not in template_metadata
+    assert "generateName" not in template_metadata
+    assert template_metadata == {
+        "annotations": {"run.googleapis.com/startup-cpu-boost": "true"},
+        "labels": {"run.googleapis.com/startupProbeType": "Default"},
+    }
+
+
 @pytest.mark.parametrize(
     "missing",
     ["TELEMETRY_INGEST_SECRET", "MOSS_TELEMETRY_INGEST_SECRET"],
