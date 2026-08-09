@@ -1126,6 +1126,17 @@ def prepare_service_replacement(
     replacement["metadata"].setdefault("name", SERVICE)
     replacement["metadata"].setdefault("namespace", PROJECT_NUMBER)
     template_spec, container = _container(replacement)
+    template = replacement["spec"].get("template")
+    template_metadata = template.get("metadata") if isinstance(template, dict) else None
+    if template_metadata is not None:
+        if not isinstance(template_metadata, dict):
+            raise ContractViolation("service projection mismatch")
+        # A described service names its current Revision here. Reusing that
+        # identity with a new image makes Cloud Run reject the replacement.
+        # Omit all provider-controlled revision allocation fields so the
+        # service update creates a fresh immutable Revision.
+        template_metadata.pop("name", None)
+        template_metadata.pop("generateName", None)
     container["image"] = image
     container["env"] = projected_environment(container.get("env"))
     if template_spec.get("serviceAccountName") != SERVICE_ACCOUNT:
