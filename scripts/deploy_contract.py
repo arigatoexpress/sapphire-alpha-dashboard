@@ -1426,13 +1426,15 @@ def immutable_image(build: Mapping[str, Any], build_id: str) -> str:
 def verify_registry_digest(
     build_id: str, immutable: str, run: Run = _run
 ) -> dict[str, Any]:
+    if not build_id:
+        raise ContractViolation("registry image mismatch")
     record = _json_command(
         run,
         _gcloud(
             "container",
             "images",
             "describe",
-            f"{IMAGE_REPOSITORY}:{build_id}",
+            immutable,
             "--format=json",
             region=False,
         ),

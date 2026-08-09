@@ -1541,11 +1541,16 @@ def test_extracted_workspace_must_equal_the_sealed_manifest(tmp_path, monkeypatc
         guard.verify_workspace(descriptor, extracted)
 
 
-def test_registry_readback_must_resolve_build_tag_to_exact_digest():
+def test_registry_readback_queries_the_exact_immutable_digest():
     immutable = f"{guard.IMAGE_REPOSITORY}@sha256:{'8' * 64}"
 
     def runner(argv):
-        assert f"{guard.IMAGE_REPOSITORY}:build-123" in argv
+        image_arguments = [
+            value for value in argv if value.startswith(guard.IMAGE_REPOSITORY)
+        ]
+        assert len(image_arguments) == 1
+        assert image_arguments[0].startswith(f"{guard.IMAGE_REPOSITORY}@sha256:")
+        assert f"{guard.IMAGE_REPOSITORY}:build-123" not in argv
         return json.dumps(
             {
                 "image_summary": {
