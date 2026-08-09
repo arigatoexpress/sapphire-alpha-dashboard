@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = Path(__file__).resolve()
 GUARD = ROOT / "scripts/deploy_contract.py"
 HEX64 = set("0123456789abcdef")
+BUILD_ID = re.compile(
+    r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
+)
 TRUSTED_ARTIFACTS = {
     "Dockerfile",
     "backend/requirements.lock",
@@ -216,6 +220,26 @@ def _run(argv: list[str]) -> str:
     return completed.stdout
 
 
+def _submit_build(rendered: Path) -> str:
+    build_id = _run(
+        [
+            "gcloud",
+            "builds",
+            "submit",
+            "--no-source",
+            f"--config={rendered}",
+            "--project=sapphire-479610",
+            "--region=us-central1",
+            "--format=value(id)",
+            "--suppress-logs",
+            "--quiet",
+        ]
+    ).strip()
+    if BUILD_ID.fullmatch(build_id) is None:
+        raise TrustFailure("build identity mismatch")
+    return build_id
+
+
 def _verify_registry_with_retry(guard: Any, build_id: str, image: str) -> dict[str, Any]:
     deadline = time.monotonic() + 60
     last_error: Exception | None = None
@@ -263,19 +287,7 @@ def release(descriptor_path: Path, descriptor_sha256: str) -> dict[str, Any]:
             "SAPPHIRE_TRUSTED_RENDERED_CONFIG_SHA256"
         ):
             raise TrustFailure("trusted execution contract mismatch")
-        build_id = _run(
-            [
-                "gcloud",
-                "builds",
-                "submit",
-                "--no-source",
-                f"--config={rendered}",
-                "--project=sapphire-479610",
-                "--region=us-central1",
-                "--format=value(id)",
-                "--quiet",
-            ]
-        ).strip()
+        build_id = _submit_build(rendered)
     guard.verify_build_record(
         descriptor,
         descriptor_sha256,

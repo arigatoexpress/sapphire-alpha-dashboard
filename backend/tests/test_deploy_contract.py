@@ -1004,6 +1004,41 @@ def test_trusted_launcher_caps_each_registry_process_to_remaining_time(monkeypat
     assert sleeps == [5]
 
 
+def test_trusted_launcher_suppresses_build_logs_and_accepts_one_uuid(
+    monkeypatch, tmp_path
+):
+    build_id = "80a5477d-d79b-4278-813e-e038872a9111"
+    calls = []
+
+    def run(argv):
+        calls.append(argv)
+        return build_id + "\n"
+
+    monkeypatch.setattr(launcher, "_run", run)
+
+    assert launcher._submit_build(tmp_path / "cloudbuild.json") == build_id
+    assert len(calls) == 1
+    assert "--suppress-logs" in calls[0]
+    assert "--format=value(id)" in calls[0]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        "REMOTE BUILD OUTPUT\n80a5477d-d79b-4278-813e-e038872a9111\n",
+        "not-a-build-id\n",
+    ],
+)
+def test_trusted_launcher_rejects_noncanonical_build_id_output(
+    output, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(launcher, "_run", lambda _argv: output)
+
+    with pytest.raises(launcher.TrustFailure, match="build identity mismatch"):
+        launcher._submit_build(tmp_path / "cloudbuild.json")
+
+
 def test_trusted_launcher_carries_only_valid_structured_provider_diagnostic(
     monkeypatch, capsys
 ):
