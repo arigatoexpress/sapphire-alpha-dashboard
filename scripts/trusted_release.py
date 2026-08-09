@@ -218,13 +218,29 @@ def _run(argv: list[str]) -> str:
 
 def _verify_registry_with_retry(guard: Any, build_id: str, image: str) -> dict[str, Any]:
     deadline = time.monotonic() + 60
+    last_error: Exception | None = None
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            if last_error is None:
+                raise TrustFailure("registry readback deadline expired")
+            raise last_error
         try:
-            return guard.verify_registry_digest(build_id, image)
-        except (guard.ContractViolation, subprocess.CalledProcessError):
-            if time.monotonic() >= deadline:
+            return guard.verify_registry_digest(
+                build_id,
+                image,
+                run=lambda argv: guard._run(argv, timeout=remaining),
+            )
+        except (
+            guard.ContractViolation,
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+        ) as error:
+            last_error = error
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise
-            time.sleep(5)
+            time.sleep(min(5, remaining))
 
 
 def release(descriptor_path: Path, descriptor_sha256: str) -> dict[str, Any]:
