@@ -126,13 +126,13 @@ def _decode_digest(value: str) -> bytes:
     return base64.b64decode(value.encode("ascii"), altchars=b"-_", validate=True)
 
 
-def _run(argv: Sequence[str]) -> str:
+def _run(argv: Sequence[str], *, timeout: float = 1800) -> str:
     completed = subprocess.run(
         list(argv),
         check=True,
         capture_output=True,
         text=True,
-        timeout=1800,
+        timeout=timeout,
         env={
             **os.environ,
             "CLOUDSDK_CORE_PROJECT": PROJECT,
