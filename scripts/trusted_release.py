@@ -216,6 +216,17 @@ def _run(argv: list[str]) -> str:
     return completed.stdout
 
 
+def _verify_registry_with_retry(guard: Any, build_id: str, image: str) -> dict[str, Any]:
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            return guard.verify_registry_digest(build_id, image)
+        except (guard.ContractViolation, subprocess.CalledProcessError):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(5)
+
+
 def release(descriptor_path: Path, descriptor_sha256: str) -> dict[str, Any]:
     guard = _load_verified_guard(descriptor_path, descriptor_sha256)
     descriptor, raw = guard.load_descriptor(descriptor_path, descriptor_sha256)
@@ -260,7 +271,7 @@ def release(descriptor_path: Path, descriptor_sha256: str) -> dict[str, Any]:
         guard._gcloud("builds", "describe", build_id, "--format=json"),
     )
     image = guard.immutable_image(build, build_id)
-    guard.verify_registry_digest(build_id, image)
+    _verify_registry_with_retry(guard, build_id, image)
     guard.deploy_with_provider_cas(descriptor, image)
     deadline = time.monotonic() + 600
     while True:

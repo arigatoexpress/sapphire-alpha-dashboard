@@ -9,6 +9,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import subprocess
 import tarfile
 from urllib.error import HTTPError
 import zlib
@@ -892,6 +893,68 @@ def test_provider_transport_error_is_distinguishable_without_exception_text(
     }
     assert SENTINEL not in json.dumps(raised.value.diagnostic)
     assert raised.value.__cause__ is provider_error
+
+
+def test_trusted_launcher_retries_bounded_registry_eventual_consistency(monkeypatch):
+    failures = [
+        subprocess.CalledProcessError(1, ["gcloud"]),
+        guard.ContractViolation("registry image mismatch"),
+    ]
+    attempts = []
+
+    class EventuallyVisibleRegistry:
+        ContractViolation = guard.ContractViolation
+
+        @staticmethod
+        def verify_registry_digest(build_id, image):
+            attempts.append((build_id, image))
+            if failures:
+                raise failures.pop(0)
+            return {"ok": True}
+
+    ticks = iter([100.0, 100.0, 105.0])
+    sleeps = []
+    monkeypatch.setattr(launcher.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(launcher.time, "sleep", sleeps.append)
+
+    result = launcher._verify_registry_with_retry(
+        EventuallyVisibleRegistry, "build-123", "immutable-image"
+    )
+
+    assert result == {"ok": True}
+    assert attempts == [
+        ("build-123", "immutable-image"),
+        ("build-123", "immutable-image"),
+        ("build-123", "immutable-image"),
+    ]
+    assert sleeps == [5, 5]
+
+
+def test_trusted_launcher_registry_retry_expires_without_an_extra_attempt(
+    monkeypatch,
+):
+    attempts = []
+
+    class MissingRegistry:
+        ContractViolation = guard.ContractViolation
+
+        @staticmethod
+        def verify_registry_digest(build_id, image):
+            attempts.append((build_id, image))
+            raise guard.ContractViolation("registry image mismatch")
+
+    ticks = iter([100.0, 160.0])
+    sleeps = []
+    monkeypatch.setattr(launcher.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(launcher.time, "sleep", sleeps.append)
+
+    with pytest.raises(guard.ContractViolation, match="registry image mismatch"):
+        launcher._verify_registry_with_retry(
+            MissingRegistry, "build-123", "immutable-image"
+        )
+
+    assert attempts == [("build-123", "immutable-image")]
+    assert sleeps == []
 
 
 def test_trusted_launcher_carries_only_valid_structured_provider_diagnostic(
