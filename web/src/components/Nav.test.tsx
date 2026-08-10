@@ -8,9 +8,10 @@ describe('responsive navigation', () => {
   it('keeps the compact live-desk action through tablet widths', () => {
     const html = renderToStaticMarkup(<Nav />)
 
-    expect(html).toContain('hidden items-center gap-6 lg:flex')
-    expect(html).toContain('uppercase lg:hidden')
-    expect(html).toContain('Live desk')
+    expect(html).toContain('site-nav__links')
+    expect(html).toContain('site-nav__desk')
+    expect(html).toContain('Mission control')
+    expect(html).toContain('aria-label="Live desk"')
     expect(html).not.toContain('gap-7 md:flex')
   })
 

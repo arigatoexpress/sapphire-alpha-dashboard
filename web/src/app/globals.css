@@ -4,6 +4,7 @@
    live desk (`frontend/`). Edit ../../../shared/theme.css, never here — the two
    surfaces are meant to move together. */
 @import '../../../shared/theme.css';
+@import './sovereign.css';
 
 /* Marketing-site-only: Space Grotesk body with restrained features. */
 body {
