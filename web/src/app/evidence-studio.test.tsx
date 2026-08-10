@@ -65,7 +65,7 @@ describe('sovereign market laboratory replacement', () => {
     expect(css).toContain('.intelligence-field')
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)/)
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/)
-    expect(markup).toContain('aria-labelledby="sovereign-title"')
+    expect(markup).toContain('aria-labelledby="public-title"')
     expect(markup).toContain('aria-label="Sapphire intelligence field"')
   })
 

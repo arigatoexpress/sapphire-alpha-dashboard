@@ -79,10 +79,10 @@ function IntelligenceField() {
 export default function EvidenceStudio() {
   return (
     <div className="sovereign-home">
-      <section className="sovereign-hero" aria-labelledby="sovereign-title">
+      <section className="sovereign-hero" aria-labelledby="public-title">
         <div className="sovereign-hero__copy">
           <p className="lab-kicker"><span /> A sovereign market laboratory</p>
-          <h1 id="sovereign-title">
+          <h1 id="public-title">
             <span>Find the signal.</span>
             <em>Prove the path.</em>
           </h1>
