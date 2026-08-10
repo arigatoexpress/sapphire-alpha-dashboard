@@ -6,9 +6,9 @@ const markup = renderToStaticMarkup(<Home />)
 
 describe('public evidence-studio home', () => {
   it('states one clear thesis and two honest entry points', () => {
-    expect(markup).toContain('Markets are noisy. The evidence shouldn’t be.')
-    expect(markup).toContain('Open the live desk')
-    expect(markup).toContain('Inspect the method')
+    expect(markup).toContain('Find the signal.')
+    expect(markup).toContain('Enter mission control')
+    expect(markup).toContain('Read the operating thesis')
   })
 
   it('shows the truth rail without inventing runtime state', () => {

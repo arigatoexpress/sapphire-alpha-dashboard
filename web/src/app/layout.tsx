@@ -18,17 +18,17 @@ import './globals.css'
 import { SITE_URL } from '@/lib/site'
 
 const DESCRIPTION =
-  'Sapphire is agent-native market intelligence that makes every observation inspectable: ' +
-  'source, freshness, falsifier, confidence, and explicitly bounded authority.'
+  'A sovereign market laboratory connecting onchain state, market structure, durable memory, ' +
+  'and autonomous research—with evidence at every decision boundary.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Sapphire Alpha — Evidence Intelligence',
+    default: 'Sapphire Alpha — Sovereign Market Intelligence',
     template: '%s — Sapphire Alpha',
   },
   description: DESCRIPTION,
-  applicationName: 'Sapphire Alpha Evidence Intelligence',
+  applicationName: 'Sapphire Alpha Sovereign Market Laboratory',
   keywords: [
     'agent-native market intelligence',
     'market evidence provenance',
@@ -44,21 +44,21 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'Sapphire Alpha',
-    title: 'Sapphire Alpha — Evidence Intelligence',
+    title: 'Sapphire Alpha — Sovereign Market Intelligence',
     description: DESCRIPTION,
     locale: 'en_US',
     images: [
       {
         url: '/og.png',
-        width: 1200,
-        height: 630,
-        alt: 'Sapphire Alpha evidence intelligence truth rail',
+        width: 1730,
+        height: 909,
+        alt: 'Sapphire Alpha — Find the signal. Prove the path.',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sapphire Alpha — Evidence Intelligence',
+    title: 'Sapphire Alpha — Sovereign Market Intelligence',
     description: DESCRIPTION,
     images: ['/og.png'],
   },
@@ -71,8 +71,8 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#F3F8F7',
-  colorScheme: 'light',
+  themeColor: '#080B10',
+  colorScheme: 'dark',
   width: 'device-width',
   initialScale: 1,
 }

@@ -1,6 +1,5 @@
 /**
- * Task 099 red goldens for the public signal-cartography surface.
- * Fail on the pre-rebuild marketing shell; pass only after the redesign.
+ * Product goldens for the sovereign market-laboratory surface.
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -30,9 +29,10 @@ const LEGACY_ROUTES = [
 
 describe('public evidence-studio composition', () => {
   it('states the product thesis and two real paths without empty marketing CTAs', () => {
-    expect(markup).toMatch(/Markets are noisy/i)
-    expect(markup).toContain('Open the live desk')
-    expect(markup).toContain('Inspect the method')
+    expect(markup).toContain('Find the signal.')
+    expect(markup).toContain('Prove the path.')
+    expect(markup).toContain('Enter mission control')
+    expect(markup).toContain('Read the operating thesis')
     expect(markup).not.toMatch(/Get started|Book a demo|Join waitlist|Learn more today/i)
     expect(markup).not.toMatch(/\$[0-9]+[KkMmBb]?\+?\s*(AUM|TVL|volume)/i)
   })
@@ -58,7 +58,8 @@ describe('public evidence-studio composition', () => {
 
   it('exposes a receipt-bound dossier and explicit method', () => {
     expect(markup).toMatch(/Featured evidence dossier/i)
-    expect(markup).toMatch(/A chart should explain what it knows/i)
+    expect(markup).toMatch(/One loop\. Four hard contracts/i)
+    expect(markup).toContain('Verify projection integrity')
   })
 })
 
@@ -71,8 +72,8 @@ describe('public navigation and route inventory', () => {
   })
 
   it('retires the old Research OS brand from primary chrome', () => {
-    expect(navMarkup).toContain('Evidence Intelligence')
-    expect(footerMarkup).toContain('Evidence Intelligence')
+    expect(navMarkup).toContain('Sapphire')
+    expect(footerMarkup).toContain('sovereign market laboratory')
     expect(navMarkup + footerMarkup).not.toContain('Research OS')
   })
 
@@ -150,5 +151,15 @@ describe('token parity and motion contracts (source)', () => {
     }
     const layout = readFileSync(resolve(__dirname, 'layout.tsx'), 'utf8')
     expect(layout).not.toMatch(/fonts\.googleapis|fonts\.gstatic|typekit\.net/)
+  })
+})
+
+describe('coherent public route skin', () => {
+  const webSkin = readFileSync(resolve(__dirname, 'sovereign.css'), 'utf8')
+
+  it('re-skins every retained public route with the sovereign laboratory tokens', () => {
+    expect(webSkin).toMatch(/body\s*\{[^}]*--color-glacier:\s*#080b10/s)
+    expect(webSkin).toMatch(/body\s*\{[^}]*--color-observatory-ink:\s*#e9edf5/s)
+    expect(webSkin).toMatch(/body\s*\{[^}]*--color-sapphire:\s*#72a7ff/s)
   })
 })
