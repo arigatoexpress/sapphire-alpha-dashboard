@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import App, { buildEvidenceSegments } from '../App'
+import { LegacyObservatory as App, buildEvidenceSegments } from '../App'
 import { liveSnapshot } from './fixture'
 import type { PublicWidgets } from '../types'
 
