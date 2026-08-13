@@ -221,70 +221,36 @@ const MODEL_LANES = [
   },
 ] as const
 
-const AI_BRIEF = [
+const AI_PATTERNS = [
   {
-    date: '12 Aug 2026',
-    company: 'xAI',
-    title: 'Grok 4.6 is real—and it has an official API path',
-    copy: 'xAI launched a hosted frontier model for long-running agent work. Its official catalog lists a 500,000-token context window and API slug grok-4.6; no downloadable weights are announced.',
-    href: 'https://x.ai/news/grok-4-6',
-    source: 'Official xAI announcement',
+    category: 'Automation',
+    title: 'Briefs are becoming scheduled services',
+    copy: 'An assistant can wake on a schedule or event, gather the right context, complete a bounded job, and return with the result.',
   },
   {
-    date: '13 Aug 2026',
-    company: 'xAI',
-    title: 'The open SDK gained 4.6 support one day later',
-    copy: 'The Apache-2.0 Python xai-sdk v1.18.0 adds grok-4.6 and xhigh reasoning support through a signed GitHub release. The SDK is open; the hosted model is not.',
-    href: 'https://github.com/xai-org/xai-sdk-python/releases/tag/v1.18.0',
-    source: 'Official signed SDK release',
+    category: 'Tool use',
+    title: 'Models increasingly act through software',
+    copy: 'The useful shift is from answering a prompt to navigating tools, checking work, and producing a durable artifact.',
   },
   {
-    date: '11 Aug 2026',
-    company: 'xAI',
-    title: 'Grok Bot is a cloud teammate product',
-    copy: 'The early-beta product gives Bots their own hosted computers, persistent context, routines, and app access. It is a subscription experience—not a published local CLI, SDK, or drop-in OpenClaw bridge.',
-    href: 'https://x.ai/bot',
-    source: 'Official Grok Bot page',
+    category: 'Coordination',
+    title: 'Parallel work is becoming visible',
+    copy: 'Large tasks can be divided among focused workers, reconciled against one plan, and returned as a single understandable outcome.',
   },
   {
-    date: '16 Jul 2026',
-    company: 'xAI',
-    title: 'Automations turn a prompt into a recurring job',
-    copy: 'Grok can run saved work on a schedule or when a matching email arrives, then keep a conversation and report back.',
-    href: 'https://x.ai/news/grok-automations',
-    source: 'Official xAI announcement',
+    category: 'Context',
+    title: 'Memory now outlives a chat window',
+    copy: 'Long-lived context and retrieval let an assistant reuse research, preferences, and decisions without asking the owner to start over.',
   },
   {
-    date: '23 Jul 2026',
-    company: 'xAI',
-    title: 'Workflows make parallel agents visible',
-    copy: 'Grok Build can plan a background workflow, fan work across many focused agents, verify the pieces, and roll them into one report.',
-    href: 'https://x.ai/news/workflows',
-    source: 'Official xAI announcement',
+    category: 'Deployment',
+    title: 'Open-weight models strengthen the private lane',
+    copy: 'More capable models can run on owner-controlled hardware, making privacy, cost, and fallback real architectural choices.',
   },
   {
-    date: '09 Jul 2026',
-    company: 'Meta',
-    title: 'Muse Spark 1.1 is an agent model, not a downloadable open model',
-    copy: 'Meta describes multimodal reasoning, tool and computer use, multi-agent orchestration, and a one-million-token context window through its Model API preview.',
-    href: 'https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/',
-    source: 'Official Meta AI announcement',
-  },
-  {
-    date: '2026',
-    company: 'Moonshot AI',
-    title: 'Kimi K3 pushes the open-weight lane forward',
-    copy: 'Moonshot releases weights for a native multimodal, tool-using model with 2.8 trillion total parameters and a one-million-token context window.',
-    href: 'https://github.com/MoonshotAI/Kimi-K3',
-    source: 'Official model repository',
-  },
-  {
-    date: '2026',
-    company: 'Limitless',
-    title: 'The wearable chapter moved inside Meta',
-    copy: 'Limitless says it was acquired by Meta, ended new Pendant sales, and will support existing customers through 2026 with export and deletion options.',
-    href: 'https://www.limitless.ai/',
-    source: 'Official Limitless notice',
+    category: 'Governance',
+    title: 'Action boundaries matter more as autonomy grows',
+    copy: 'The strongest systems separate automatic preparation from consequential actions that still require explicit human authority.',
   },
 ] as const
 
@@ -398,7 +364,7 @@ function OverviewPage({ status, statusDetail }: { status: string; statusDetail: 
             ['/dashboard/architecture', 'Architecture', 'What lives where—and why?', 'A map of the private doorway, conductor, engines, memory, and proof.'],
             ['/dashboard/pipeline', 'Request flow', 'What happens after I ask?', 'Six plain-English steps from intent to an owner-ready update.'],
             ['/dashboard/models', 'Models', 'Why use more than one model?', 'The framework stays stable while local and cloud engines compete for each job.'],
-            ['/dashboard/ai-today', 'AI today', 'What changed this month?', 'A concise primary-source brief, including what is real and what is not verified.'],
+            ['/dashboard/ai-today', 'AI today', 'What pattern is emerging?', 'A concise map of the capabilities reshaping personal assistants.'],
           ].map(([href, label, title, copy], index) => (
             <a href={href} key={href}>
               <span>0{index + 1} · {label}</span><h3>{title}</h3><p>{copy}</p><b>Open page →</b>
@@ -487,8 +453,7 @@ function ModelsPage() {
         <div className="router-scale"><div><span>More local</span><b>Private context</b></div><i aria-hidden="true" /><div><b>Harder reasoning</b><span>More capability</span></div></div>
         <div className="router-cases"><p><span>Local</span> Summaries, classification, vault retrieval, routine drafting.</p><p><span>Hybrid</span> Research with local context and public-source tools.</p><p><span>Frontier</span> Complex code, long-horizon planning, multimodal work.</p></div>
       </section>
-      <aside className="name-check"><span>Name check</span><div><h2>Meta announced Muse Spark 1.1—not “Muse Glimmer.”</h2><p>Its official release describes access through Meta's Model API public preview. It does not announce downloadable weights, so this site does not call it open source.</p></div><a href="https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/" target="_blank" rel="noreferrer">Official source ↗</a></aside>
-      <aside className="name-check compatibility-note"><span>Compatibility gate · 13 Aug</span><div><h2>Grok 4.6 is an opportunity, not a deployed capability.</h2><p>The official Grok Build CLI is present on the Windows machine, but it is a separate product. The personal-assistant runtime is Ollama-native today; its current OpenClaw model catalog and provider allowlist do not yet admit 4.6. A future integration belongs through OpenClaw's bundled xAI provider after compatibility review—not by replacing the bot or local services.</p></div><a href="https://docs.x.ai/developers/models" target="_blank" rel="noreferrer">Official model catalog ↗</a></aside>
+      <aside className="name-check compatibility-note"><span>Compatibility rule</span><div><h2>New models are candidates, not deployed capabilities.</h2><p>A model joins the personal-assistant route only after the runtime supports its real capabilities, privacy boundaries, failure paths, and rollback. A recognizable model name alone is never enough.</p></div></aside>
     </>
   )
 }
@@ -496,14 +461,13 @@ function ModelsPage() {
 function AiTodayPage() {
   return (
     <>
-      <PageIntro eyebrow="AI today · verified 13 Aug 2026" title="Agents are becoming operating systems." copy="The market is converging on the same pattern built here locally: scheduled briefs, tool-using agents, long-lived context, visible workflows, and human-controlled action boundaries." />
-      <aside className="verification-note"><span>Identity check</span><div><h2>Grok 4.6 is an API model. Grok Bot is a separate cloud product.</h2><p>The official SDK supports model slug <code>grok-4.6</code>. Grok Bot is an early-beta subscription product with hosted computers; its page does not publish a local runtime or migration bridge.</p></div><a href="https://github.com/xai-org/xai-sdk-python/releases/tag/v1.18.0" target="_blank" rel="noreferrer">Signed SDK release ↗</a></aside>
-      <section className="brief-grid" aria-label="Current AI primary-source brief">
-        {AI_BRIEF.map((item, index) => (
-          <article key={item.href}>
-            <div className="brief-meta"><span>0{index + 1}</span><time>{item.date}</time><b>{item.company}</b></div>
+      <PageIntro eyebrow="AI today · current pattern map" title="Agents are becoming operating systems." copy="The market is converging on the same pattern built here locally: scheduled briefs, tool-using agents, long-lived context, visible workflows, and human-controlled action boundaries." />
+      <aside className="verification-note"><span>Public research boundary</span><div><h2>Patterns here; named source trails stay private.</h2><p>This anonymous view publishes analytical lenses and evidence standards, not the owner's source list, vendor ranking, or research-input hierarchy.</p></div></aside>
+      <section className="brief-grid" aria-label="Current AI market pattern map">
+        {AI_PATTERNS.map((item, index) => (
+          <article key={item.category}>
+            <div className="brief-meta"><span>0{index + 1}</span><time>Current lens</time><b>{item.category}</b></div>
             <h2>{item.title}</h2><p>{item.copy}</p>
-            <a href={item.href} target="_blank" rel="noreferrer">{item.source} ↗</a>
           </article>
         ))}
       </section>

@@ -91,23 +91,20 @@ describe('dashboard subpages', () => {
     expect(markup).toContain('Ollama + open-weight models')
     expect(markup).toContain('Codex + selected APIs')
     expect(markup).toContain('The knowledge vault')
-    expect(markup).toContain('Muse Spark 1.1—not “Muse Glimmer.”')
-    expect(markup).not.toContain('Muse Spark is open source')
+    expect(markup).toContain('New models are candidates, not deployed capabilities.')
   })
 
-  it('publishes a current primary-source AI brief with the Grok identity distinction', () => {
+  it('publishes an anonymous AI pattern map without named research inputs', () => {
     const markup = render('/dashboard/ai-today')
 
-    expect(markup).toContain('verified 13 Aug 2026')
-    expect(markup).toContain('Grok 4.6 is an API model. Grok Bot is a separate cloud product.')
-    expect(markup).toContain('grok-4.6')
-    expect(markup).toContain('not a published local CLI, SDK, or drop-in OpenClaw bridge')
-    expect(markup).toContain('Muse Spark 1.1 is an agent model, not a downloadable open model')
-    expect(markup).toContain('Kimi K3 pushes the open-weight lane forward')
-    expect(markup).toContain('https://github.com/xai-org/xai-sdk-python/releases/tag/v1.18.0')
-    expect(markup).toContain('https://x.ai/bot')
-    expect(markup).toContain('https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/')
-    expect(markup).toContain('https://github.com/MoonshotAI/Kimi-K3')
+    expect(markup).toContain('current pattern map')
+    expect(markup).toContain('Patterns here; named source trails stay private.')
+    expect(markup).toContain('Briefs are becoming scheduled services')
+    expect(markup).toContain('Open-weight models strengthen the private lane')
+    for (const namedSource of ['xAI', 'Grok', 'Meta', 'Muse', 'Moonshot', 'Kimi', 'Limitless']) {
+      expect(markup).not.toContain(namedSource)
+    }
+    expect(markup).not.toContain('https://')
   })
 
   it('falls back to the overview for an unknown dashboard path', () => {
