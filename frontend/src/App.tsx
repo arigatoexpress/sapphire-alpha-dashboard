@@ -108,7 +108,465 @@ function currentResearch(snapshot: LiveSnapshot | null, liveError: string) {
   return snapshot.research
 }
 
+const STORY_PAGES = [
+  { href: '/dashboard/', label: 'Overview', key: 'overview' },
+  { href: '/dashboard/architecture', label: 'Architecture', key: 'architecture' },
+  { href: '/dashboard/pipeline', label: 'Request flow', key: 'pipeline' },
+  { href: '/dashboard/models', label: 'Models', key: 'models' },
+  { href: '/dashboard/ai-today', label: 'AI today', key: 'ai-today' },
+] as const
+
+type StoryPage = (typeof STORY_PAGES)[number]['key']
+
+const SYSTEM_LAYERS = [
+  {
+    number: '01',
+    title: 'One private doorway',
+    label: 'Telegram',
+    detail: 'A direct conversation with one verified owner. No public command surface.',
+  },
+  {
+    number: '02',
+    title: 'One conductor',
+    label: 'OpenClaw',
+    detail: 'Holds the conversation, chooses tools, keeps schedules, and reports back.',
+  },
+  {
+    number: '03',
+    title: 'The right engine',
+    label: 'Local + cloud models',
+    detail: 'Routes private, fast, or difficult work to the model that fits the job.',
+  },
+  {
+    number: '04',
+    title: 'Durable memory',
+    label: 'Knowledge vault',
+    detail: 'Research, decisions, and receipts remain useful after a chat window closes.',
+  },
+  {
+    number: '05',
+    title: 'A visible result',
+    label: 'Briefs + dashboard',
+    detail: 'The owner gets a concise update, with evidence and the next decision attached.',
+  },
+] as const
+
+const REQUEST_STEPS = [
+  {
+    number: '01',
+    title: 'Ask naturally',
+    copy: 'The owner sends a message, forwards an idea, or lets a scheduled brief begin on time.',
+    output: 'A single admitted request',
+  },
+  {
+    number: '02',
+    title: 'Understand the job',
+    copy: 'OpenClaw loads the relevant context, identifies the outcome, and separates research from action.',
+    output: 'A bounded plan',
+  },
+  {
+    number: '03',
+    title: 'Choose the engine',
+    copy: 'Private or routine work can stay local. Harder reasoning can use a frontier model when the boundary allows it.',
+    output: 'A deliberate model route',
+  },
+  {
+    number: '04',
+    title: 'Research and verify',
+    copy: 'Tools gather current primary sources, compare claims, and save durable evidence instead of a loose chat summary.',
+    output: 'Cited findings + receipts',
+  },
+  {
+    number: '05',
+    title: 'Pause before impact',
+    copy: 'Messages, releases, money, credentials, and machine changes stop at a clear owner-controlled boundary.',
+    output: 'Approval when it matters',
+  },
+  {
+    number: '06',
+    title: 'Report back',
+    copy: 'The assistant returns the outcome first: what changed, what proves it, what is blocked, and what comes next.',
+    output: 'A useful personal update',
+  },
+] as const
+
+const MODEL_LANES = [
+  {
+    label: 'Conductor',
+    title: 'OpenClaw',
+    badge: 'Framework',
+    copy: 'The persistent agent layer. It owns the conversation, schedules, tool use, memory handoff, and the return path to Telegram.',
+    note: 'The conductor stays stable while model engines can change.',
+  },
+  {
+    label: 'Home compute',
+    title: 'Ollama + open-weight models',
+    badge: 'Private lane',
+    copy: 'Routine triage and sensitive context can run on the Windows GPU without sending the prompt to a model provider.',
+    note: 'Qwen, Nemotron, GLM, and North Mini variants have been evaluated locally; evaluation is not the same as production admission.',
+  },
+  {
+    label: 'Frontier reasoning',
+    title: 'Codex + selected APIs',
+    badge: 'Capability lane',
+    copy: 'Complex coding, planning, and multimodal work can use a frontier service when the task benefits and the data boundary permits it.',
+    note: 'Cloud capability is a route, not the operating system.',
+  },
+  {
+    label: 'Long-lived context',
+    title: 'The knowledge vault',
+    badge: 'Memory layer',
+    copy: 'Curated notes, research, decisions, and source trails give each engine the same durable institutional memory.',
+    note: 'Memory is retrieved for a job; the public dashboard never exposes the private vault.',
+  },
+] as const
+
+const AI_BRIEF = [
+  {
+    date: '12 Aug 2026',
+    company: 'xAI',
+    title: 'Grok 4.6 is real—and it has an official API path',
+    copy: 'xAI launched a hosted frontier model for long-running agent work. Its official catalog lists a 500,000-token context window and API slug grok-4.6; no downloadable weights are announced.',
+    href: 'https://x.ai/news/grok-4-6',
+    source: 'Official xAI announcement',
+  },
+  {
+    date: '13 Aug 2026',
+    company: 'xAI',
+    title: 'The open SDK gained 4.6 support one day later',
+    copy: 'The Apache-2.0 Python xai-sdk v1.18.0 adds grok-4.6 and xhigh reasoning support through a signed GitHub release. The SDK is open; the hosted model is not.',
+    href: 'https://github.com/xai-org/xai-sdk-python/releases/tag/v1.18.0',
+    source: 'Official signed SDK release',
+  },
+  {
+    date: '11 Aug 2026',
+    company: 'xAI',
+    title: 'Grok Bot is a cloud teammate product',
+    copy: 'The early-beta product gives Bots their own hosted computers, persistent context, routines, and app access. It is a subscription experience—not a published local CLI, SDK, or drop-in OpenClaw bridge.',
+    href: 'https://x.ai/bot',
+    source: 'Official Grok Bot page',
+  },
+  {
+    date: '16 Jul 2026',
+    company: 'xAI',
+    title: 'Automations turn a prompt into a recurring job',
+    copy: 'Grok can run saved work on a schedule or when a matching email arrives, then keep a conversation and report back.',
+    href: 'https://x.ai/news/grok-automations',
+    source: 'Official xAI announcement',
+  },
+  {
+    date: '23 Jul 2026',
+    company: 'xAI',
+    title: 'Workflows make parallel agents visible',
+    copy: 'Grok Build can plan a background workflow, fan work across many focused agents, verify the pieces, and roll them into one report.',
+    href: 'https://x.ai/news/workflows',
+    source: 'Official xAI announcement',
+  },
+  {
+    date: '09 Jul 2026',
+    company: 'Meta',
+    title: 'Muse Spark 1.1 is an agent model, not a downloadable open model',
+    copy: 'Meta describes multimodal reasoning, tool and computer use, multi-agent orchestration, and a one-million-token context window through its Model API preview.',
+    href: 'https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/',
+    source: 'Official Meta AI announcement',
+  },
+  {
+    date: '2026',
+    company: 'Moonshot AI',
+    title: 'Kimi K3 pushes the open-weight lane forward',
+    copy: 'Moonshot releases weights for a native multimodal, tool-using model with 2.8 trillion total parameters and a one-million-token context window.',
+    href: 'https://github.com/MoonshotAI/Kimi-K3',
+    source: 'Official model repository',
+  },
+  {
+    date: '2026',
+    company: 'Limitless',
+    title: 'The wearable chapter moved inside Meta',
+    copy: 'Limitless says it was acquired by Meta, ended new Pendant sales, and will support existing customers through 2026 with export and deletion options.',
+    href: 'https://www.limitless.ai/',
+    source: 'Official Limitless notice',
+  },
+] as const
+
+function pageFromPath(pathname: string): StoryPage {
+  const normalized = pathname.replace(/\/+$/, '') || '/dashboard'
+  const matched = STORY_PAGES.find((page) => page.href.replace(/\/+$/, '') === normalized)
+  return matched?.key ?? 'overview'
+}
+
+function StoryHeader({ active }: { active: StoryPage }) {
+  return (
+    <header className="story-header">
+      <a className="story-brand" href="/" aria-label="Sapphire Alpha home">
+        <span className="story-mark" aria-hidden="true">S</span>
+        <span>
+          <b>Sapphire</b>
+          <small>System story</small>
+        </span>
+      </a>
+      <nav aria-label="Dashboard pages">
+        {STORY_PAGES.map((page) => (
+          <a
+            key={page.key}
+            href={page.href}
+            aria-current={active === page.key ? 'page' : undefined}
+          >
+            {page.label}
+          </a>
+        ))}
+      </nav>
+      <span className="story-readonly"><i aria-hidden="true" /> Read-only</span>
+    </header>
+  )
+}
+
+function PageIntro({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
+  return (
+    <section className="page-intro">
+      <p className="story-eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p>{copy}</p>
+    </section>
+  )
+}
+
+function OverviewPage({ status, statusDetail }: { status: string; statusDetail: string }) {
+  return (
+    <>
+      <section className="story-hero">
+        <div className="story-hero-copy">
+          <p className="story-eyebrow">A private AI operating system, explained</p>
+          <h1>One conversation.<br /><em>An entire system</em><br />behind it.</h1>
+          <p className="story-deck">
+            This is not a chatbot collection. It is one personal assistant that can listen,
+            research, remember, use the right model, and return with a useful update—while
+            consequential actions stay under human control.
+          </p>
+          <div className="story-actions">
+            <a className="story-button story-button--primary" href="/dashboard/architecture">See the architecture <span>→</span></a>
+            <a className="story-button" href="/dashboard/pipeline">Follow a request</a>
+          </div>
+        </div>
+        <div className="story-orbit" aria-label="System relationship diagram">
+          <div className="orbit-ring orbit-ring--outer" aria-hidden="true" />
+          <div className="orbit-ring orbit-ring--inner" aria-hidden="true" />
+          <div className="orbit-core"><span>OpenClaw</span><small>one conductor</small></div>
+          <div className="orbit-node orbit-node--message"><span>Telegram</span><small>conversation</small></div>
+          <div className="orbit-node orbit-node--models"><span>Models</span><small>reasoning</small></div>
+          <div className="orbit-node orbit-node--vault"><span>Vault</span><small>memory</small></div>
+          <div className="orbit-node orbit-node--tools"><span>Tools</span><small>action</small></div>
+        </div>
+      </section>
+
+      <section className="live-ribbon" aria-label="Public system observation">
+        <span><i aria-hidden="true" /> Public observation</span>
+        <strong>{status}</strong>
+        <p>{statusDetail}</p>
+        <a href="/api/v1/live">Inspect source →</a>
+      </section>
+
+      <section className="story-section system-at-glance">
+        <div className="section-lead">
+          <p className="story-eyebrow">The whole system in one line</p>
+          <h2>From a message to a trusted result.</h2>
+          <p>The technical stack is deliberately hidden behind a human-sized experience.</p>
+        </div>
+        <ol className="glance-flow">
+          {SYSTEM_LAYERS.map((layer) => (
+            <li key={layer.number}>
+              <span className="flow-number">{layer.number}</span>
+              <div><small>{layer.title}</small><h3>{layer.label}</h3><p>{layer.detail}</p></div>
+              <span className="flow-arrow" aria-hidden="true">→</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="story-principles">
+        <article><span>01</span><h3>Private by default</h3><p>Local compute and an owner-only channel keep sensitive work close to home.</p></article>
+        <article><span>02</span><h3>Evidence over theater</h3><p>A result carries sources, freshness, and receipts. Missing evidence stays visibly missing.</p></article>
+        <article><span>03</span><h3>Human at the boundary</h3><p>The assistant can prepare deeply; releases, messages, credentials, and capital wait for the owner.</p></article>
+      </section>
+
+      <section className="story-section explore-grid-section">
+        <div className="section-lead section-lead--row">
+          <div><p className="story-eyebrow">Explore the system</p><h2>Four views. No jargon required.</h2></div>
+          <p>Each page answers one practical question about how the assistant works.</p>
+        </div>
+        <div className="explore-grid">
+          {[
+            ['/dashboard/architecture', 'Architecture', 'What lives where—and why?', 'A map of the private doorway, conductor, engines, memory, and proof.'],
+            ['/dashboard/pipeline', 'Request flow', 'What happens after I ask?', 'Six plain-English steps from intent to an owner-ready update.'],
+            ['/dashboard/models', 'Models', 'Why use more than one model?', 'The framework stays stable while local and cloud engines compete for each job.'],
+            ['/dashboard/ai-today', 'AI today', 'What changed this month?', 'A concise primary-source brief, including what is real and what is not verified.'],
+          ].map(([href, label, title, copy], index) => (
+            <a href={href} key={href}>
+              <span>0{index + 1} · {label}</span><h3>{title}</h3><p>{copy}</p><b>Open page →</b>
+            </a>
+          ))}
+        </div>
+      </section>
+    </>
+  )
+}
+
+function ArchitecturePage() {
+  return (
+    <>
+      <PageIntro
+        eyebrow="Architecture · the five layers"
+        title="A home AI system with one front door."
+        copy="Every layer has one job. That keeps the experience simple for the owner and makes failures easier to see, stop, and recover."
+      />
+      <section className="architecture-map" aria-label="Five-layer system architecture">
+        {SYSTEM_LAYERS.map((layer, index) => (
+          <article key={layer.number} className={`architecture-layer architecture-layer--${index + 1}`}>
+            <span>{layer.number}</span>
+            <div><p>{layer.title}</p><h2>{layer.label}</h2><p>{layer.detail}</p></div>
+            <small>{['OWNER', 'ORCHESTRATION', 'INFERENCE', 'CONTEXT', 'OUTCOME'][index]}</small>
+          </article>
+        ))}
+      </section>
+      <section className="boundary-section story-section">
+        <div className="section-lead"><p className="story-eyebrow">The important boundary</p><h2>Preparation can be automatic. Impact is not.</h2></div>
+        <div className="boundary-grid">
+          <article className="boundary-card boundary-card--go"><span>Can proceed</span><h3>Think, research, compare, draft</h3><ul><li>Read public sources</li><li>Search the private vault</li><li>Run local evaluations</li><li>Prepare code and release evidence</li><li>Draft the owner update</li></ul></article>
+          <div className="boundary-gate"><span>Owner gate</span><i aria-hidden="true" /><p>A clear pause exactly where intent becomes consequence.</p></div>
+          <article className="boundary-card boundary-card--stop"><span>Needs approval</span><h3>Send, release, spend, change access</h3><ul><li>Message an outside party</li><li>Cut over production</li><li>Change credentials or permissions</li><li>Move money or place an order</li><li>Start a privileged runtime</li></ul></article>
+        </div>
+      </section>
+      <section className="story-section ownership-section"><p className="story-eyebrow">Why this shape works</p><div><h2>One owner. One poller. One source of truth.</h2><p>There is no second bot racing for messages and no hidden control panel competing with Telegram. The dashboard explains and observes; OpenClaw coordinates; the owner decides when a prepared action crosses its boundary.</p></div></section>
+    </>
+  )
+}
+
+function PipelinePage() {
+  return (
+    <>
+      <PageIntro eyebrow="Request flow · six moments" title="What happens after you ask." copy="The best personal assistant feels direct, but it does not skip the work. Here is the entire journey from a plain-language request to a durable outcome." />
+      <ol className="request-timeline">
+        {REQUEST_STEPS.map((step) => (
+          <li key={step.number}>
+            <span className="timeline-number">{step.number}</span>
+            <div><h2>{step.title}</h2><p>{step.copy}</p></div>
+            <strong>{step.output}</strong>
+          </li>
+        ))}
+      </ol>
+      <section className="update-example story-section">
+        <div className="section-lead"><p className="story-eyebrow">The return format</p><h2>An update should answer four questions.</h2></div>
+        <div className="update-card">
+          <div className="update-card-header"><span>Sapphire Assistant</span><time>08:00</time></div>
+          <div className="update-line"><span>Outcome</span><p>The research brief is complete and saved to the vault.</p></div>
+          <div className="update-line"><span>Evidence</span><p>Five primary sources checked; two claims were rejected as unverified.</p></div>
+          <div className="update-line"><span>Blocker</span><p>The production change is prepared, but it still needs your approval.</p></div>
+          <div className="update-line"><span>Next</span><p>Review the one-page summary; approve only if the effect matches your intent.</p></div>
+        </div>
+      </section>
+    </>
+  )
+}
+
+function ModelsPage() {
+  return (
+    <>
+      <PageIntro eyebrow="Models · a portfolio, not a dependency" title="The conductor is not the model." copy="OpenClaw provides the durable assistant experience. Models are interchangeable engines selected for privacy, speed, capability, and cost." />
+      <section className="model-stack">
+        {MODEL_LANES.map((lane, index) => (
+          <article key={lane.title}>
+            <span className="model-index">0{index + 1}</span>
+            <div className="model-title"><p>{lane.label}</p><h2>{lane.title}</h2></div>
+            <span className="model-badge">{lane.badge}</span>
+            <p>{lane.copy}</p>
+            <small>{lane.note}</small>
+          </article>
+        ))}
+      </section>
+      <section className="model-router story-section">
+        <div className="section-lead"><p className="story-eyebrow">A simple routing rule</p><h2>Use the smallest capable boundary.</h2><p>Every job starts with the most private, efficient lane likely to succeed. Escalation is explicit.</p></div>
+        <div className="router-scale"><div><span>More local</span><b>Private context</b></div><i aria-hidden="true" /><div><b>Harder reasoning</b><span>More capability</span></div></div>
+        <div className="router-cases"><p><span>Local</span> Summaries, classification, vault retrieval, routine drafting.</p><p><span>Hybrid</span> Research with local context and public-source tools.</p><p><span>Frontier</span> Complex code, long-horizon planning, multimodal work.</p></div>
+      </section>
+      <aside className="name-check"><span>Name check</span><div><h2>Meta announced Muse Spark 1.1—not “Muse Glimmer.”</h2><p>Its official release describes access through Meta's Model API public preview. It does not announce downloadable weights, so this site does not call it open source.</p></div><a href="https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/" target="_blank" rel="noreferrer">Official source ↗</a></aside>
+      <aside className="name-check compatibility-note"><span>Compatibility gate · 13 Aug</span><div><h2>Grok 4.6 is an opportunity, not a deployed capability.</h2><p>The official Grok Build CLI is present on the Windows machine, but it is a separate product. The personal-assistant runtime is Ollama-native today; its current OpenClaw model catalog and provider allowlist do not yet admit 4.6. A future integration belongs through OpenClaw's bundled xAI provider after compatibility review—not by replacing the bot or local services.</p></div><a href="https://docs.x.ai/developers/models" target="_blank" rel="noreferrer">Official model catalog ↗</a></aside>
+    </>
+  )
+}
+
+function AiTodayPage() {
+  return (
+    <>
+      <PageIntro eyebrow="AI today · verified 13 Aug 2026" title="Agents are becoming operating systems." copy="The market is converging on the same pattern built here locally: scheduled briefs, tool-using agents, long-lived context, visible workflows, and human-controlled action boundaries." />
+      <aside className="verification-note"><span>Identity check</span><div><h2>Grok 4.6 is an API model. Grok Bot is a separate cloud product.</h2><p>The official SDK supports model slug <code>grok-4.6</code>. Grok Bot is an early-beta subscription product with hosted computers; its page does not publish a local runtime or migration bridge.</p></div><a href="https://github.com/xai-org/xai-sdk-python/releases/tag/v1.18.0" target="_blank" rel="noreferrer">Signed SDK release ↗</a></aside>
+      <section className="brief-grid" aria-label="Current AI primary-source brief">
+        {AI_BRIEF.map((item, index) => (
+          <article key={item.href}>
+            <div className="brief-meta"><span>0{index + 1}</span><time>{item.date}</time><b>{item.company}</b></div>
+            <h2>{item.title}</h2><p>{item.copy}</p>
+            <a href={item.href} target="_blank" rel="noreferrer">{item.source} ↗</a>
+          </article>
+        ))}
+      </section>
+      <section className="story-section convergence-section"><p className="story-eyebrow">What matters</p><h2>The headline is not one model. It is the pattern.</h2><div><p><span>Then</span>A user opened a chat, supplied context again, and carried the result elsewhere.</p><p><span>Now</span>An agent wakes on schedule, gathers context, uses tools, keeps a record, and returns when the work is done.</p><p><span>Here</span>The same pattern runs through a private owner channel, local compute, a durable vault, and explicit approval gates.</p></div></section>
+    </>
+  )
+}
+
+function StoryFooter({ build }: { build: ReturnType<typeof useBuildIdentity> }) {
+  return (
+    <footer className="story-footer">
+      <div><span className="story-mark" aria-hidden="true">S</span><p><b>Sapphire System Story</b><small>One assistant. Many engines. Human authority.</small></p></div>
+      <p>Anonymous · read-only · no private vault contents</p>
+      <p>{build ? <>Build {shortBuildValue(build.source_sha)} · <a href="/api/build">provenance</a></> : <>Build not yet attributed · <a href="/api/build">inspect</a></>}</p>
+    </footer>
+  )
+}
+
 export default function App(
+  props: {
+    initialPath?: string
+    initialWidgets?: PublicWidgets
+    initialSnapshot?: LiveSnapshot
+    initialLiveError?: string
+  } = {},
+) {
+  const { initialPath, initialSnapshot, initialLiveError } = props
+  const build = useBuildIdentity()
+  const { snapshot: polledSnapshot, error: polledError, loading } = useLiveTelemetry()
+  const snapshot = initialSnapshot ?? polledSnapshot
+  const error = initialLiveError ?? polledError
+  const pathname = initialPath ?? (typeof window === 'undefined' ? '/dashboard/' : window.location.pathname)
+  const active = pageFromPath(pathname)
+  const status = error
+    ? 'Public evidence unavailable'
+    : snapshot?.status === 'live'
+      ? 'Latest public snapshot is current'
+      : loading
+        ? 'Checking the latest public snapshot'
+        : 'No current public snapshot'
+  const statusDetail = error
+    ? 'The last value is not promoted to a live claim.'
+    : snapshot?.status === 'live'
+      ? `Observed ${formatAge(snapshot.freshness_s)}. This page cannot start or stop the system.`
+      : 'Absence is shown honestly; it is never translated into healthy.'
+
+  return (
+    <div className="story-shell">
+      <div className="story-grid" aria-hidden="true" />
+      <StoryHeader active={active} />
+      <main className="story-main">
+        {active === 'overview' ? <OverviewPage status={status} statusDetail={statusDetail} /> : null}
+        {active === 'architecture' ? <ArchitecturePage /> : null}
+        {active === 'pipeline' ? <PipelinePage /> : null}
+        {active === 'models' ? <ModelsPage /> : null}
+        {active === 'ai-today' ? <AiTodayPage /> : null}
+      </main>
+      <StoryFooter build={build} />
+    </div>
+  )
+}
+
+export function LegacyObservatory(
   {
     initialWidgets,
     initialSnapshot,
