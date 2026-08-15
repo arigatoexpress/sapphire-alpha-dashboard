@@ -6,11 +6,21 @@
     <string>com.sapphire.alpha-telemetry-publisher</string>
 
     <!-- The wrapper sources the ingest secret from ~/.sapphire/ so it never
-         appears in this plist, in launchctl output, or in a Time Machine copy. -->
+         appears in this plist or launchctl output. The active owner is pinned
+         to the reviewed checkout; the retirement preflight binds its commit
+         and file hashes before removing the competing cron owner. -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/aribs/Code/sapphire-alpha-dashboard/telemetry/run_publisher.sh</string>
+        <string>/Users/aribs/Code/.worktrees/sapphire-publisher-reviewed/telemetry/run_publisher.sh</string>
     </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>SAPPHIRE_TELEMETRY_PYTHON</key>
+        <string>/Users/aribs/Code/sapphire-alpha-dashboard/backend/.venv/bin/python</string>
+    </dict>
 
     <!-- Publish cadence. This number and DEFAULT_STALE_AFTER_SECONDS in
          backend/live_telemetry.py are one decision split across two files, and
